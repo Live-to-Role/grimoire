@@ -1,0 +1,241 @@
+{
+  "version": "1.0",
+  "generated_at": "2025-12-13T00:18:36.518578Z",
+  "source": "grimoire-sample-pdfs",
+  "products": [
+    {
+      "file_hashes": [
+        "d57995867a822db4403bdcb5d9d6abe90f285b79430bd40250ce1e0d4f05e9c0"
+      ],
+      "file_size": 110537882,
+      "page_count": 554,
+      "title": "City of Brass",
+      "publisher": "Frog God Games",
+      "publication_year": 2018,
+      "game_system": "D&D 5E",
+      "product_type": "Adventure",
+      "level_range": {
+        "min": 12,
+        "max": 18
+      },
+      "description": "A massive planar adventure set in the legendary City of Brass on the Elemental Plane of Fire.",
+      "external_links": {
+        "drivethrurpg": "https://www.drivethrurpg.com/product/240996/City-of-Brass-5th-Edition"
+      },
+      "tags": [],
+      "confidence": 1.0,
+      "source": "manual"
+    },
+    {
+      "file_hashes": [
+        "ed3a58d8f6d2a37f656813cd399c3869444d113fb8c13b43cdc284816dd11fb9"
+      ],
+      "file_size": 4890486,
+      "page_count": 17,
+      "title": "Against The Cult Of The Hippie Commune",
+      "publisher": "Loot the Body",
+      "publication_year": 2023,
+      "game_system": "OSR",
+      "product_type": "Adventure",
+      "level_range": {
+        "min": 1,
+        "max": 3
+      },
+      "description": "A psychedelic OSR adventure involving a mysterious hippie commune.",
+      "external_links": {},
+      "tags": [],
+      "confidence": 1.0,
+      "source": "manual"
+    },
+    {
+      "file_hashes": [
+        "c062afad4b30f5c86ce6d090b92e589177a0f14eaf329a2e8ac1dd31f08668de"
+      ],
+      "file_size": 527503,
+      "page_count": 7,
+      "title": "Mouth of Doom",
+      "publisher": "Frog God Games",
+      "publication_year": null,
+      "game_system": "OSR",
+      "product_type": "Adventure",
+      "level_range": {
+        "min": 1,
+        "max": 5
+      },
+      "description": "A classic dungeon crawl adventure.",
+      "external_links": {},
+      "tags": [],
+      "confidence": 1.0,
+      "source": "manual"
+    },
+    {
+      "file_hashes": [
+        "9da581119bf58f615dcf88961a498e25ca3efec797f8b0d00b673a55dde10429"
+      ],
+      "file_size": 18144285,
+      "page_count": 36,
+      "title": "Secret of the Whispering God",
+      "publisher": null,
+      "publication_year": 2025,
+      "game_system": "D&D 5E",
+      "product_type": "Adventure",
+      "level_range": {
+        "min": 1,
+        "max": 5
+      },
+      "description": "An adventure involving ancient secrets and a mysterious deity.",
+      "external_links": {},
+      "tags": [],
+      "confidence": 1.0,
+      "source": "manual"
+    },
+    {
+      "file_hashes": [
+        "971adcbf74972795b32a4090d32c3d26af4f2ea68d226b9fbc202a68d699cfe3"
+      ],
+      "file_size": 111260790,
+      "page_count": 214,
+      "title": "Tegel Manor",
+      "publisher": "Frog God Games",
+      "publication_year": 2019,
+      "game_system": "D&D 5E",
+      "product_type": "Adventure",
+      "level_range": {
+        "min": 1,
+        "max": 10
+      },
+      "description": "The classic haunted house adventure, updated for 5th Edition. Explore the sprawling Tegel Manor and uncover its dark secrets.",
+      "external_links": {
+        "drivethrurpg": "https://www.drivethrurpg.com/product/278806/Tegel-Manor-5th-Edition"
+      },
+      "tags": [],
+      "confidence": 1.0,
+      "source": "manual"
+    },
+    {
+      "file_hashes": [
+        "4e6f637c5815e785fb9065c0dea42c74ec2bab94602c24a4764cb66f6dc12b4f"
+      ],
+      "file_size": 30524483,
+      "page_count": 18,
+      "title": "The Art of Drowning",
+      "publisher": null,
+      "publication_year": null,
+      "game_system": "OSR",
+      "product_type": "Adventure",
+      "level_range": null,
+      "description": "A dark and atmospheric adventure.",
+      "external_links": {},
+      "tags": [],
+      "confidence": 1.0,
+      "source": "manual"
+    },
+    {
+      "file_hashes": [
+        "162d5e31e83fe152dc45beaf2cb4c6bdd2f615c74ccef246b6e61e878fc931ba"
+      ],
+      "file_size": 10369975,
+      "page_count": 32,
+      "title": "The Waking of Willowby Hall",
+      "publisher": "Questing Beast Games",
+      "publication_year": 2020,
+      "game_system": "OSR",
+      "product_type": "Adventure",
+      "level_range": {
+        "min": 1,
+        "max": 3
+      },
+      "description": "A chaotic adventure in a haunted manor with a rampaging giant. Compatible with most OSR systems.",
+      "external_links": {
+        "drivethrurpg": "https://www.drivethrurpg.com/product/348439/The-Waking-of-Willowby-Hall"
+      },
+      "tags": [],
+      "confidence": 1.0,
+      "source": "manual"
+    },
+    {
+      "file_hashes": [
+        "0c5220e65c245bbaf7bd496bae70dad0ed610491c0d8aed525fea45e4a04b708"
+      ],
+      "file_size": 12272576,
+      "page_count": 48,
+      "title": "The Wanting Wizard",
+      "publisher": null,
+      "publication_year": null,
+      "game_system": "OSR",
+      "product_type": "Adventure",
+      "level_range": {
+        "min": 1,
+        "max": 3
+      },
+      "description": "A short adventure involving a wizard with unusual desires.",
+      "external_links": {},
+      "tags": [],
+      "confidence": 1.0,
+      "source": "manual"
+    },
+    {
+      "file_hashes": [
+        "3d36d32786d894fd285d43bbf3211653e6b4766adda1848c306d292de5b05586"
+      ],
+      "file_size": 4441738,
+      "page_count": 31,
+      "title": "The Whispering Sanctum",
+      "publisher": "M.T. Black Games",
+      "publication_year": 2024,
+      "game_system": "D&D 5E",
+      "product_type": "Adventure",
+      "level_range": {
+        "min": 1,
+        "max": 5
+      },
+      "description": "A mysterious sanctum holds ancient secrets waiting to be discovered.",
+      "external_links": {},
+      "tags": [],
+      "confidence": 1.0,
+      "source": "manual"
+    },
+    {
+      "file_hashes": [
+        "6b7183cac1c23252c1b569f4ebf8da5fbebbe44aaea4e98021208ebed03fbb1e"
+      ],
+      "file_size": 744264,
+      "page_count": 2,
+      "title": "Valley of the Red Scorpion",
+      "publisher": null,
+      "publication_year": null,
+      "game_system": "OSR",
+      "product_type": "Adventure",
+      "level_range": {
+        "min": 5,
+        "max": 5
+      },
+      "description": "An adventure set in a dangerous desert valley.",
+      "external_links": {},
+      "tags": [],
+      "confidence": 1.0,
+      "source": "manual"
+    },
+    {
+      "file_hashes": [
+        "e19d68a5f7bacb5b8c788b8b17678973a0f1a1235823e60687b42b31641a3a52"
+      ],
+      "file_size": 17818255,
+      "page_count": 210,
+      "title": "Wrath of the Sea Lich",
+      "publisher": "Gaxx Worx, LLC",
+      "publication_year": 2025,
+      "game_system": "Shadowdark RPG",
+      "product_type": "Adventure",
+      "level_range": {
+        "min": 3,
+        "max": 5
+      },
+      "description": "A nautical adventure featuring an undead threat from the depths. Written for Shadowdark RPG.",
+      "external_links": {},
+      "tags": [],
+      "confidence": 1.0,
+      "source": "manual"
+    }
+  ]
+}

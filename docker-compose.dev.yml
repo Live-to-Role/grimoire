@@ -1,0 +1,44 @@
+version: '3.8'
+
+services:
+  grimoire:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.backend
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/data
+      - ./pdfs:/library:ro
+      - ./backend/grimoire:/app/grimoire:ro
+    env_file:
+      - .env
+    environment:
+      - DATABASE_URL=sqlite+aiosqlite:///./data/grimoire.db
+      - LIBRARY_PATH=/library
+      - DATA_DIR=/app/data
+      - COVERS_DIR=/app/data/covers
+      - LOG_LEVEL=DEBUG
+      - DEBUG=true
+      - CORS_ORIGINS=["http://localhost:5173","http://localhost:3000","http://localhost:8000"]
+    command: ["uvicorn", "grimoire.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+    restart: unless-stopped
+
+  worker:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.backend
+    volumes:
+      - ./data:/app/data
+      - ./pdfs:/library:ro
+      - ./backend/grimoire:/app/grimoire:ro
+    environment:
+      - DATABASE_URL=sqlite+aiosqlite:///./data/grimoire.db
+      - LIBRARY_PATH=/library
+      - DATA_DIR=/app/data
+      - COVERS_DIR=/app/data/covers
+      - LOG_LEVEL=DEBUG
+    command: ["python", "-m", "huey.bin.huey_consumer", "grimoire.worker.tasks.huey", "-w", "2", "-k", "thread"]
+    restart: unless-stopped
+    depends_on:
+      - grimoire
