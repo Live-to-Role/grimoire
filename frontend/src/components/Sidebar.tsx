@@ -158,7 +158,7 @@ export function Sidebar({
                 </button>
               ))}
               {(!collections || collections.length === 0) && (
-                <p className="px-3 py-2 text-xs text-neutral-400">No collections yet</p>
+                <p className="px-3 py-2 text-xs text-neutral-500">No collections yet</p>
               )}
             </div>
           )}
@@ -200,7 +200,7 @@ export function Sidebar({
                 </button>
               ))}
               {(!tags || tags.length === 0) && (
-                <p className="px-3 py-2 text-xs text-neutral-400">No tags yet</p>
+                <p className="px-3 py-2 text-xs text-neutral-500">No tags yet</p>
               )}
             </div>
           )}

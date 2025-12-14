@@ -13,7 +13,7 @@ interface LibraryProps {
   selectedTag?: number | null;
 }
 
-export function Library({ selectedCollection: _selectedCollection, selectedTag: _selectedTag }: LibraryProps) {
+export function Library({ selectedCollection, selectedTag }: LibraryProps) {
   const [filters, setFilters] = useState<ProductFilters>({
     page: 1,
     per_page: 50,
@@ -21,10 +21,17 @@ export function Library({ selectedCollection: _selectedCollection, selectedTag: 
     order: 'asc',
   });
 
-  // TODO: Use selectedCollection and selectedTag to filter products
-  // For now, we'll implement this in a future iteration
-  void _selectedCollection;
-  void _selectedTag;
+  // Merge collection/tag filters with local filters
+  const effectiveFilters = useMemo(() => {
+    const merged: ProductFilters = { ...filters };
+    if (selectedCollection) {
+      merged.collection = selectedCollection;
+    }
+    if (selectedTag) {
+      merged.tags = String(selectedTag);
+    }
+    return merged;
+  }, [filters, selectedCollection, selectedTag]);
   const [searchInput, setSearchInput] = useState('');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
@@ -34,7 +41,7 @@ export function Library({ selectedCollection: _selectedCollection, selectedTag: 
   const [searchContent, setSearchContent] = useState(false);
   const [activeSearch, setActiveSearch] = useState('');
 
-  const { data, isLoading, error, refetch, isFetching } = useProducts(filters);
+  const { data, isLoading, error, refetch, isFetching } = useProducts(effectiveFilters);
 
   // Content search query
   const {

@@ -1,6 +1,6 @@
 """Watched folder API endpoints."""
 
-from datetime import datetime
+from datetime import datetime, UTC
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Query, Response
@@ -196,7 +196,7 @@ async def scan_library(db: DbSession, request: ScanRequest) -> ScanResponse:
 
     for folder in folders:
         await scan_folder(db, folder, force=request.force)
-        folder.last_scanned_at = datetime.utcnow()
+        folder.last_scanned_at = datetime.now(UTC)
 
     await db.commit()
 

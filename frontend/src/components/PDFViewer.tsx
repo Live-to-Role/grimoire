@@ -153,7 +153,7 @@ export function PDFViewer({ fileUrl, fileName, onClose }: PDFViewerProps) {
       <div className="flex-1 overflow-auto bg-neutral-900">
         {isLoading && (
           <div className="flex h-full items-center justify-center">
-            <div className="text-neutral-400">Loading PDF...</div>
+            <div className="text-neutral-300">Loading PDF...</div>
           </div>
         )}
 

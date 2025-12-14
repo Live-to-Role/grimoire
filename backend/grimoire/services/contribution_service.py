@@ -2,7 +2,7 @@
 
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, UTC
 from typing import Any
 
 from sqlalchemy import select
@@ -59,7 +59,7 @@ async def submit_contribution(
     codex = CodexClient(api_key=api_key, use_mock=False)
     
     contribution.attempts += 1
-    contribution.last_attempt_at = datetime.utcnow()
+    contribution.last_attempt_at = datetime.now(UTC)
     
     try:
         data = json.loads(contribution.contribution_data)

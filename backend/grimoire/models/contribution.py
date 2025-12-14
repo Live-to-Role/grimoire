@@ -1,6 +1,6 @@
 """Contribution queue model for offline Codex submissions."""
 
-from datetime import datetime
+from datetime import datetime, UTC
 from enum import Enum
 
 from sqlalchemy import Column, DateTime, Enum as SQLEnum, ForeignKey, Integer, String, Text
@@ -39,7 +39,7 @@ class ContributionQueue(Base):
     # Codex response
     codex_product_id = Column(String(64), nullable=True)
     
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(UTC))
+    updated_at = Column(DateTime, default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC))
 
     product = relationship("Product", backref="contributions")

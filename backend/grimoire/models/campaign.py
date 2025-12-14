@@ -1,6 +1,6 @@
 """Campaign management models."""
 
-from datetime import datetime
+from datetime import datetime, UTC
 
 from sqlalchemy import Column, DateTime, ForeignKey, Integer, String, Text, Table
 from sqlalchemy.orm import relationship
@@ -14,7 +14,7 @@ campaign_products = Table(
     Base.metadata,
     Column("campaign_id", Integer, ForeignKey("campaigns.id", ondelete="CASCADE"), primary_key=True),
     Column("product_id", Integer, ForeignKey("products.id", ondelete="CASCADE"), primary_key=True),
-    Column("added_at", DateTime, default=datetime.utcnow),
+    Column("added_at", DateTime, default=lambda: datetime.now(UTC)),
     Column("notes", Text, nullable=True),
 )
 
@@ -39,8 +39,8 @@ class Campaign(Base):
     
     notes = Column(Text, nullable=True)
     
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(UTC))
+    updated_at = Column(DateTime, default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC))
 
     products = relationship(
         "Product",
@@ -69,7 +69,7 @@ class Session(Base):
     
     status = Column(String(50), default="planned")  # planned, completed, cancelled
     
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(UTC))
+    updated_at = Column(DateTime, default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC))
 
     campaign = relationship("Campaign", backref="sessions")

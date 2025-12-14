@@ -1,6 +1,6 @@
 """Collection API endpoints."""
 
-from datetime import datetime
+from datetime import datetime, UTC
 
 from fastapi import APIRouter, HTTPException, Response
 from sqlalchemy import func, select
@@ -129,7 +129,7 @@ async def update_collection(
     for field, value in update_dict.items():
         setattr(collection, field, value)
 
-    collection.updated_at = datetime.utcnow()
+    collection.updated_at = datetime.now(UTC)
     await db.commit()
     await db.refresh(collection)
 

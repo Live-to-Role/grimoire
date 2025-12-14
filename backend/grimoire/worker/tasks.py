@@ -1,7 +1,7 @@
 """Background tasks for PDF processing."""
 
 import asyncio
-from datetime import datetime
+from datetime import datetime, UTC
 from pathlib import Path
 
 from grimoire.worker.queue import huey
@@ -85,7 +85,7 @@ def process_metadata(product_id: int) -> bool:
             if metadata.get("title") and not product.title:
                 product.title = metadata["title"]
 
-            product.updated_at = datetime.utcnow()
+            product.updated_at = datetime.now(UTC)
             await db.commit()
 
             return True
@@ -120,7 +120,7 @@ def scan_folder_task(folder_id: int, force: bool = False) -> int:
                 return 0
 
             products = await scan_folder(db, folder, force=force)
-            folder.last_scanned_at = datetime.utcnow()
+            folder.last_scanned_at = datetime.now(UTC)
             await db.commit()
 
             return len(products)

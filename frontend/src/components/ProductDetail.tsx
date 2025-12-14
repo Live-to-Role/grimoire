@@ -4,6 +4,7 @@ import type { Product } from '../types/product';
 import { getProductText } from '../api/search';
 import { getCoverUrl } from '../api/products';
 import { PDFViewer } from './PDFViewer';
+import { useFocusTrap } from '../hooks/useFocusTrap';
 
 interface ProductDetailProps {
   product: Product;
@@ -11,6 +12,7 @@ interface ProductDetailProps {
 }
 
 export function ProductDetail({ product, onClose }: ProductDetailProps) {
+  const focusTrapRef = useFocusTrap<HTMLDivElement>({ enabled: true, restoreFocus: true });
   const [activeTab, setActiveTab] = useState<'info' | 'text'>('info');
   const [textContent, setTextContent] = useState<string | null>(null);
   const [textLoading, setTextLoading] = useState(false);
@@ -50,7 +52,10 @@ export function ProductDetail({ product, onClose }: ProductDetailProps) {
       aria-labelledby="product-detail-title"
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
-      <div className="flex h-[90vh] w-full max-w-4xl flex-col overflow-hidden rounded-xl bg-white shadow-2xl">
+      <div 
+        ref={focusTrapRef}
+        className="flex h-[90vh] w-full max-w-4xl flex-col overflow-hidden rounded-xl bg-white shadow-2xl"
+      >
         <header className="flex items-center justify-between border-b border-neutral-200 px-6 py-4">
           <h2 id="product-detail-title" className="text-xl font-semibold text-neutral-900 truncate">{product.title}</h2>
           <button

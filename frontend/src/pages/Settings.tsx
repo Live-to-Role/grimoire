@@ -122,7 +122,7 @@ export function Settings() {
                 )}
               </div>
               {codexStatus?.base_url && (
-                <p className="mt-1 text-xs text-neutral-400">{codexStatus.base_url}</p>
+                <p className="mt-1 text-xs text-neutral-500">{codexStatus.base_url}</p>
               )}
             </div>
 

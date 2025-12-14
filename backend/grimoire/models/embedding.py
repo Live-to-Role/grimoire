@@ -1,6 +1,6 @@
 """Embedding storage model for semantic search."""
 
-from datetime import datetime
+from datetime import datetime, UTC
 
 from sqlalchemy import Column, DateTime, ForeignKey, Integer, String, Text, LargeBinary
 from sqlalchemy.orm import relationship
@@ -23,7 +23,7 @@ class ProductEmbedding(Base):
     embedding_model = Column(String(100), nullable=False)
     embedding_dim = Column(Integer, nullable=False)
     
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(UTC))
 
     product = relationship("Product", backref="embeddings")
 

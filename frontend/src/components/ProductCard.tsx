@@ -58,7 +58,7 @@ export function ProductCard({ product, onClick }: ProductCardProps) {
         </div>
 
         {product.page_count && (
-          <p className="mt-auto pt-2 text-xs text-neutral-400">
+          <p className="mt-auto pt-2 text-xs text-neutral-500">
             {product.page_count} pages
           </p>
         )}

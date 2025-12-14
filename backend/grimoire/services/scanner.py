@@ -1,7 +1,7 @@
 """Library scanner service - scans folders for PDF files."""
 
 import hashlib
-from datetime import datetime
+from datetime import datetime, UTC
 from pathlib import Path
 
 from sqlalchemy import select
@@ -76,7 +76,7 @@ async def scan_folder(
             existing_product.file_size = file_size
             existing_product.file_hash = file_hash
             existing_product.file_modified_at = file_modified
-            existing_product.updated_at = datetime.utcnow()
+            existing_product.updated_at = datetime.now(UTC)
             products.append(existing_product)
         else:
             product = Product(

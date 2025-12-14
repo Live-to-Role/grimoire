@@ -1,6 +1,6 @@
 """Product API endpoints."""
 
-from datetime import datetime
+from datetime import datetime, UTC
 from pathlib import Path
 from typing import Literal
 
@@ -182,7 +182,7 @@ async def update_product(
     for field, value in update_dict.items():
         setattr(product, field, value)
 
-    product.updated_at = datetime.utcnow()
+    product.updated_at = datetime.now(UTC)
     await db.commit()
     await db.refresh(product)
 

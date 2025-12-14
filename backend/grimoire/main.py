@@ -9,7 +9,7 @@ from grimoire import __version__
 from grimoire.api.routes import api_router
 from grimoire.config import settings
 from grimoire.database import init_db
-from grimoire.middleware import RateLimitMiddleware
+from grimoire.middleware import RateLimitMiddleware, CacheMiddleware
 
 
 @asynccontextmanager
@@ -35,6 +35,7 @@ app = FastAPI(
     openapi_url="/api/openapi.json",
 )
 
+app.add_middleware(CacheMiddleware)
 app.add_middleware(RateLimitMiddleware)
 app.add_middleware(
     CORSMiddleware,
