@@ -44,8 +44,10 @@ class IdentificationResult:
     
     # Identified metadata
     title: str | None = None
+    author: str | None = None
     publisher: str | None = None
     game_system: str | None = None
+    genre: str | None = None
     product_type: str | None = None
     publication_year: int | None = None
     level_range_min: int | None = None
@@ -70,8 +72,10 @@ class IdentificationResult:
             "confidence": self.confidence,
             "needs_confirmation": self.needs_confirmation,
             "title": self.title,
+            "author": self.author,
             "publisher": self.publisher,
             "game_system": self.game_system,
+            "genre": self.genre,
             "product_type": self.product_type,
             "publication_year": self.publication_year,
             "level_range_min": self.level_range_min,
@@ -124,8 +128,10 @@ class IdentificationResult:
             confidence=confidence,
             needs_confirmation=confidence < 0.9,
             title=ai_data.get("title"),
+            author=ai_data.get("author"),
             publisher=ai_data.get("publisher"),
             game_system=ai_data.get("game_system"),
+            genre=ai_data.get("genre"),
             product_type=ai_data.get("product_type"),
             publication_year=ai_data.get("publication_year"),
             level_range_min=ai_data.get("level_range_min"),

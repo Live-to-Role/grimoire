@@ -9,9 +9,19 @@ export interface ProductFilters {
   search?: string;
   game_system?: string;
   product_type?: string;
+  genre?: string;
+  author?: string;
+  publisher?: string;
   tags?: string;
   collection?: number;
   has_cover?: boolean;
+  publication_year_min?: string;
+  publication_year_max?: string;
+  level_min?: string;
+  level_max?: string;
+  party_size_min?: string;
+  party_size_max?: string;
+  estimated_runtime?: string;
 }
 
 export async function getProducts(filters: ProductFilters = {}): Promise<ProductListResponse> {

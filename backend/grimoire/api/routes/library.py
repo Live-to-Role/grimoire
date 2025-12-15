@@ -1,6 +1,7 @@
 """Library management API endpoints - scanning, stats, etc."""
 
-from fastapi import APIRouter, HTTPException, BackgroundTasks
+import json
+from fastapi import APIRouter, HTTPException, BackgroundTasks, UploadFile, File
 from pydantic import BaseModel
 from sqlalchemy import select, func
 
@@ -198,3 +199,203 @@ async def scan_history(db: DbSession, limit: int = 10) -> dict:
         ],
         "total": len(jobs),
     }
+
+
+@router.post("/reextract-metadata")
+async def reextract_metadata(
+    db: DbSession,
+    limit: int = 100,
+    force: bool = False,
+) -> dict:
+    """Re-extract metadata for products that are missing it.
+    
+    Args:
+        limit: Maximum number of products to process
+        force: If True, re-extract even if metadata exists
+    """
+    from pathlib import Path
+    from grimoire.services.metadata_extractor import extract_all_metadata, apply_metadata_to_product
+    
+    # Find products needing metadata extraction
+    if force:
+        query = select(Product).where(
+            Product.is_duplicate == False,
+            Product.is_missing == False,
+        ).limit(limit)
+    else:
+        # Products with no game_system or genre
+        query = select(Product).where(
+            Product.is_duplicate == False,
+            Product.is_missing == False,
+            (Product.game_system.is_(None)) | (Product.genre.is_(None)),
+        ).limit(limit)
+    
+    result = await db.execute(query)
+    products = list(result.scalars().all())
+    
+    processed = 0
+    updated = 0
+    errors = []
+    
+    for product in products:
+        try:
+            pdf_path = Path(product.file_path)
+            if not pdf_path.exists():
+                errors.append(f"{product.file_name}: File not found")
+                continue
+            
+            metadata = extract_all_metadata(pdf_path)
+            changes = apply_metadata_to_product(product, metadata, overwrite=force)
+            
+            if changes:
+                updated += 1
+            processed += 1
+            
+        except Exception as e:
+            errors.append(f"{product.file_name}: {str(e)}")
+    
+    await db.commit()
+    
+    return {
+        "processed": processed,
+        "updated": updated,
+        "errors_count": len(errors),
+        "errors": errors[:10],  # First 10 errors
+        "message": f"Processed {processed} products, updated {updated}",
+    }
+
+
+@router.get("/filters")
+async def get_filter_options(db: DbSession) -> dict:
+    """Get available filter options for the library sidebar.
+    
+    Returns distinct values for game_system, genre, product_type, publisher, and author
+    along with counts for each value.
+    """
+    # Game systems with counts
+    game_systems_query = (
+        select(Product.game_system, func.count(Product.id).label("count"))
+        .where(Product.is_duplicate == False, Product.is_missing == False)
+        .group_by(Product.game_system)
+        .order_by(func.count(Product.id).desc())
+    )
+    game_systems_result = await db.execute(game_systems_query)
+    game_systems = [
+        {"value": row[0] or "Unknown", "count": row[1]}
+        for row in game_systems_result.all()
+    ]
+    
+    # Genres with counts
+    genres_query = (
+        select(Product.genre, func.count(Product.id).label("count"))
+        .where(Product.is_duplicate == False, Product.is_missing == False, Product.genre.isnot(None))
+        .group_by(Product.genre)
+        .order_by(func.count(Product.id).desc())
+    )
+    genres_result = await db.execute(genres_query)
+    genres = [
+        {"value": row[0], "count": row[1]}
+        for row in genres_result.all()
+    ]
+    
+    # Product types with counts
+    product_types_query = (
+        select(Product.product_type, func.count(Product.id).label("count"))
+        .where(Product.is_duplicate == False, Product.is_missing == False, Product.product_type.isnot(None))
+        .group_by(Product.product_type)
+        .order_by(func.count(Product.id).desc())
+    )
+    product_types_result = await db.execute(product_types_query)
+    product_types = [
+        {"value": row[0], "count": row[1]}
+        for row in product_types_result.all()
+    ]
+    
+    # Publishers with counts (top 50)
+    publishers_query = (
+        select(Product.publisher, func.count(Product.id).label("count"))
+        .where(Product.is_duplicate == False, Product.is_missing == False, Product.publisher.isnot(None))
+        .group_by(Product.publisher)
+        .order_by(func.count(Product.id).desc())
+        .limit(50)
+    )
+    publishers_result = await db.execute(publishers_query)
+    publishers = [
+        {"value": row[0], "count": row[1]}
+        for row in publishers_result.all()
+    ]
+    
+    # Authors with counts (top 50)
+    authors_query = (
+        select(Product.author, func.count(Product.id).label("count"))
+        .where(Product.is_duplicate == False, Product.is_missing == False, Product.author.isnot(None))
+        .group_by(Product.author)
+        .order_by(func.count(Product.id).desc())
+        .limit(50)
+    )
+    authors_result = await db.execute(authors_query)
+    authors = [
+        {"value": row[0], "count": row[1]}
+        for row in authors_result.all()
+    ]
+    
+    return {
+        "game_systems": game_systems,
+        "genres": genres,
+        "product_types": product_types,
+        "publishers": publishers,
+        "authors": authors,
+    }
+
+
+@router.post("/import/dtrpg")
+async def import_dtrpg_library(
+    db: DbSession,
+    file: UploadFile = File(...),
+    apply: bool = True,
+    limit: int | None = None,
+) -> dict:
+    """Import DriveThruRPG library JSON and match to local products.
+    
+    Upload the JSON from: https://www.drivethrurpg.com/api/products/mylibrary/search?show_all=1&...
+    
+    Args:
+        file: DTRPG library JSON file
+        apply: If True, update products with matched metadata
+        limit: Maximum number of products to process
+    """
+    from grimoire.services.dtrpg_import import import_dtrpg_library as do_import
+    
+    try:
+        content = await file.read()
+        json_data = json.loads(content)
+    except json.JSONDecodeError as e:
+        raise HTTPException(status_code=400, detail=f"Invalid JSON: {e}")
+    
+    try:
+        result = await do_import(db, json_data=json_data, apply=apply, limit=limit)
+        return result
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/import/dtrpg/stats")
+async def get_dtrpg_stats_endpoint(
+    file: UploadFile = File(...),
+) -> dict:
+    """Get statistics about a DTRPG library export without importing.
+    
+    Useful for previewing what will be imported.
+    """
+    from grimoire.services.dtrpg_import import get_dtrpg_stats
+    
+    try:
+        content = await file.read()
+        json_data = json.loads(content)
+    except json.JSONDecodeError as e:
+        raise HTTPException(status_code=400, detail=f"Invalid JSON: {e}")
+    
+    try:
+        return get_dtrpg_stats(json_data)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))

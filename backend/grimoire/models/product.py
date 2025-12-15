@@ -28,6 +28,8 @@ class Product(Base):
         Index("ix_products_is_duplicate", "is_duplicate"),
         Index("ix_products_file_size", "file_size"),
         Index("ix_products_system_type", "game_system", "product_type"),
+        Index("ix_products_author", "author"),
+        Index("ix_products_genre", "genre"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -43,12 +45,14 @@ class Product(Base):
 
     # Basic metadata
     title: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    author: Mapped[str | None] = mapped_column(String(500), nullable=True)
     publisher: Mapped[str | None] = mapped_column(String(255), nullable=True)
     publication_year: Mapped[int | None] = mapped_column(Integer, nullable=True)
     page_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     # Classification
     game_system: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    genre: Mapped[str | None] = mapped_column(String(50), nullable=True)
     product_type: Mapped[str | None] = mapped_column(String(50), nullable=True)
 
     # Adventure-specific

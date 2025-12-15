@@ -13,11 +13,13 @@ import {
   Wand2,
   Loader2,
   Sparkles,
+  Edit3,
+  Save,
 } from 'lucide-react';
 import apiClient from '../api/client';
 import type { Product } from '../types/product';
 import { getProductText } from '../api/search';
-import { getCoverUrl } from '../api/products';
+import { getCoverUrl, updateProduct } from '../api/products';
 import { PDFViewer } from './PDFViewer';
 import { useFocusTrap } from '../hooks/useFocusTrap';
 
@@ -36,6 +38,16 @@ export function ProductDetail({ product, onClose }: ProductDetailProps) {
   const [showPdfViewer, setShowPdfViewer] = useState(false);
   const [extractedContent, setExtractedContent] = useState<Record<string, unknown[]> | null>(null);
   const [localProduct, setLocalProduct] = useState(product);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editForm, setEditForm] = useState({
+    title: product.title || '',
+    publisher: product.publisher || '',
+    game_system: product.game_system || '',
+    product_type: product.product_type || '',
+    publication_year: product.publication_year?.toString() || '',
+    level_range_min: product.level_range_min?.toString() || '',
+    level_range_max: product.level_range_max?.toString() || '',
+  });
 
   const extractTextMutation = useMutation({
     mutationFn: async () => {
@@ -121,6 +133,42 @@ export function ProductDetail({ product, onClose }: ProductDetailProps) {
       URL.revokeObjectURL(url);
     },
   });
+
+  const updateMutation = useMutation({
+    mutationFn: async (data: Parameters<typeof updateProduct>[1]) => {
+      return updateProduct(product.id, data);
+    },
+    onSuccess: (updatedProduct) => {
+      setLocalProduct(prev => ({ ...prev, ...updatedProduct }));
+      setIsEditing(false);
+      queryClient.invalidateQueries({ queryKey: ['products'] });
+    },
+  });
+
+  const handleSaveEdit = () => {
+    const data: Record<string, unknown> = {};
+    if (editForm.title) data.title = editForm.title;
+    if (editForm.publisher) data.publisher = editForm.publisher;
+    if (editForm.game_system) data.game_system = editForm.game_system;
+    if (editForm.product_type) data.product_type = editForm.product_type;
+    if (editForm.publication_year) data.publication_year = parseInt(editForm.publication_year);
+    if (editForm.level_range_min) data.level_range_min = parseInt(editForm.level_range_min);
+    if (editForm.level_range_max) data.level_range_max = parseInt(editForm.level_range_max);
+    updateMutation.mutate(data);
+  };
+
+  const handleCancelEdit = () => {
+    setEditForm({
+      title: localProduct.title || '',
+      publisher: localProduct.publisher || '',
+      game_system: localProduct.game_system || '',
+      product_type: localProduct.product_type || '',
+      publication_year: localProduct.publication_year?.toString() || '',
+      level_range_min: localProduct.level_range_min?.toString() || '',
+      level_range_max: localProduct.level_range_max?.toString() || '',
+    });
+    setIsEditing(false);
+  };
 
   const loadText = async () => {
     if (textContent) return;
@@ -249,106 +297,210 @@ export function ProductDetail({ product, onClose }: ProductDetailProps) {
               </div>
 
               <div className="flex-1 space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  {product.game_system && (
-                    <div className="flex items-center gap-2">
-                      <Book className="h-4 w-4 text-neutral-400" />
+                {isEditing ? (
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-sm font-medium text-neutral-700">Title</label>
+                      <input
+                        type="text"
+                        value={editForm.title}
+                        onChange={(e) => setEditForm({ ...editForm, title: e.target.value })}
+                        className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500"
+                      />
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
                       <div>
-                        <p className="text-xs text-neutral-500">Game System</p>
-                        <p className="font-medium">{product.game_system}</p>
+                        <label className="block text-sm font-medium text-neutral-700">Game System</label>
+                        <input
+                          type="text"
+                          value={editForm.game_system}
+                          onChange={(e) => setEditForm({ ...editForm, game_system: e.target.value })}
+                          className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-neutral-700">Product Type</label>
+                        <input
+                          type="text"
+                          value={editForm.product_type}
+                          onChange={(e) => setEditForm({ ...editForm, product_type: e.target.value })}
+                          className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500"
+                        />
                       </div>
                     </div>
-                  )}
-
-                  {product.product_type && (
-                    <div className="flex items-center gap-2">
-                      <FileText className="h-4 w-4 text-neutral-400" />
+                    <div className="grid grid-cols-2 gap-4">
                       <div>
-                        <p className="text-xs text-neutral-500">Type</p>
-                        <p className="font-medium">{product.product_type}</p>
+                        <label className="block text-sm font-medium text-neutral-700">Publisher</label>
+                        <input
+                          type="text"
+                          value={editForm.publisher}
+                          onChange={(e) => setEditForm({ ...editForm, publisher: e.target.value })}
+                          className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-neutral-700">Year</label>
+                        <input
+                          type="number"
+                          value={editForm.publication_year}
+                          onChange={(e) => setEditForm({ ...editForm, publication_year: e.target.value })}
+                          className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500"
+                        />
                       </div>
                     </div>
-                  )}
-
-                  {product.publisher && (
-                    <div className="flex items-center gap-2">
-                      <Users className="h-4 w-4 text-neutral-400" />
+                    <div className="grid grid-cols-2 gap-4">
                       <div>
-                        <p className="text-xs text-neutral-500">Publisher</p>
-                        <p className="font-medium">{product.publisher}</p>
+                        <label className="block text-sm font-medium text-neutral-700">Min Level</label>
+                        <input
+                          type="number"
+                          value={editForm.level_range_min}
+                          onChange={(e) => setEditForm({ ...editForm, level_range_min: e.target.value })}
+                          className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-neutral-700">Max Level</label>
+                        <input
+                          type="number"
+                          value={editForm.level_range_max}
+                          onChange={(e) => setEditForm({ ...editForm, level_range_max: e.target.value })}
+                          className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500"
+                        />
                       </div>
                     </div>
-                  )}
-
-                  {product.publication_year && (
-                    <div className="flex items-center gap-2">
-                      <Calendar className="h-4 w-4 text-neutral-400" />
-                      <div>
-                        <p className="text-xs text-neutral-500">Year</p>
-                        <p className="font-medium">{product.publication_year}</p>
-                      </div>
-                    </div>
-                  )}
-
-                  {product.page_count && (
-                    <div className="flex items-center gap-2">
-                      <FileText className="h-4 w-4 text-neutral-400" />
-                      <div>
-                        <p className="text-xs text-neutral-500">Pages</p>
-                        <p className="font-medium">{product.page_count}</p>
-                      </div>
-                    </div>
-                  )}
-
-                  {(product.level_range_min || product.level_range_max) && (
-                    <div className="flex items-center gap-2">
-                      <Clock className="h-4 w-4 text-neutral-400" />
-                      <div>
-                        <p className="text-xs text-neutral-500">Level Range</p>
-                        <p className="font-medium">
-                          {product.level_range_min || '?'} - {product.level_range_max || '?'}
-                        </p>
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                {product.tags && product.tags.length > 0 && (
-                  <div>
-                    <p className="text-xs text-neutral-500 mb-2">Tags</p>
-                    <div className="flex flex-wrap gap-2">
-                      {product.tags.map((tag) => (
-                        <span
-                          key={tag.id}
-                          className="rounded-full px-3 py-1 text-xs font-medium"
-                          style={{
-                            backgroundColor: tag.color ? `${tag.color}20` : '#e5e7eb',
-                            color: tag.color || '#374151',
-                          }}
-                        >
-                          {tag.name}
-                        </span>
-                      ))}
+                    <div className="flex gap-3 pt-4">
+                      <button
+                        onClick={handleSaveEdit}
+                        disabled={updateMutation.isPending}
+                        className="inline-flex items-center gap-2 rounded-lg bg-purple-600 px-4 py-2 text-sm font-medium text-white hover:bg-purple-700 disabled:opacity-50"
+                      >
+                        {updateMutation.isPending ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Save className="h-4 w-4" />
+                        )}
+                        Save Changes
+                      </button>
+                      <button
+                        onClick={handleCancelEdit}
+                        disabled={updateMutation.isPending}
+                        className="inline-flex items-center gap-2 rounded-lg border border-neutral-300 bg-white px-4 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-50 disabled:opacity-50"
+                      >
+                        Cancel
+                      </button>
                     </div>
                   </div>
-                )}
+                ) : (
+                  <>
+                    <div className="grid grid-cols-2 gap-4">
+                      {localProduct.game_system && (
+                        <div className="flex items-center gap-2">
+                          <Book className="h-4 w-4 text-neutral-400" />
+                          <div>
+                            <p className="text-xs text-neutral-500">Game System</p>
+                            <p className="font-medium">{localProduct.game_system}</p>
+                          </div>
+                        </div>
+                      )}
 
-                <div className="flex gap-3 pt-4">
-                  <button
-                    onClick={() => setShowPdfViewer(true)}
-                    className="inline-flex items-center gap-2 rounded-lg bg-purple-600 px-4 py-2 text-sm font-medium text-white hover:bg-purple-700"
-                  >
-                    <Eye className="h-4 w-4" />
-                    View PDF
-                  </button>
-                  <button
-                    onClick={openPdf}
-                    className="inline-flex items-center gap-2 rounded-lg border border-neutral-300 bg-white px-4 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-50"
-                  >
-                    <ExternalLink className="h-4 w-4" />
-                    Open in New Tab
-                  </button>
-                </div>
+                      {localProduct.product_type && (
+                        <div className="flex items-center gap-2">
+                          <FileText className="h-4 w-4 text-neutral-400" />
+                          <div>
+                            <p className="text-xs text-neutral-500">Type</p>
+                            <p className="font-medium">{localProduct.product_type}</p>
+                          </div>
+                        </div>
+                      )}
+
+                      {localProduct.publisher && (
+                        <div className="flex items-center gap-2">
+                          <Users className="h-4 w-4 text-neutral-400" />
+                          <div>
+                            <p className="text-xs text-neutral-500">Publisher</p>
+                            <p className="font-medium">{localProduct.publisher}</p>
+                          </div>
+                        </div>
+                      )}
+
+                      {localProduct.publication_year && (
+                        <div className="flex items-center gap-2">
+                          <Calendar className="h-4 w-4 text-neutral-400" />
+                          <div>
+                            <p className="text-xs text-neutral-500">Year</p>
+                            <p className="font-medium">{localProduct.publication_year}</p>
+                          </div>
+                        </div>
+                      )}
+
+                      {localProduct.page_count && (
+                        <div className="flex items-center gap-2">
+                          <FileText className="h-4 w-4 text-neutral-400" />
+                          <div>
+                            <p className="text-xs text-neutral-500">Pages</p>
+                            <p className="font-medium">{localProduct.page_count}</p>
+                          </div>
+                        </div>
+                      )}
+
+                      {(localProduct.level_range_min || localProduct.level_range_max) && (
+                        <div className="flex items-center gap-2">
+                          <Clock className="h-4 w-4 text-neutral-400" />
+                          <div>
+                            <p className="text-xs text-neutral-500">Level Range</p>
+                            <p className="font-medium">
+                              {localProduct.level_range_min || '?'} - {localProduct.level_range_max || '?'}
+                            </p>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {localProduct.tags && localProduct.tags.length > 0 && (
+                      <div>
+                        <p className="text-xs text-neutral-500 mb-2">Tags</p>
+                        <div className="flex flex-wrap gap-2">
+                          {localProduct.tags.map((tag) => (
+                            <span
+                              key={tag.id}
+                              className="rounded-full px-3 py-1 text-xs font-medium"
+                              style={{
+                                backgroundColor: tag.color ? `${tag.color}20` : '#e5e7eb',
+                                color: tag.color || '#374151',
+                              }}
+                            >
+                              {tag.name}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="flex gap-3 pt-4">
+                      <button
+                        onClick={() => setShowPdfViewer(true)}
+                        className="inline-flex items-center gap-2 rounded-lg bg-purple-600 px-4 py-2 text-sm font-medium text-white hover:bg-purple-700"
+                      >
+                        <Eye className="h-4 w-4" />
+                        View PDF
+                      </button>
+                      <button
+                        onClick={openPdf}
+                        className="inline-flex items-center gap-2 rounded-lg border border-neutral-300 bg-white px-4 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-50"
+                      >
+                        <ExternalLink className="h-4 w-4" />
+                        Open in New Tab
+                      </button>
+                      <button
+                        onClick={() => setIsEditing(true)}
+                        className="inline-flex items-center gap-2 rounded-lg border border-neutral-300 bg-white px-4 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-50"
+                      >
+                        <Edit3 className="h-4 w-4" />
+                        Edit
+                      </button>
+                    </div>
+                  </>
+                )}
               </div>
             </div>
           ) : activeTab === 'text' ? (

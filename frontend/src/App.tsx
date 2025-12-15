@@ -6,6 +6,7 @@ import { Campaigns } from './pages/Campaigns';
 import { LibraryManagement } from './pages/LibraryManagement';
 import { Sidebar } from './components/Sidebar';
 import { ProcessingQueue } from './components/ProcessingQueue';
+import type { ProductFilters } from './api/products';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -20,6 +21,25 @@ function App() {
   const [activeView, setActiveView] = useState('library');
   const [selectedCollection, setSelectedCollection] = useState<number | null>(null);
   const [selectedTag, setSelectedTag] = useState<number | null>(null);
+  const [sidebarFilters, setSidebarFilters] = useState<Partial<ProductFilters>>({});
+
+  const handleFilterChange = (filterType: keyof ProductFilters, value: string | null) => {
+    setSidebarFilters(prev => {
+      if (value === null) {
+        const { [filterType]: _, ...rest } = prev;
+        return rest;
+      }
+      return { ...prev, [filterType]: value };
+    });
+    setSelectedCollection(null);
+    setSelectedTag(null);
+  };
+
+  const clearAllFilters = () => {
+    setSidebarFilters({});
+    setSelectedCollection(null);
+    setSelectedTag(null);
+  };
 
   return (
     <QueryClientProvider client={queryClient}>
@@ -31,6 +51,9 @@ function App() {
           onTagSelect={setSelectedTag}
           selectedCollection={selectedCollection}
           selectedTag={selectedTag}
+          onFilterChange={handleFilterChange}
+          activeFilters={sidebarFilters}
+          onClearFilters={clearAllFilters}
         />
         <main className="flex-1 overflow-hidden">
           {activeView === 'settings' ? (
@@ -45,6 +68,7 @@ function App() {
             <Library
               selectedCollection={selectedCollection}
               selectedTag={selectedTag}
+              sidebarFilters={sidebarFilters}
             />
           )}
         </main>

@@ -11,7 +11,17 @@ import {
   ListTodo,
   BookOpen,
   HardDrive,
-} from 'lucide-react';
+  Gamepad2,
+  BookMarked,
+  User,
+  Building2,
+  X,
+  Search,
+  FileText,
+  Calendar,
+  Swords,
+  } from 'lucide-react';
+import type { ProductFilters } from '../api/products';
 import apiClient from '../api/client';
 
 interface Collection {
@@ -37,6 +47,9 @@ interface LibraryStats {
   total_size_bytes: number;
   by_system: Record<string, number>;
   by_type: Record<string, number>;
+  by_genre: Record<string, number>;
+  by_author: Record<string, number>;
+  by_publisher: Record<string, number>;
 }
 
 interface SidebarProps {
@@ -46,6 +59,9 @@ interface SidebarProps {
   onTagSelect: (id: number | null) => void;
   selectedCollection: number | null;
   selectedTag: number | null;
+  onFilterChange: (filterType: keyof ProductFilters, value: string | null) => void;
+  activeFilters: Partial<ProductFilters>;
+  onClearFilters: () => void;
 }
 
 export function Sidebar({
@@ -55,10 +71,28 @@ export function Sidebar({
   onTagSelect,
   selectedCollection,
   selectedTag,
+  onFilterChange,
+  activeFilters,
+  onClearFilters,
 }: SidebarProps) {
   const [collectionsExpanded, setCollectionsExpanded] = useState(true);
   const [tagsExpanded, setTagsExpanded] = useState(false);
-  const [systemsExpanded, setSystemsExpanded] = useState(false);
+  const [systemsExpanded, setSystemsExpanded] = useState(true);
+  const [typesExpanded, setTypesExpanded] = useState(false);
+  const [genresExpanded, setGenresExpanded] = useState(false);
+  const [authorsExpanded, setAuthorsExpanded] = useState(false);
+  const [publishersExpanded, setPublishersExpanded] = useState(false);
+  const [yearExpanded, setYearExpanded] = useState(false);
+  const [adventureExpanded, setAdventureExpanded] = useState(false);
+
+  // Search states for high-cardinality filters
+  const [systemSearch, setSystemSearch] = useState('');
+  const [authorSearch, setAuthorSearch] = useState('');
+  const [publisherSearch, setPublisherSearch] = useState('');
+
+  const activeFilterCount = Object.keys(activeFilters).filter(
+    k => !['page', 'per_page', 'sort', 'order'].includes(k)
+  ).length;
 
   const { data: collections } = useQuery({
     queryKey: ['collections'],
@@ -208,6 +242,25 @@ export function Sidebar({
           )}
         </div>
 
+        {/* Active Filters Indicator */}
+        {activeFilterCount > 0 && (
+          <div className="mt-4 mx-2 p-2 bg-purple-50 rounded-lg">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-medium text-purple-700">
+                {activeFilterCount} filter{activeFilterCount > 1 ? 's' : ''} active
+              </span>
+              <button
+                onClick={onClearFilters}
+                className="text-xs text-purple-600 hover:text-purple-800 flex items-center gap-1"
+              >
+                <X className="h-3 w-3" />
+                Clear
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Game Systems Filter */}
         <div className="mt-4">
           <button
             onClick={() => setSystemsExpanded(!systemsExpanded)}
@@ -220,22 +273,354 @@ export function Sidebar({
             ) : (
               <ChevronRight className="h-3 w-3" />
             )}
+            <Gamepad2 className="h-3 w-3" />
             Game Systems
           </button>
 
           {systemsExpanded && stats && (
-            <div id="systems-list" className="mt-1 space-y-0.5" role="list">
-              {Object.entries(stats.by_system)
+            <div id="systems-list" className="mt-1" role="list">
+              <div className="px-2 pb-2">
+                <div className="relative">
+                  <Search className="absolute left-2 top-1/2 h-3 w-3 -translate-y-1/2 text-neutral-400" />
+                  <input
+                    type="text"
+                    placeholder="Search..."
+                    value={systemSearch}
+                    onChange={(e) => setSystemSearch(e.target.value)}
+                    className="w-full rounded border border-neutral-200 bg-neutral-50 py-1 pl-7 pr-2 text-xs focus:border-purple-400 focus:outline-none"
+                  />
+                </div>
+              </div>
+              <div className="space-y-0.5 max-h-40 overflow-y-auto">
+                {Object.entries(stats.by_system)
+                  .filter(([system]) => system.toLowerCase().includes(systemSearch.toLowerCase()))
+                  .sort((a, b) => b[1] - a[1])
+                  .map(([system, count]) => (
+                    <button
+                      key={system}
+                      onClick={() => onFilterChange('game_system', activeFilters.game_system === system ? null : system)}
+                      className={`flex w-full items-center justify-between px-3 py-1.5 text-sm rounded-md ${
+                        activeFilters.game_system === system
+                          ? 'bg-purple-100 text-purple-700'
+                          : 'text-neutral-600 hover:bg-neutral-100'
+                      }`}
+                    >
+                      <span className="truncate">{system}</span>
+                      <span className="text-xs text-neutral-500">{count}</span>
+                    </button>
+                  ))}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Product Types Filter */}
+        <div className="mt-4">
+          <button
+            onClick={() => setTypesExpanded(!typesExpanded)}
+            aria-expanded={typesExpanded}
+            aria-controls="types-list"
+            className="flex w-full items-center gap-2 px-3 py-1.5 text-xs font-semibold uppercase tracking-wider text-neutral-500"
+          >
+            {typesExpanded ? (
+              <ChevronDown className="h-3 w-3" />
+            ) : (
+              <ChevronRight className="h-3 w-3" />
+            )}
+            <FileText className="h-3 w-3" />
+            Product Types
+          </button>
+
+          {typesExpanded && stats && (
+            <div id="types-list" className="mt-1 space-y-0.5 max-h-48 overflow-y-auto" role="list">
+              {Object.entries(stats.by_type)
                 .sort((a, b) => b[1] - a[1])
-                .map(([system, count]) => (
-                  <div
-                    key={system}
-                    className="flex items-center justify-between px-3 py-1.5 text-sm text-neutral-600"
+                .map(([type, count]) => (
+                  <button
+                    key={type}
+                    onClick={() => onFilterChange('product_type', activeFilters.product_type === type ? null : type)}
+                    className={`flex w-full items-center justify-between px-3 py-1.5 text-sm rounded-md ${
+                      activeFilters.product_type === type
+                        ? 'bg-purple-100 text-purple-700'
+                        : 'text-neutral-600 hover:bg-neutral-100'
+                    }`}
                   >
-                    <span className="truncate">{system}</span>
+                    <span className="truncate">{type}</span>
                     <span className="text-xs text-neutral-500">{count}</span>
-                  </div>
+                  </button>
                 ))}
+            </div>
+          )}
+        </div>
+
+        {/* Genres Filter */}
+        <div className="mt-4">
+          <button
+            onClick={() => setGenresExpanded(!genresExpanded)}
+            aria-expanded={genresExpanded}
+            aria-controls="genres-list"
+            className="flex w-full items-center gap-2 px-3 py-1.5 text-xs font-semibold uppercase tracking-wider text-neutral-500"
+          >
+            {genresExpanded ? (
+              <ChevronDown className="h-3 w-3" />
+            ) : (
+              <ChevronRight className="h-3 w-3" />
+            )}
+            <BookMarked className="h-3 w-3" />
+            Genres
+          </button>
+
+          {genresExpanded && stats && (
+            <div id="genres-list" className="mt-1 space-y-0.5 max-h-48 overflow-y-auto" role="list">
+              {Object.entries(stats.by_genre)
+                .sort((a, b) => b[1] - a[1])
+                .map(([genre, count]) => (
+                  <button
+                    key={genre}
+                    onClick={() => onFilterChange('genre', activeFilters.genre === genre ? null : genre)}
+                    className={`flex w-full items-center justify-between px-3 py-1.5 text-sm rounded-md ${
+                      activeFilters.genre === genre
+                        ? 'bg-purple-100 text-purple-700'
+                        : 'text-neutral-600 hover:bg-neutral-100'
+                    }`}
+                  >
+                    <span className="truncate">{genre}</span>
+                    <span className="text-xs text-neutral-500">{count}</span>
+                  </button>
+                ))}
+            </div>
+          )}
+        </div>
+
+        {/* Authors Filter */}
+        <div className="mt-4">
+          <button
+            onClick={() => setAuthorsExpanded(!authorsExpanded)}
+            aria-expanded={authorsExpanded}
+            aria-controls="authors-list"
+            className="flex w-full items-center gap-2 px-3 py-1.5 text-xs font-semibold uppercase tracking-wider text-neutral-500"
+          >
+            {authorsExpanded ? (
+              <ChevronDown className="h-3 w-3" />
+            ) : (
+              <ChevronRight className="h-3 w-3" />
+            )}
+            <User className="h-3 w-3" />
+            Authors
+          </button>
+
+          {authorsExpanded && stats && (
+            <div id="authors-list" className="mt-1" role="list">
+              <div className="px-2 pb-2">
+                <div className="relative">
+                  <Search className="absolute left-2 top-1/2 h-3 w-3 -translate-y-1/2 text-neutral-400" />
+                  <input
+                    type="text"
+                    placeholder="Search..."
+                    value={authorSearch}
+                    onChange={(e) => setAuthorSearch(e.target.value)}
+                    className="w-full rounded border border-neutral-200 bg-neutral-50 py-1 pl-7 pr-2 text-xs focus:border-purple-400 focus:outline-none"
+                  />
+                </div>
+              </div>
+              <div className="space-y-0.5 max-h-40 overflow-y-auto">
+                {Object.entries(stats.by_author)
+                  .filter(([author]) => author.toLowerCase().includes(authorSearch.toLowerCase()))
+                  .sort((a, b) => b[1] - a[1])
+                  .slice(0, 50)
+                  .map(([author, count]) => (
+                    <button
+                      key={author}
+                      onClick={() => onFilterChange('author', activeFilters.author === author ? null : author)}
+                      className={`flex w-full items-center justify-between px-3 py-1.5 text-sm rounded-md ${
+                        activeFilters.author === author
+                          ? 'bg-purple-100 text-purple-700'
+                          : 'text-neutral-600 hover:bg-neutral-100'
+                      }`}
+                    >
+                      <span className="truncate">{author}</span>
+                      <span className="text-xs text-neutral-500">{count}</span>
+                    </button>
+                  ))}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Publishers Filter */}
+        <div className="mt-4">
+          <button
+            onClick={() => setPublishersExpanded(!publishersExpanded)}
+            aria-expanded={publishersExpanded}
+            aria-controls="publishers-list"
+            className="flex w-full items-center gap-2 px-3 py-1.5 text-xs font-semibold uppercase tracking-wider text-neutral-500"
+          >
+            {publishersExpanded ? (
+              <ChevronDown className="h-3 w-3" />
+            ) : (
+              <ChevronRight className="h-3 w-3" />
+            )}
+            <Building2 className="h-3 w-3" />
+            Publishers
+          </button>
+
+          {publishersExpanded && stats && (
+            <div id="publishers-list" className="mt-1" role="list">
+              <div className="px-2 pb-2">
+                <div className="relative">
+                  <Search className="absolute left-2 top-1/2 h-3 w-3 -translate-y-1/2 text-neutral-400" />
+                  <input
+                    type="text"
+                    placeholder="Search..."
+                    value={publisherSearch}
+                    onChange={(e) => setPublisherSearch(e.target.value)}
+                    className="w-full rounded border border-neutral-200 bg-neutral-50 py-1 pl-7 pr-2 text-xs focus:border-purple-400 focus:outline-none"
+                  />
+                </div>
+              </div>
+              <div className="space-y-0.5 max-h-40 overflow-y-auto">
+                {Object.entries(stats.by_publisher)
+                  .filter(([publisher]) => publisher.toLowerCase().includes(publisherSearch.toLowerCase()))
+                  .sort((a, b) => b[1] - a[1])
+                  .slice(0, 50)
+                  .map(([publisher, count]) => (
+                    <button
+                      key={publisher}
+                      onClick={() => onFilterChange('publisher', activeFilters.publisher === publisher ? null : publisher)}
+                      className={`flex w-full items-center justify-between px-3 py-1.5 text-sm rounded-md ${
+                        activeFilters.publisher === publisher
+                          ? 'bg-purple-100 text-purple-700'
+                          : 'text-neutral-600 hover:bg-neutral-100'
+                      }`}
+                    >
+                      <span className="truncate">{publisher}</span>
+                      <span className="text-xs text-neutral-500">{count}</span>
+                    </button>
+                  ))}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Publication Year Filter */}
+        <div className="mt-4">
+          <button
+            onClick={() => setYearExpanded(!yearExpanded)}
+            aria-expanded={yearExpanded}
+            aria-controls="year-filter"
+            className="flex w-full items-center gap-2 px-3 py-1.5 text-xs font-semibold uppercase tracking-wider text-neutral-500"
+          >
+            {yearExpanded ? (
+              <ChevronDown className="h-3 w-3" />
+            ) : (
+              <ChevronRight className="h-3 w-3" />
+            )}
+            <Calendar className="h-3 w-3" />
+            Publication Year
+          </button>
+
+          {yearExpanded && (
+            <div id="year-filter" className="mt-2 px-3 space-y-2">
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  placeholder="From"
+                  value={activeFilters.publication_year_min || ''}
+                  onChange={(e) => onFilterChange('publication_year_min', e.target.value || null)}
+                  className="w-full rounded border border-neutral-200 bg-neutral-50 px-2 py-1 text-xs focus:border-purple-400 focus:outline-none"
+                />
+                <span className="text-neutral-400">-</span>
+                <input
+                  type="number"
+                  placeholder="To"
+                  value={activeFilters.publication_year_max || ''}
+                  onChange={(e) => onFilterChange('publication_year_max', e.target.value || null)}
+                  className="w-full rounded border border-neutral-200 bg-neutral-50 px-2 py-1 text-xs focus:border-purple-400 focus:outline-none"
+                />
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Adventure Filters */}
+        <div className="mt-4">
+          <button
+            onClick={() => setAdventureExpanded(!adventureExpanded)}
+            aria-expanded={adventureExpanded}
+            aria-controls="adventure-filters"
+            className="flex w-full items-center gap-2 px-3 py-1.5 text-xs font-semibold uppercase tracking-wider text-neutral-500"
+          >
+            {adventureExpanded ? (
+              <ChevronDown className="h-3 w-3" />
+            ) : (
+              <ChevronRight className="h-3 w-3" />
+            )}
+            <Swords className="h-3 w-3" />
+            Adventure Filters
+          </button>
+
+          {adventureExpanded && (
+            <div id="adventure-filters" className="mt-2 px-3 space-y-3">
+              <div>
+                <label className="text-xs text-neutral-500 mb-1 block">Level Range</label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    placeholder="Min"
+                    min="1"
+                    max="20"
+                    value={activeFilters.level_min || ''}
+                    onChange={(e) => onFilterChange('level_min', e.target.value || null)}
+                    className="w-full rounded border border-neutral-200 bg-neutral-50 px-2 py-1 text-xs focus:border-purple-400 focus:outline-none"
+                  />
+                  <span className="text-neutral-400">-</span>
+                  <input
+                    type="number"
+                    placeholder="Max"
+                    min="1"
+                    max="20"
+                    value={activeFilters.level_max || ''}
+                    onChange={(e) => onFilterChange('level_max', e.target.value || null)}
+                    className="w-full rounded border border-neutral-200 bg-neutral-50 px-2 py-1 text-xs focus:border-purple-400 focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs text-neutral-500 mb-1 block">Party Size</label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    placeholder="Min"
+                    min="1"
+                    max="10"
+                    value={activeFilters.party_size_min || ''}
+                    onChange={(e) => onFilterChange('party_size_min', e.target.value || null)}
+                    className="w-full rounded border border-neutral-200 bg-neutral-50 px-2 py-1 text-xs focus:border-purple-400 focus:outline-none"
+                  />
+                  <span className="text-neutral-400">-</span>
+                  <input
+                    type="number"
+                    placeholder="Max"
+                    min="1"
+                    max="10"
+                    value={activeFilters.party_size_max || ''}
+                    onChange={(e) => onFilterChange('party_size_max', e.target.value || null)}
+                    className="w-full rounded border border-neutral-200 bg-neutral-50 px-2 py-1 text-xs focus:border-purple-400 focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs text-neutral-500 mb-1 block">Estimated Runtime</label>
+                <input
+                  type="text"
+                  placeholder="e.g., 4-6 hours"
+                  value={activeFilters.estimated_runtime || ''}
+                  onChange={(e) => onFilterChange('estimated_runtime', e.target.value || null)}
+                  className="w-full rounded border border-neutral-200 bg-neutral-50 px-2 py-1 text-xs focus:border-purple-400 focus:outline-none"
+                />
+              </div>
             </div>
           )}
         </div>

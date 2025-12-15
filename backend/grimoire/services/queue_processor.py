@@ -38,9 +38,31 @@ async def handle_cover_task(db: AsyncSession, product: Product) -> bool:
 
 @register_handler("text")
 async def handle_text_task(db: AsyncSession, product: Product) -> bool:
-    """Handle text extraction task."""
+    """Handle text extraction task.
+    
+    If the PDF is detected as image-based (needs OCR), queues an ocr_text task instead.
+    """
     from grimoire.services.processor import process_text_extraction_sync
     from grimoire.services.fts_service import update_search_vector
+    from grimoire.processors.text_extractor import detect_needs_ocr
+    from pathlib import Path
+    
+    # Check if this PDF needs OCR
+    pdf_path = Path(product.file_path)
+    if pdf_path.exists():
+        detection = detect_needs_ocr(pdf_path)
+        if detection["needs_ocr"]:
+            # Queue OCR task instead
+            ocr_item = ProcessingQueue(
+                product_id=product.id,
+                task_type="ocr_text",
+                priority=1,  # Lower priority - OCR is slow
+                status="pending",
+            )
+            db.add(ocr_item)
+            await db.commit()
+            logger.info(f"Product {product.id} needs OCR: {detection['reason']}")
+            return True  # Successfully queued OCR task
     
     success = process_text_extraction_sync(product, use_marker=False)
     if success:
@@ -48,6 +70,69 @@ async def handle_text_task(db: AsyncSession, product: Product) -> bool:
         # Also update the FTS index
         await update_search_vector(db, product)
     return success
+
+
+@register_handler("ocr_text")
+async def handle_ocr_text_task(db: AsyncSession, product: Product) -> bool:
+    """Handle OCR text extraction task for image-based PDFs.
+    
+    This is a separate queue for slow OCR processing.
+    """
+    from grimoire.services.fts_service import update_search_vector
+    from grimoire.processors.text_extractor import extract_with_ocr, TESSERACT_AVAILABLE
+    from grimoire.config import settings
+    from pathlib import Path
+    import json
+    
+    if not TESSERACT_AVAILABLE:
+        logger.error("OCR task failed: pytesseract/pdf2image not available")
+        return False
+    
+    pdf_path = Path(product.file_path)
+    if not pdf_path.exists():
+        return False
+    
+    try:
+        # Extract text using OCR
+        markdown_text = extract_with_ocr(pdf_path, dpi=200, lang="eng")
+        
+        # Save the extracted text
+        text_dir = settings.data_dir / "text"
+        text_dir.mkdir(parents=True, exist_ok=True)
+        
+        text_file = text_dir / f"{product.id}.json"
+        
+        # Get page count
+        import fitz
+        doc = fitz.open(str(pdf_path))
+        total_pages = len(doc)
+        doc.close()
+        
+        result = {
+            "markdown": markdown_text,
+            "total_pages": total_pages,
+            "pages_extracted": f"1-{total_pages}",
+            "method": "tesseract_ocr",
+            "char_count": len(markdown_text),
+            "ocr_used": True,
+        }
+        
+        with open(text_file, "w", encoding="utf-8") as f:
+            json.dump(result, f, ensure_ascii=False, indent=2)
+        
+        product.extracted_text_path = str(text_file)
+        product.text_extracted = True
+        await db.commit()
+        
+        # Update FTS index
+        await update_search_vector(db, product)
+        
+        logger.info(f"OCR extraction completed for product {product.id}: {len(markdown_text)} chars")
+        return True
+        
+    except Exception as e:
+        logger.error(f"OCR extraction failed for product {product.id}: {e}")
+        return False
 
 
 @register_handler("fts_index")

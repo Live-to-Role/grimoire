@@ -285,6 +285,18 @@ async def get_library_stats(db: DbSession) -> LibraryStats:
     type_result = await db.execute(type_query)
     by_type = {row[0] or "Unknown": row[1] for row in type_result.fetchall()}
 
+    genre_query = select(Product.genre, func.count()).group_by(Product.genre)
+    genre_result = await db.execute(genre_query)
+    by_genre = {row[0] or "Unknown": row[1] for row in genre_result.fetchall()}
+
+    author_query = select(Product.author, func.count()).group_by(Product.author)
+    author_result = await db.execute(author_query)
+    by_author = {row[0] or "Unknown": row[1] for row in author_result.fetchall()}
+
+    publisher_query = select(Product.publisher, func.count()).group_by(Product.publisher)
+    publisher_result = await db.execute(publisher_query)
+    by_publisher = {row[0] or "Unknown": row[1] for row in publisher_result.fetchall()}
+
     from grimoire.models import ProcessingQueue
 
     pending_query = select(func.count()).where(ProcessingQueue.status == "pending")
@@ -305,6 +317,9 @@ async def get_library_stats(db: DbSession) -> LibraryStats:
         total_size_bytes=total_size,
         by_system=by_system,
         by_type=by_type,
+        by_genre=by_genre,
+        by_author=by_author,
+        by_publisher=by_publisher,
         processing_status={
             "pending": pending,
             "completed": completed,

@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { Search, Grid, List, RefreshCw, Filter, X } from 'lucide-react';
+import { Search, Grid, List, RefreshCw, X } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { useProducts } from '../hooks/useProducts';
 import { ProductGrid } from '../components/ProductGrid';
@@ -11,9 +11,10 @@ import type { ProductFilters } from '../api/products';
 interface LibraryProps {
   selectedCollection?: number | null;
   selectedTag?: number | null;
+  sidebarFilters?: Partial<ProductFilters>;
 }
 
-export function Library({ selectedCollection, selectedTag }: LibraryProps) {
+export function Library({ selectedCollection, selectedTag, sidebarFilters = {} }: LibraryProps) {
   const [filters, setFilters] = useState<ProductFilters>({
     page: 1,
     per_page: 50,
@@ -21,9 +22,9 @@ export function Library({ selectedCollection, selectedTag }: LibraryProps) {
     order: 'asc',
   });
 
-  // Merge collection/tag filters with local filters
+  // Merge collection/tag/sidebar filters with local filters
   const effectiveFilters = useMemo(() => {
-    const merged: ProductFilters = { ...filters };
+    const merged: ProductFilters = { ...filters, ...sidebarFilters };
     if (selectedCollection) {
       merged.collection = selectedCollection;
     }
@@ -31,13 +32,10 @@ export function Library({ selectedCollection, selectedTag }: LibraryProps) {
       merged.tags = String(selectedTag);
     }
     return merged;
-  }, [filters, selectedCollection, selectedTag]);
+  }, [filters, selectedCollection, selectedTag, sidebarFilters]);
   const [searchInput, setSearchInput] = useState('');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
-  const [showFilters, setShowFilters] = useState(false);
-  const [gameSystemFilter, setGameSystemFilter] = useState<string>('');
-  const [productTypeFilter, setProductTypeFilter] = useState<string>('');
   const [searchContent, setSearchContent] = useState(false);
   const [activeSearch, setActiveSearch] = useState('');
 
@@ -54,37 +52,10 @@ export function Library({ selectedCollection, selectedTag }: LibraryProps) {
     enabled: activeSearch.length > 0,
   });
 
-  // Extract unique game systems and product types from data
-  const { gameSystems, productTypes } = useMemo(() => {
-    if (!data?.items) return { gameSystems: [], productTypes: [] };
-    const systems = new Set<string>();
-    const types = new Set<string>();
-    data.items.forEach((p) => {
-      if (p.game_system) systems.add(p.game_system);
-      if (p.product_type) types.add(p.product_type);
-    });
-    return {
-      gameSystems: Array.from(systems).sort(),
-      productTypes: Array.from(types).sort(),
-    };
-  }, [data?.items]);
-
-  // Filter products based on selected filters
-  const filteredProducts = useMemo(() => {
-    if (!data?.items) return [];
-    return data.items.filter((p) => {
-      if (gameSystemFilter && p.game_system !== gameSystemFilter) return false;
-      if (productTypeFilter && p.product_type !== productTypeFilter) return false;
-      return true;
-    });
-  }, [data?.items, gameSystemFilter, productTypeFilter]);
-
-  const activeFilterCount = (gameSystemFilter ? 1 : 0) + (productTypeFilter ? 1 : 0);
-
-  const clearFilters = () => {
-    setGameSystemFilter('');
-    setProductTypeFilter('');
-  };
+  // Count active sidebar filters
+  const sidebarFilterCount = Object.keys(sidebarFilters).filter(
+    k => !['page', 'per_page', 'sort', 'order'].includes(k)
+  ).length;
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -104,7 +75,7 @@ export function Library({ selectedCollection, selectedTag }: LibraryProps) {
 
   // Determine which products to show
   const isSearching = activeSearch.length > 0;
-  const displayProducts = isSearching ? (searchData?.results || []) : filteredProducts;
+  const displayProducts = isSearching ? (searchData?.results || []) : (data?.items || []);
   const displayLoading = isSearching ? searchLoading : isLoading;
   const displayError = isSearching ? searchError : error;
 
@@ -151,18 +122,11 @@ export function Library({ selectedCollection, selectedTag }: LibraryProps) {
             </form>
 
             <div className="flex items-center gap-2">
-              <button
-                onClick={() => setShowFilters(!showFilters)}
-                className={`relative rounded-lg p-2 ${showFilters ? 'bg-purple-100 text-purple-700' : 'text-neutral-600 hover:bg-neutral-100'}`}
-                title="Filters"
-              >
-                <Filter className="h-5 w-5" />
-                {activeFilterCount > 0 && (
-                  <span className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-purple-600 text-xs text-white">
-                    {activeFilterCount}
-                  </span>
-                )}
-              </button>
+              {sidebarFilterCount > 0 && (
+                <span className="text-sm text-purple-600">
+                  {sidebarFilterCount} filter{sidebarFilterCount > 1 ? 's' : ''} active
+                </span>
+              )}
               <button
                 onClick={() => refetch()}
                 disabled={isFetching}
@@ -190,45 +154,6 @@ export function Library({ selectedCollection, selectedTag }: LibraryProps) {
             </div>
           </div>
 
-          {showFilters && (
-            <div className="mt-4 flex flex-wrap items-center gap-3 border-t border-neutral-100 pt-4">
-              <select
-                value={gameSystemFilter}
-                onChange={(e) => setGameSystemFilter(e.target.value)}
-                className="rounded-lg border border-neutral-300 bg-white px-3 py-1.5 text-sm focus:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500"
-              >
-                <option value="">All Game Systems</option>
-                {gameSystems.map((system) => (
-                  <option key={system} value={system}>
-                    {system}
-                  </option>
-                ))}
-              </select>
-
-              <select
-                value={productTypeFilter}
-                onChange={(e) => setProductTypeFilter(e.target.value)}
-                className="rounded-lg border border-neutral-300 bg-white px-3 py-1.5 text-sm focus:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500"
-              >
-                <option value="">All Product Types</option>
-                {productTypes.map((type) => (
-                  <option key={type} value={type}>
-                    {type}
-                  </option>
-                ))}
-              </select>
-
-              {activeFilterCount > 0 && (
-                <button
-                  onClick={clearFilters}
-                  className="inline-flex items-center gap-1 rounded-lg px-2 py-1.5 text-sm text-neutral-600 hover:bg-neutral-100"
-                >
-                  <X className="h-4 w-4" />
-                  Clear filters
-                </button>
-              )}
-            </div>
-          )}
         </div>
       </header>
 
@@ -253,8 +178,8 @@ export function Library({ selectedCollection, selectedTag }: LibraryProps) {
                     </>
                   ) : (
                     <>
-                      {filteredProducts.length} of {data?.total || 0} product{data?.total !== 1 ? 's' : ''}
-                      {activeFilterCount > 0 && ' (filtered)'}
+                      {data?.total || 0} product{data?.total !== 1 ? 's' : ''}
+                      {sidebarFilterCount > 0 && ' (filtered)'}
                     </>
                   )}
                 </p>

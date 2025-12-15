@@ -11,7 +11,7 @@ from sqlalchemy.orm import selectinload
 
 from grimoire.api.deps import DbSession, Pagination
 from grimoire.config import settings
-from grimoire.utils.security import validate_covers_path, validate_library_path, PathTraversalError
+from grimoire.utils.security import validate_covers_path, validate_path_in_directory, PathTraversalError
 from grimoire.models import Product, ProductTag, Tag
 from grimoire.schemas.product import (
     ProductListResponse,
@@ -55,9 +55,11 @@ def product_to_response(product: Product) -> ProductResponse:
         file_name=product.file_name,
         file_size=product.file_size,
         title=product.title,
+        author=product.author,
         publisher=product.publisher,
         publication_year=product.publication_year,
         game_system=product.game_system,
+        genre=product.genre,
         product_type=product.product_type,
         level_range_min=product.level_range_min,
         level_range_max=product.level_range_max,
@@ -87,10 +89,20 @@ async def list_products(
     order: Literal["asc", "desc"] = "asc",
     search: str | None = Query(None, description="Search in title and file name"),
     game_system: str | None = Query(None, description="Filter by game system"),
+    genre: str | None = Query(None, description="Filter by genre"),
     product_type: str | None = Query(None, description="Filter by product type"),
+    publisher: str | None = Query(None, description="Filter by publisher"),
+    author: str | None = Query(None, description="Filter by author"),
     tags: str | None = Query(None, description="Comma-separated tag IDs"),
     collection: int | None = Query(None, description="Filter by collection ID"),
     has_cover: bool | None = Query(None, description="Filter by cover status"),
+    publication_year_min: int | None = Query(None, description="Minimum publication year"),
+    publication_year_max: int | None = Query(None, description="Maximum publication year"),
+    level_min: int | None = Query(None, description="Minimum level (filters products with overlapping level range)"),
+    level_max: int | None = Query(None, description="Maximum level (filters products with overlapping level range)"),
+    party_size_min: int | None = Query(None, description="Minimum party size"),
+    party_size_max: int | None = Query(None, description="Maximum party size"),
+    estimated_runtime: str | None = Query(None, description="Filter by estimated runtime (partial match)"),
 ) -> ProductListResponse:
     """List products with filtering and pagination."""
     query = select(Product).options(selectinload(Product.product_tags).selectinload(ProductTag.tag))
@@ -103,10 +115,34 @@ async def list_products(
         )
 
     if game_system:
-        query = query.where(Product.game_system == game_system)
+        if game_system == "Unknown":
+            query = query.where(Product.game_system.is_(None))
+        else:
+            query = query.where(Product.game_system == game_system)
 
     if product_type:
-        query = query.where(Product.product_type == product_type)
+        if product_type == "Unknown":
+            query = query.where(Product.product_type.is_(None))
+        else:
+            query = query.where(Product.product_type == product_type)
+
+    if genre:
+        if genre == "Unknown":
+            query = query.where(Product.genre.is_(None))
+        else:
+            query = query.where(Product.genre == genre)
+
+    if publisher:
+        if publisher == "Unknown":
+            query = query.where(Product.publisher.is_(None))
+        else:
+            query = query.where(Product.publisher == publisher)
+
+    if author:
+        if author == "Unknown":
+            query = query.where(Product.author.is_(None))
+        else:
+            query = query.where(Product.author == author)
 
     if has_cover is not None:
         query = query.where(Product.cover_extracted == has_cover)
@@ -120,6 +156,38 @@ async def list_products(
         from grimoire.models import CollectionProduct
 
         query = query.join(CollectionProduct).where(CollectionProduct.collection_id == collection)
+
+    # Publication year range filters
+    if publication_year_min is not None:
+        query = query.where(Product.publication_year >= publication_year_min)
+    if publication_year_max is not None:
+        query = query.where(Product.publication_year <= publication_year_max)
+
+    # Level range filters (find products whose level range overlaps with the filter range)
+    if level_min is not None:
+        # Product's max level must be >= filter's min level (or product has no max set)
+        query = query.where(
+            (Product.level_range_max >= level_min) | (Product.level_range_max.is_(None))
+        )
+    if level_max is not None:
+        # Product's min level must be <= filter's max level (or product has no min set)
+        query = query.where(
+            (Product.level_range_min <= level_max) | (Product.level_range_min.is_(None))
+        )
+
+    # Party size range filters
+    if party_size_min is not None:
+        query = query.where(
+            (Product.party_size_max >= party_size_min) | (Product.party_size_max.is_(None))
+        )
+    if party_size_max is not None:
+        query = query.where(
+            (Product.party_size_min <= party_size_max) | (Product.party_size_min.is_(None))
+        )
+
+    # Estimated runtime filter (partial match)
+    if estimated_runtime:
+        query = query.where(Product.estimated_runtime.ilike(f"%{estimated_runtime}%"))
 
     # Get total count
     count_query = select(func.count()).select_from(query.subquery())
@@ -257,6 +325,8 @@ async def get_product_cover(db: DbSession, product_id: int) -> FileResponse:
 @router.get("/{product_id}/pdf")
 async def get_product_pdf(db: DbSession, product_id: int) -> FileResponse:
     """Get the PDF file for viewing."""
+    from grimoire.models import WatchedFolder
+    
     query = select(Product).where(Product.id == product_id)
     result = await db.execute(query)
     product = result.scalar_one_or_none()
@@ -266,11 +336,17 @@ async def get_product_pdf(db: DbSession, product_id: int) -> FileResponse:
 
     pdf_path = Path(product.file_path)
     
-    # Validate path is within allowed directory
-    try:
-        validate_library_path(pdf_path)
-    except PathTraversalError:
-        raise HTTPException(status_code=403, detail="Access denied")
+    # Validate path is within the product's watched folder
+    if product.watched_folder_id:
+        folder_result = await db.execute(
+            select(WatchedFolder).where(WatchedFolder.id == product.watched_folder_id)
+        )
+        watched_folder = folder_result.scalar_one_or_none()
+        if watched_folder:
+            try:
+                validate_path_in_directory(pdf_path, watched_folder.path)
+            except PathTraversalError:
+                raise HTTPException(status_code=403, detail="Access denied")
     
     if not pdf_path.exists():
         raise HTTPException(status_code=404, detail="PDF file not found")

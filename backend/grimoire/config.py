@@ -34,6 +34,9 @@ class Settings(BaseSettings):
     # Processing
     max_concurrent_processing: int = 3
     cover_thumbnail_size: int = 300
+    
+    # OCR (Tesseract) - empty string uses system PATH (Linux/Docker default)
+    tesseract_cmd: str = ""
 
     # Security
     secret_key: str = Field(default_factory=lambda: secrets.token_urlsafe(32))

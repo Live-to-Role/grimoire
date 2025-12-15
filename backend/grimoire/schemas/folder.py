@@ -62,4 +62,7 @@ class LibraryStats(BaseModel):
     total_size_bytes: int
     by_system: dict[str, int]
     by_type: dict[str, int]
+    by_genre: dict[str, int]
+    by_author: dict[str, int]
+    by_publisher: dict[str, int]
     processing_status: dict[str, int]

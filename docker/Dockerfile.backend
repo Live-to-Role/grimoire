@@ -3,13 +3,15 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# Install system dependencies for PDF processing
+# Install system dependencies for PDF processing and OCR
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     libffi-dev \
     libmupdf-dev \
     mupdf-tools \
     curl \
+    tesseract-ocr \
+    poppler-utils \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements first for better caching

@@ -158,8 +158,12 @@ async def identify_product_endpoint(
     if request.apply and not identification.needs_confirmation:
         if identification.title:
             product.title = identification.title
+        if identification.author:
+            product.author = identification.author
         if identification.game_system:
             product.game_system = identification.game_system
+        if identification.genre:
+            product.genre = identification.genre
         if identification.product_type:
             product.product_type = identification.product_type
         if identification.publisher:
@@ -209,8 +213,12 @@ async def confirm_identification(
     # Apply confirmed data
     if confirmed_data.get("title"):
         product.title = confirmed_data["title"]
+    if confirmed_data.get("author"):
+        product.author = confirmed_data["author"]
     if confirmed_data.get("game_system"):
         product.game_system = confirmed_data["game_system"]
+    if confirmed_data.get("genre"):
+        product.genre = confirmed_data["genre"]
     if confirmed_data.get("product_type"):
         product.product_type = confirmed_data["product_type"]
     if confirmed_data.get("publisher"):
@@ -277,10 +285,14 @@ async def identify_batch(
         if request.apply:
             if identification.get("game_system"):
                 product.game_system = identification["game_system"]
+            if identification.get("genre"):
+                product.genre = identification["genre"]
             if identification.get("product_type"):
                 product.product_type = identification["product_type"]
             if identification.get("publisher"):
                 product.publisher = identification["publisher"]
+            if identification.get("author"):
+                product.author = identification["author"]
             if identification.get("title"):
                 product.title = identification["title"]
             if identification.get("publication_year"):

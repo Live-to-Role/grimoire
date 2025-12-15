@@ -151,13 +151,15 @@ def estimate_batch_cost(
 
 
 IDENTIFICATION_PROMPT = """Analyze this RPG PDF text and return a JSON object with these fields:
-- game_system: e.g. "D&D 5E", "Pathfinder 2E", "OSR", or null
-- product_type: e.g. "Adventure", "Sourcebook", "Core Rulebook", or null  
+- game_system: e.g. "Dungeons & Dragons 5th Edition", "Pathfinder 2nd Edition", "Dungeon Crawl Classics", "Old-School Essentials", or null
+- genre: one of "Fantasy", "Horror", "Science Fiction", "Modern", "Historical", or null
+- product_type: e.g. "Adventure", "Supplement", "Core Rulebook", "Bestiary", "Setting", "Zine", or null  
 - publisher: publisher name or null
+- author: primary author/writer name(s) or null
 - title: product title or null
 - publication_year: year as number or null
-- level_range_min: minimum level or null
-- level_range_max: maximum level or null
+- level_range_min: minimum character level or null
+- level_range_max: maximum character level or null
 - description: 1-2 sentence description or null
 - confidence: "high", "medium", or "low"
 

@@ -15,6 +15,86 @@ except ImportError:
     PYMUPDF_AVAILABLE = False
 
 try:
+    import pytesseract
+    from pdf2image import convert_from_path
+    TESSERACT_AVAILABLE = True
+except ImportError:
+    TESSERACT_AVAILABLE = False
+
+
+def _find_tesseract() -> str | None:
+    """
+    Auto-detect Tesseract OCR executable path across platforms.
+    
+    Checks in order:
+    1. Environment variable TESSERACT_CMD (explicit override)
+    2. System PATH (works if installed via package manager)
+    3. Common installation locations by platform
+    
+    Returns:
+        Path to tesseract executable, or None if not found
+    """
+    import shutil
+    import os
+    import platform
+    
+    # 1. Check for explicit override via settings/env var
+    try:
+        from grimoire.config import settings
+        if settings.tesseract_cmd:
+            if Path(settings.tesseract_cmd).exists():
+                return settings.tesseract_cmd
+    except Exception:
+        pass
+    
+    # 2. Check system PATH
+    tesseract_in_path = shutil.which("tesseract")
+    if tesseract_in_path:
+        return tesseract_in_path
+    
+    # 3. Check common installation locations by platform
+    system = platform.system()
+    common_paths = []
+    
+    if system == "Windows":
+        common_paths = [
+            r"C:\Program Files\Tesseract-OCR\tesseract.exe",
+            r"C:\Program Files (x86)\Tesseract-OCR\tesseract.exe",
+            os.path.expanduser(r"~\AppData\Local\Programs\Tesseract-OCR\tesseract.exe"),
+        ]
+    elif system == "Darwin":  # macOS
+        common_paths = [
+            "/opt/homebrew/bin/tesseract",  # Apple Silicon Homebrew
+            "/usr/local/bin/tesseract",      # Intel Homebrew
+            "/opt/local/bin/tesseract",      # MacPorts
+        ]
+    elif system == "Linux":
+        common_paths = [
+            "/usr/bin/tesseract",
+            "/usr/local/bin/tesseract",
+        ]
+    
+    for path in common_paths:
+        if Path(path).exists():
+            return path
+    
+    return None
+
+
+def _configure_tesseract():
+    """Configure pytesseract with auto-detected path."""
+    if not TESSERACT_AVAILABLE:
+        return
+    
+    tesseract_path = _find_tesseract()
+    if tesseract_path:
+        pytesseract.pytesseract.tesseract_cmd = tesseract_path
+
+
+# Auto-configure on module load
+_configure_tesseract()
+
+try:
     from markitdown import MarkItDown
     MARKITDOWN_AVAILABLE = True
 except ImportError:
@@ -545,4 +625,291 @@ def get_available_extractors() -> dict:
         "pymupdf": PYMUPDF_AVAILABLE,
         "markitdown": MARKITDOWN_AVAILABLE,
         "pdfplumber": True,
+        "tesseract": TESSERACT_AVAILABLE,
     }
+
+
+def get_tesseract_status() -> dict:
+    """
+    Get detailed Tesseract OCR status for diagnostics.
+    
+    Returns:
+        Dictionary with:
+        - available: bool - Whether pytesseract package is installed
+        - configured: bool - Whether tesseract executable was found
+        - path: str | None - Path to tesseract executable
+        - version: str | None - Tesseract version if available
+    """
+    status = {
+        "available": TESSERACT_AVAILABLE,
+        "configured": False,
+        "path": None,
+        "version": None,
+    }
+    
+    if not TESSERACT_AVAILABLE:
+        return status
+    
+    tesseract_path = _find_tesseract()
+    if tesseract_path:
+        status["configured"] = True
+        status["path"] = tesseract_path
+        
+        # Try to get version
+        try:
+            version = pytesseract.get_tesseract_version()
+            status["version"] = str(version)
+        except Exception:
+            pass
+    
+    return status
+
+
+def detect_needs_ocr(pdf_path: str | Path, sample_pages: int = 3, min_chars_per_page: int = 100) -> dict:
+    """
+    Detect if a PDF is image-based and needs OCR for text extraction.
+    
+    Checks the first few pages for extractable text. If pages have very little
+    text but do have images, the PDF likely needs OCR.
+    
+    Args:
+        pdf_path: Path to the PDF file
+        sample_pages: Number of pages to sample
+        min_chars_per_page: Minimum characters expected per page for text-based PDF
+        
+    Returns:
+        Dictionary with detection results:
+        - needs_ocr: bool - True if OCR is recommended
+        - reason: str - Explanation of the detection
+        - text_chars: int - Total text characters found in sampled pages
+        - has_images: bool - Whether images were detected
+        - pages_sampled: int - Number of pages actually sampled
+    """
+    pdf_path = Path(pdf_path)
+    if not pdf_path.exists():
+        return {"needs_ocr": False, "reason": "File not found", "text_chars": 0, "has_images": False, "pages_sampled": 0}
+    
+    if not PYMUPDF_AVAILABLE:
+        return {"needs_ocr": False, "reason": "PyMuPDF not available for detection", "text_chars": 0, "has_images": False, "pages_sampled": 0}
+    
+    try:
+        doc = fitz.open(str(pdf_path))
+        total_pages = len(doc)
+        pages_to_check = min(sample_pages, total_pages)
+        
+        total_text_chars = 0
+        total_images = 0
+        
+        for i in range(pages_to_check):
+            page = doc[i]
+            
+            # Get text content
+            text = page.get_text().strip()
+            # Filter out common watermark patterns (email + transaction)
+            # These are often the only "text" in image-based PDFs
+            filtered_text = re.sub(r'[\w.+-]+@[\w-]+\.[\w.-]+', '', text)  # Remove emails
+            filtered_text = re.sub(r'Transaction:\s*\d+', '', filtered_text)  # Remove transaction IDs
+            filtered_text = re.sub(r'\s+', '', filtered_text)  # Remove whitespace for counting
+            
+            total_text_chars += len(filtered_text)
+            
+            # Check for images
+            image_list = page.get_images(full=True)
+            total_images += len(image_list)
+        
+        doc.close()
+        
+        avg_chars_per_page = total_text_chars / pages_to_check if pages_to_check > 0 else 0
+        has_images = total_images > 0
+        
+        # Determine if OCR is needed
+        if avg_chars_per_page < min_chars_per_page:
+            if has_images:
+                return {
+                    "needs_ocr": True,
+                    "reason": f"Low text content ({avg_chars_per_page:.0f} chars/page avg) with {total_images} images - likely image-based PDF",
+                    "text_chars": total_text_chars,
+                    "has_images": has_images,
+                    "pages_sampled": pages_to_check,
+                }
+            else:
+                return {
+                    "needs_ocr": False,
+                    "reason": f"Low text content but no images detected - may be empty or corrupted",
+                    "text_chars": total_text_chars,
+                    "has_images": has_images,
+                    "pages_sampled": pages_to_check,
+                }
+        else:
+            return {
+                "needs_ocr": False,
+                "reason": f"Sufficient text content ({avg_chars_per_page:.0f} chars/page avg)",
+                "text_chars": total_text_chars,
+                "has_images": has_images,
+                "pages_sampled": pages_to_check,
+            }
+            
+    except Exception as e:
+        return {
+            "needs_ocr": False,
+            "reason": f"Detection failed: {e}",
+            "text_chars": 0,
+            "has_images": False,
+            "pages_sampled": 0,
+        }
+
+
+def extract_with_ocr(
+    pdf_path: str | Path,
+    start_page: int = 1,
+    end_page: int | None = None,
+    dpi: int = 200,
+    lang: str = "eng",
+) -> str:
+    """
+    Extract text from PDF using OCR (Tesseract).
+    
+    Converts PDF pages to images and runs OCR on each page.
+    This is slower but works for image-based/scanned PDFs.
+    
+    Args:
+        pdf_path: Path to the PDF file
+        start_page: Starting page number (1-indexed)
+        end_page: Ending page number (1-indexed), None for all pages
+        dpi: Resolution for PDF to image conversion (higher = better quality but slower)
+        lang: Tesseract language code(s), e.g., "eng" or "eng+fra"
+        
+    Returns:
+        Extracted text in markdown format
+    """
+    if not TESSERACT_AVAILABLE:
+        raise ImportError("pytesseract and pdf2image are required for OCR extraction")
+    
+    pdf_path = Path(pdf_path)
+    markdown_content = []
+    
+    # Convert PDF pages to images
+    images = convert_from_path(
+        str(pdf_path),
+        dpi=dpi,
+        first_page=start_page,
+        last_page=end_page,
+    )
+    
+    for i, image in enumerate(images):
+        page_num = start_page + i
+        markdown_content.append(f"## Page {page_num}\n\n")
+        
+        # Run OCR on the image
+        text = pytesseract.image_to_string(image, lang=lang)
+        
+        # Clean up the text
+        text = clean_text(text)
+        
+        if text.strip():
+            markdown_content.append(text + "\n\n")
+        
+        markdown_content.append("\n---\n\n")
+    
+    return "".join(markdown_content)
+
+
+def extract_text_with_ocr_fallback(
+    pdf_path: str | Path,
+    start_page: int = 1,
+    end_page: int | None = None,
+    force_ocr: bool = False,
+    ocr_dpi: int = 200,
+    ocr_lang: str = "eng",
+    **kwargs,
+) -> dict:
+    """
+    Extract text from PDF, automatically falling back to OCR if needed.
+    
+    First attempts standard text extraction. If the PDF appears to be
+    image-based (detected via detect_needs_ocr), falls back to OCR.
+    
+    Args:
+        pdf_path: Path to the PDF file
+        start_page: Starting page number (1-indexed)
+        end_page: Ending page number (1-indexed)
+        force_ocr: Skip detection and force OCR extraction
+        ocr_dpi: DPI for OCR image conversion
+        ocr_lang: Tesseract language code
+        **kwargs: Additional arguments passed to extract_text_to_markdown
+        
+    Returns:
+        Dictionary with extracted text and metadata, including:
+        - ocr_used: bool - Whether OCR was used
+        - ocr_reason: str - Why OCR was/wasn't used
+    """
+    pdf_path = Path(pdf_path)
+    
+    if force_ocr:
+        if not TESSERACT_AVAILABLE:
+            return {"error": "OCR requested but pytesseract/pdf2image not available"}
+        
+        try:
+            with pdfplumber.open(str(pdf_path)) as pdf:
+                total_pages = len(pdf.pages)
+            
+            if end_page is None:
+                end_page = total_pages
+                
+            markdown_text = extract_with_ocr(pdf_path, start_page, end_page, ocr_dpi, ocr_lang)
+            
+            return {
+                "markdown": markdown_text,
+                "total_pages": total_pages,
+                "pages_extracted": f"{start_page}-{end_page}",
+                "method": "tesseract_ocr",
+                "char_count": len(markdown_text),
+                "ocr_used": True,
+                "ocr_reason": "Forced OCR extraction",
+            }
+        except Exception as e:
+            return {"error": f"OCR extraction failed: {e}"}
+    
+    # First try standard extraction
+    result = extract_text_to_markdown(pdf_path, start_page, end_page, **kwargs)
+    
+    if "error" in result:
+        return result
+    
+    # Check if we got meaningful content
+    detection = detect_needs_ocr(pdf_path)
+    
+    if detection["needs_ocr"]:
+        if TESSERACT_AVAILABLE:
+            try:
+                with pdfplumber.open(str(pdf_path)) as pdf:
+                    total_pages = len(pdf.pages)
+                
+                if end_page is None:
+                    end_page = total_pages
+                    
+                markdown_text = extract_with_ocr(pdf_path, start_page, end_page, ocr_dpi, ocr_lang)
+                
+                return {
+                    "markdown": markdown_text,
+                    "total_pages": total_pages,
+                    "pages_extracted": f"{start_page}-{end_page}",
+                    "method": "tesseract_ocr",
+                    "char_count": len(markdown_text),
+                    "ocr_used": True,
+                    "ocr_reason": detection["reason"],
+                }
+            except Exception as e:
+                # Fall back to original result if OCR fails
+                result["ocr_used"] = False
+                result["ocr_reason"] = f"OCR attempted but failed: {e}"
+                return result
+        else:
+            result["ocr_used"] = False
+            result["ocr_reason"] = f"OCR needed ({detection['reason']}) but pytesseract not available"
+            result["needs_ocr"] = True
+            return result
+    
+    result["ocr_used"] = False
+    result["ocr_reason"] = detection["reason"]
+    return result

@@ -21,9 +21,11 @@ class ProductBase(BaseModel):
     """Base product fields."""
 
     title: str | None = None
+    author: str | None = None
     publisher: str | None = None
     publication_year: int | None = None
     game_system: str | None = None
+    genre: str | None = None
     product_type: str | None = None
     level_range_min: int | None = None
     level_range_max: int | None = None
@@ -46,9 +48,11 @@ class ProductUpdate(BaseModel):
     """Schema for updating product metadata."""
 
     title: str | None = None
+    author: str | None = None
     publisher: str | None = None
     publication_year: int | None = None
     game_system: str | None = None
+    genre: str | None = None
     product_type: str | None = None
     level_range_min: int | None = None
     level_range_max: int | None = None

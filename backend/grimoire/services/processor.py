@@ -104,6 +104,8 @@ def process_cover_sync(product: Product) -> bool:
     Returns:
         True if successful, False otherwise
     """
+    from grimoire.services.metadata_extractor import extract_all_metadata, apply_metadata_to_product
+    
     pdf_path = Path(product.file_path)
     if not pdf_path.exists():
         return False
@@ -117,12 +119,9 @@ def process_cover_sync(product: Product) -> bool:
         product.cover_image_path = str(cover_path)
         product.cover_extracted = True
 
-        metadata = extract_pdf_metadata(pdf_path)
-        if metadata.get("page_count"):
-            product.page_count = metadata["page_count"]
-
-        if metadata.get("title") and not product.title:
-            product.title = metadata["title"]
+        # Extract comprehensive metadata from PDF, text, and filename
+        metadata = extract_all_metadata(pdf_path)
+        apply_metadata_to_product(product, metadata, overwrite=False)
 
     return success
 

@@ -5,8 +5,10 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
+from sqlalchemy import select
+
 from grimoire.api.deps import DbSession
-from grimoire.config import settings
+from grimoire.models import WatchedFolder
 from grimoire.services.exclusion_service import (
     get_exclusion_rules,
     create_rule,
@@ -169,16 +171,30 @@ async def test_pattern(
             detail=f"Invalid rule type: {request.rule_type}"
         )
     
-    library_path = Path(settings.library_path)
-    if not library_path.exists():
-        raise HTTPException(status_code=400, detail="Library path not configured")
+    # Get all watched folders to test against
+    result = await db.execute(select(WatchedFolder).where(WatchedFolder.enabled == True))
+    watched_folders = result.scalars().all()
     
-    return await test_rule_pattern(
-        db=db,
-        rule_type=request.rule_type,
-        pattern=request.pattern,
-        library_path=library_path,
-    )
+    if not watched_folders:
+        raise HTTPException(status_code=400, detail="No watched folders configured")
+    
+    # Test pattern against all watched folders and aggregate results
+    all_matches = []
+    for folder in watched_folders:
+        folder_path = Path(folder.path)
+        if folder_path.exists():
+            folder_result = await test_rule_pattern(
+                db=db,
+                rule_type=request.rule_type,
+                pattern=request.pattern,
+                library_path=folder_path,
+            )
+            all_matches.extend(folder_result.get("matches", []))
+    
+    return {
+        "matches": all_matches,
+        "count": len(all_matches),
+    }
 
 
 @router.post("/seed-defaults")

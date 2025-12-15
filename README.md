@@ -49,11 +49,16 @@ Create a `.env` file in the project root:
 
 ```bash
 # Primary library (mounted at /library in container)
-PDF_LIBRARY_PATH=D:/Backup/Games
+# Windows example:
+PDF_LIBRARY_PATH=D:/RPG/PDFs
+# macOS example:
+# PDF_LIBRARY_PATH=/Users/yourname/Documents/RPG
+# Linux example:
+# PDF_LIBRARY_PATH=/home/yourname/rpg-library
 
 # Additional libraries (mounted at /library2, /library3)
-PDF_LIBRARY_PATH_2=E:/RPG/PDFs
-PDF_LIBRARY_PATH_3=F:/DriveThruRPG
+PDF_LIBRARY_PATH_2=/path/to/second/library
+PDF_LIBRARY_PATH_3=/path/to/third/library
 ```
 
 Then restart Docker:
@@ -67,7 +72,7 @@ In the app **Settings**, add folders using the **container paths**:
 - `/library2` (for PDF_LIBRARY_PATH_2)
 - `/library3` (for PDF_LIBRARY_PATH_3)
 
-> **Important**: Enter the container path (e.g., `/library2`), not the Windows path (e.g., `D:/Backup/Games`).
+> **Important**: Enter the container path (e.g., `/library2`), not your host path.
 
 ## Development
 
