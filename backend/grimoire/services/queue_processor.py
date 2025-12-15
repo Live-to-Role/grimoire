@@ -135,15 +135,27 @@ async def handle_ocr_text_task(db: AsyncSession, product: Product) -> bool:
         return False
 
 
+class TaskError(Exception):
+    """Exception for task failures with specific error messages."""
+    pass
+
+
 @register_handler("fts_index")
 async def handle_fts_index_task(db: AsyncSession, product: Product) -> bool:
     """Handle FTS indexing task for products with extracted text."""
-    from grimoire.services.fts_service import update_search_vector
+    from grimoire.services.fts_service import update_search_vector, check_fts_available
+    
+    # Check if FTS5 table exists
+    if not await check_fts_available(db):
+        raise TaskError("FTS5 table 'products_fts' does not exist. Run database migrations.")
     
     if not product.text_extracted:
-        return False
+        raise TaskError(f"Product {product.id} has no extracted text (text_extracted=False)")
     
-    return await update_search_vector(db, product)
+    success = await update_search_vector(db, product)
+    if not success:
+        raise TaskError(f"FTS indexing failed for product {product.id}")
+    return True
 
 
 @register_handler("embed")

@@ -172,6 +172,23 @@ def process_text_extraction_sync(product: Product, use_marker: bool = False) -> 
         print(f"Text extraction failed for {product.file_name}: {result['error']}")
         return False
 
+    # Auto-detect art/maps PDFs with minimal text
+    markdown_text = result.get("markdown", "")
+    char_count = len(markdown_text.strip())
+    page_count = result.get("total_pages", 1) or 1
+    chars_per_page = char_count / page_count if page_count > 0 else 0
+    
+    # If very little text (< 100 chars/page average), likely art/maps
+    is_low_text = chars_per_page < 100 and char_count < 500
+    
+    if is_low_text:
+        print(f"Low-text PDF detected for {product.file_name}: {char_count} chars, {chars_per_page:.0f} chars/page")
+        # Mark as art/maps if no product_type set
+        if not product.product_type:
+            product.product_type = "Art/Maps"
+        result["is_low_text"] = True
+        result["auto_marked_art"] = True
+
     text_dir = settings.data_dir / "text"
     text_dir.mkdir(parents=True, exist_ok=True)
 

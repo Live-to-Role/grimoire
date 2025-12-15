@@ -61,6 +61,15 @@ class ProductUpdate(BaseModel):
     estimated_runtime: str | None = None
 
 
+class RunStatus(BaseModel):
+    """Run tracking status for a product."""
+
+    status: str | None = None  # want_to_run, running, completed
+    rating: int | None = None  # 1-5 stars
+    difficulty: str | None = None  # easier, as_written, harder
+    completed_at: datetime | None = None
+
+
 class ProductResponse(ProductBase):
     """Schema for product response."""
 
@@ -72,6 +81,7 @@ class ProductResponse(ProductBase):
     cover_url: str | None = None
     tags: list[TagResponse] = []
     processing_status: ProcessingStatus
+    run_status: RunStatus | None = None
     created_at: datetime
     updated_at: datetime
     last_opened_at: datetime | None = None

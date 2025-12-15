@@ -4,9 +4,10 @@ import type { Product } from '../types/product';
 interface ProductGridProps {
   products: Product[];
   onProductClick?: (product: Product) => void;
+  viewMode?: 'grid' | 'list';
 }
 
-export function ProductGrid({ products, onProductClick }: ProductGridProps) {
+export function ProductGrid({ products, onProductClick, viewMode = 'grid' }: ProductGridProps) {
   if (products.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-16 text-center">
@@ -34,12 +35,16 @@ export function ProductGrid({ products, onProductClick }: ProductGridProps) {
   }
 
   return (
-    <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
+    <div className={viewMode === 'grid' 
+      ? "grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6"
+      : "flex flex-col gap-2"
+    }>
       {products.map((product) => (
         <ProductCard
           key={product.id}
           product={product}
           onClick={onProductClick}
+          viewMode={viewMode}
         />
       ))}
     </div>

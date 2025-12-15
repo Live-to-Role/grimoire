@@ -1,10 +1,14 @@
 """Service for managing Codex contribution queue."""
 
+import base64
 import json
 import logging
 from datetime import datetime, UTC
+from io import BytesIO
+from pathlib import Path
 from typing import Any
 
+from PIL import Image
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -12,6 +16,84 @@ from grimoire.models import ContributionQueue, ContributionStatus, Product
 from grimoire.services.codex import CodexClient, ContributionResult, get_codex_client
 
 logger = logging.getLogger(__name__)
+
+# Maximum cover image size for contribution (in bytes)
+MAX_COVER_SIZE_BYTES = 500 * 1024  # 500 KB
+
+
+def get_cover_image_base64(product: Product, max_size_bytes: int = MAX_COVER_SIZE_BYTES) -> str | None:
+    """
+    Get product's cover image as base64 for contribution to Codex.
+    
+    Args:
+        product: Product with cover_image_path
+        max_size_bytes: Maximum size in bytes (default 500KB)
+        
+    Returns:
+        Base64-encoded JPEG string, or None if unavailable/too large
+    """
+    if not product.cover_extracted or not product.cover_image_path:
+        return None
+    
+    cover_path = Path(product.cover_image_path)
+    if not cover_path.exists():
+        logger.debug(f"Cover file not found: {cover_path}")
+        return None
+    
+    try:
+        # Read original file
+        with open(cover_path, "rb") as f:
+            data = f.read()
+        
+        # If already under limit, return as-is
+        if len(data) <= max_size_bytes:
+            return base64.b64encode(data).decode("utf-8")
+        
+        # Re-compress with progressively lower quality
+        img = Image.open(cover_path)
+        
+        # Convert to RGB if necessary (handles RGBA, palette modes)
+        if img.mode not in ("RGB", "L"):
+            img = img.convert("RGB")
+        
+        buffer = BytesIO()
+        quality = 75
+        
+        while quality >= 20:
+            buffer.seek(0)
+            buffer.truncate()
+            img.save(buffer, format="JPEG", quality=quality, optimize=True)
+            
+            if buffer.tell() <= max_size_bytes:
+                logger.debug(f"Compressed cover to {buffer.tell()} bytes at quality {quality}")
+                return base64.b64encode(buffer.getvalue()).decode("utf-8")
+            
+            quality -= 10
+        
+        # Still too large even at lowest quality - try resizing
+        width, height = img.size
+        scale = 0.75
+        
+        while scale >= 0.25:
+            new_size = (int(width * scale), int(height * scale))
+            resized = img.resize(new_size, Image.Resampling.LANCZOS)
+            
+            buffer.seek(0)
+            buffer.truncate()
+            resized.save(buffer, format="JPEG", quality=60, optimize=True)
+            
+            if buffer.tell() <= max_size_bytes:
+                logger.debug(f"Resized cover to {new_size} at {buffer.tell()} bytes")
+                return base64.b64encode(buffer.getvalue()).decode("utf-8")
+            
+            scale -= 0.25
+        
+        logger.warning(f"Could not compress cover to under {max_size_bytes} bytes: {cover_path}")
+        return None
+        
+    except Exception as e:
+        logger.warning(f"Error encoding cover image {cover_path}: {e}")
+        return None
 
 
 async def queue_contribution(

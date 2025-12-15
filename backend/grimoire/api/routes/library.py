@@ -348,6 +348,218 @@ async def get_filter_options(db: DbSession) -> dict:
     }
 
 
+@router.post("/maintenance/fix-covers")
+async def fix_missing_covers(
+    db: DbSession,
+    queue_extraction: bool = True,
+) -> dict:
+    """Find and fix products with missing cover files.
+    
+    Finds products where cover_extracted=True but the cover file doesn't exist,
+    resets their cover status, and optionally queues them for re-extraction.
+    
+    Args:
+        queue_extraction: If True, queue affected products for cover re-extraction
+    """
+    from pathlib import Path
+    from grimoire.models import ProcessingQueue
+    
+    # Find products marked as having covers
+    query = select(Product).where(
+        Product.cover_extracted == True,
+        Product.is_missing == False,
+    )
+    result = await db.execute(query)
+    products = list(result.scalars().all())
+    
+    missing_covers = []
+    queued = 0
+    
+    for product in products:
+        if not product.cover_image_path or not Path(product.cover_image_path).exists():
+            missing_covers.append({
+                "id": product.id,
+                "title": product.title or product.file_name,
+                "cover_path": product.cover_image_path,
+            })
+            
+            # Reset cover status
+            product.cover_extracted = False
+            product.cover_image_path = None
+            
+            # Queue for re-extraction if requested
+            if queue_extraction:
+                # Check if not already queued
+                existing_queue = await db.execute(
+                    select(ProcessingQueue).where(
+                        ProcessingQueue.product_id == product.id,
+                        ProcessingQueue.task_type == "cover",
+                        ProcessingQueue.status == "pending",
+                    )
+                )
+                if not existing_queue.scalar_one_or_none():
+                    queue_item = ProcessingQueue(
+                        product_id=product.id,
+                        task_type="cover",
+                        priority=3,
+                        status="pending",
+                    )
+                    db.add(queue_item)
+                    queued += 1
+    
+    await db.commit()
+    
+    return {
+        "found": len(missing_covers),
+        "reset": len(missing_covers),
+        "queued_for_extraction": queued if queue_extraction else 0,
+        "products": missing_covers[:50],  # First 50 for reference
+        "message": f"Found {len(missing_covers)} products with missing cover files. Reset their status and queued {queued} for re-extraction.",
+    }
+
+
+@router.post("/maintenance/reset-stuck")
+async def reset_stuck_queue_items(
+    db: DbSession,
+    timeout_minutes: int = 30,
+) -> dict:
+    """Reset queue items stuck in 'processing' status.
+    
+    Items can get stuck if the worker crashes or times out.
+    This resets them to 'pending' so they can be retried.
+    
+    Args:
+        timeout_minutes: Consider items stuck if processing for longer than this
+    """
+    from datetime import datetime, timedelta
+    from grimoire.models import ProcessingQueue
+    
+    cutoff = datetime.now() - timedelta(minutes=timeout_minutes)
+    
+    # Find stuck items
+    query = select(ProcessingQueue).where(
+        ProcessingQueue.status == "processing",
+        (ProcessingQueue.started_at < cutoff) | (ProcessingQueue.started_at.is_(None))
+    )
+    result = await db.execute(query)
+    stuck_items = list(result.scalars().all())
+    
+    reset_count = 0
+    for item in stuck_items:
+        item.status = "pending"
+        item.error_message = f"Reset from stuck processing state (was processing since {item.started_at})"
+        reset_count += 1
+    
+    await db.commit()
+    
+    return {
+        "reset": reset_count,
+        "timeout_minutes": timeout_minutes,
+        "message": f"Reset {reset_count} stuck queue items to pending status.",
+    }
+
+
+@router.post("/maintenance/extract-covers")
+async def queue_cover_extraction(
+    db: DbSession,
+    limit: int = 500,
+    search: str | None = None,
+) -> dict:
+    """Queue cover extraction for products that don't have covers yet.
+    
+    Args:
+        limit: Maximum number of products to queue
+        search: Optional search term to filter products by title/filename
+    """
+    from grimoire.models import ProcessingQueue
+    
+    # Find products without covers
+    query = select(Product).where(
+        Product.cover_extracted == False,
+        Product.is_missing == False,
+    )
+    
+    if search:
+        search_term = f"%{search}%"
+        query = query.where(
+            (Product.title.ilike(search_term)) | (Product.file_name.ilike(search_term))
+        )
+    
+    query = query.limit(limit)
+    result = await db.execute(query)
+    products = list(result.scalars().all())
+    
+    queued = 0
+    already_queued = 0
+    
+    for product in products:
+        # Check if not already queued
+        existing_queue = await db.execute(
+            select(ProcessingQueue).where(
+                ProcessingQueue.product_id == product.id,
+                ProcessingQueue.task_type == "cover",
+                ProcessingQueue.status == "pending",
+            )
+        )
+        if existing_queue.scalar_one_or_none():
+            already_queued += 1
+            continue
+            
+        queue_item = ProcessingQueue(
+            product_id=product.id,
+            task_type="cover",
+            priority=3,
+            status="pending",
+        )
+        db.add(queue_item)
+        queued += 1
+    
+    await db.commit()
+    
+    return {
+        "found_without_covers": len(products),
+        "queued": queued,
+        "already_queued": already_queued,
+        "message": f"Found {len(products)} products without covers. Queued {queued} for extraction ({already_queued} already in queue).",
+    }
+
+
+@router.post("/maintenance/mark-missing")
+async def mark_missing_files(db: DbSession) -> dict:
+    """Scan all products and mark those with missing PDF files.
+    
+    This is useful for detecting files that have been moved or deleted.
+    """
+    from pathlib import Path
+    from datetime import datetime
+    
+    query = select(Product).where(Product.is_missing == False)
+    result = await db.execute(query)
+    products = list(result.scalars().all())
+    
+    now = datetime.now()
+    marked = []
+    
+    for product in products:
+        if not Path(product.file_path).exists():
+            product.is_missing = True
+            product.missing_since = now
+            marked.append({
+                "id": product.id,
+                "title": product.title or product.file_name,
+                "file_path": product.file_path,
+            })
+    
+    await db.commit()
+    
+    return {
+        "scanned": len(products),
+        "marked_missing": len(marked),
+        "products": marked[:50],  # First 50 for reference
+        "message": f"Scanned {len(products)} products, marked {len(marked)} as missing.",
+    }
+
+
 @router.post("/import/dtrpg")
 async def import_dtrpg_library(
     db: DbSession,

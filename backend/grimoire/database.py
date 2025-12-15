@@ -40,6 +40,17 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
             await session.close()
 
 
+def get_db_session():
+    """
+    Context manager for database sessions outside of FastAPI requests.
+    
+    Usage:
+        async with get_db_session() as session:
+            # use session
+    """
+    return async_session_maker()
+
+
 async def init_db() -> None:
     """Initialize database tables and seed default data."""
     async with engine.begin() as conn:

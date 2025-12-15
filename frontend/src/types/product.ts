@@ -5,6 +5,28 @@ export interface ProcessingStatus {
   ai_identified: boolean;
 }
 
+export interface RunStatus {
+  status: 'want_to_run' | 'running' | 'completed' | null;
+  rating: number | null;
+  difficulty: 'easier' | 'as_written' | 'harder' | null;
+  completed_at: string | null;
+}
+
+export interface RunNote {
+  id: number;
+  product_id: number;
+  campaign_id: number | null;
+  note_type: 'prep_tip' | 'modification' | 'warning' | 'review';
+  title: string;
+  content: string;
+  spoiler_level: 'none' | 'minor' | 'major' | 'endgame';
+  shared_to_codex: boolean;
+  codex_note_id: string | null;
+  visibility: 'private' | 'anonymous' | 'public';
+  created_at: string;
+  updated_at: string;
+}
+
 export interface Tag {
   id: number;
   name: string;
@@ -33,6 +55,7 @@ export interface Product {
   cover_url: string | null;
   tags: Tag[];
   processing_status: ProcessingStatus;
+  run_status: RunStatus | null;
   created_at: string;
   updated_at: string;
   last_opened_at: string | null;

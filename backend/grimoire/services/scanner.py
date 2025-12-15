@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from grimoire.models import Product, WatchedFolder
 from grimoire.services.exclusion_service import create_exclusion_matcher, increment_rule_match
-from grimoire.services.duplicate_service import check_and_mark_duplicate
+from grimoire.services.duplicate_service import check_and_mark_duplicate, is_deleted_duplicate
 
 logger = logging.getLogger(__name__)
 
@@ -90,6 +90,11 @@ async def scan_folder(
             continue
 
         file_path_str = str(pdf_path)
+
+        # Skip files that were previously deleted as duplicates
+        if await is_deleted_duplicate(db, file_path_str):
+            logger.debug(f"Skipping deleted duplicate: {file_path_str}")
+            continue
 
         existing_query = select(Product).where(Product.file_path == file_path_str)
         existing_result = await db.execute(existing_query)

@@ -58,7 +58,8 @@ async def run_migrations():
                 file_name,
                 publisher,
                 game_system,
-                product_type
+                product_type,
+                extracted_text
             )
         """))
         logger.info("✓ Created products_fts table")

@@ -54,3 +54,39 @@ export function getCoverUrl(productId: number): string {
 export function getPdfUrl(productId: number): string {
   return `/api/v1/products/${productId}/pdf`;
 }
+
+export interface ContributionStatus {
+  has_contribution: boolean;
+  product_id: number;
+  contribution_id?: number;
+  status?: 'pending' | 'submitted' | 'accepted' | 'rejected' | 'failed';
+  created_at?: string;
+  submitted_at?: string | null;
+  error_message?: string | null;
+}
+
+export async function contributeProduct(productId: number): Promise<{
+  success: boolean;
+  queued?: boolean;
+  contribution_id?: number;
+  status?: string;
+  submitted?: boolean;
+  reason?: string;
+  message?: string;
+}> {
+  const response = await api.post(`/contributions/product/${productId}`);
+  return response.data;
+}
+
+export async function getContributionStatus(productId: number): Promise<ContributionStatus> {
+  const response = await api.get<ContributionStatus>(`/contributions/product/${productId}/status`);
+  return response.data;
+}
+
+export async function updateProductAndContribute(
+  id: number,
+  data: Partial<Product>,
+): Promise<Product> {
+  const response = await api.patch<Product>(`/products/${id}?send_to_codex=true`, data);
+  return response.data;
+}

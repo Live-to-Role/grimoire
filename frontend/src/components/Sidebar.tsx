@@ -20,26 +20,16 @@ import {
   FileText,
   Calendar,
   Swords,
+  Wrench,
+  Plus,
+  Pencil,
   } from 'lucide-react';
+import { CollectionManager } from './CollectionManager';
+import { TagManager } from './TagManager';
+import type { Collection } from '../api/collections';
+import type { Tag as TagType } from '../api/tags';
 import type { ProductFilters } from '../api/products';
 import apiClient from '../api/client';
-
-interface Collection {
-  id: number;
-  name: string;
-  description: string | null;
-  color: string | null;
-  icon: string | null;
-  product_count: number;
-}
-
-interface Tag {
-  id: number;
-  name: string;
-  category: string | null;
-  color: string | null;
-  product_count: number;
-}
 
 interface LibraryStats {
   total_products: number;
@@ -85,6 +75,12 @@ export function Sidebar({
   const [yearExpanded, setYearExpanded] = useState(false);
   const [adventureExpanded, setAdventureExpanded] = useState(false);
 
+  // Modal states for collection/tag management
+  const [showCollectionManager, setShowCollectionManager] = useState(false);
+  const [editingCollection, setEditingCollection] = useState<Collection | null>(null);
+  const [showTagManager, setShowTagManager] = useState(false);
+  const [editingTag, setEditingTag] = useState<TagType | null>(null);
+
   // Search states for high-cardinality filters
   const [systemSearch, setSystemSearch] = useState('');
   const [authorSearch, setAuthorSearch] = useState('');
@@ -105,10 +101,22 @@ export function Sidebar({
   const { data: tags } = useQuery({
     queryKey: ['tags'],
     queryFn: async () => {
-      const res = await apiClient.get<Tag[]>('/tags');
+      const res = await apiClient.get<TagType[]>('/tags');
       return res.data;
     },
   });
+
+  const handleEditCollection = (collection: Collection, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setEditingCollection(collection);
+    setShowCollectionManager(true);
+  };
+
+  const handleEditTag = (tag: TagType, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setEditingTag(tag);
+    setShowTagManager(true);
+  };
 
   const { data: stats } = useQuery({
     queryKey: ['library-stats'],
@@ -154,44 +162,69 @@ export function Sidebar({
         </button>
 
         <div className="mt-4">
-          <button
-            onClick={() => setCollectionsExpanded(!collectionsExpanded)}
-            aria-expanded={collectionsExpanded}
-            aria-controls="collections-list"
-            className="flex w-full items-center gap-2 px-3 py-1.5 text-xs font-semibold uppercase tracking-wider text-neutral-500"
-          >
-            {collectionsExpanded ? (
-              <ChevronDown className="h-3 w-3" />
-            ) : (
-              <ChevronRight className="h-3 w-3" />
-            )}
-            Collections
-          </button>
+          <div className="flex items-center justify-between px-3 py-1.5">
+            <button
+              onClick={() => setCollectionsExpanded(!collectionsExpanded)}
+              aria-expanded={collectionsExpanded}
+              aria-controls="collections-list"
+              className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-neutral-500"
+            >
+              {collectionsExpanded ? (
+                <ChevronDown className="h-3 w-3" />
+              ) : (
+                <ChevronRight className="h-3 w-3" />
+              )}
+              Collections
+            </button>
+            <button
+              onClick={() => {
+                setEditingCollection(null);
+                setShowCollectionManager(true);
+              }}
+              className="rounded p-1 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-600"
+              aria-label="Create collection"
+              title="Create collection"
+            >
+              <Plus className="h-3.5 w-3.5" />
+            </button>
+          </div>
 
           {collectionsExpanded && (
             <div id="collections-list" className="mt-1 space-y-0.5" role="list">
               {collections?.map((collection) => (
-                <button
+                <div
                   key={collection.id}
-                  onClick={() => {
-                    onCollectionSelect(collection.id);
-                    onTagSelect(null);
-                  }}
-                  className={`flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm ${
-                    selectedCollection === collection.id
-                      ? 'bg-purple-100 text-purple-700'
-                      : 'text-neutral-700 hover:bg-neutral-100'
-                  }`}
+                  className="group relative"
                 >
-                  <FolderOpen
-                    className="h-4 w-4"
-                    style={{ color: collection.color || undefined }}
-                  />
-                  <span className="truncate">{collection.name}</span>
-                  <span className="ml-auto text-xs text-neutral-500">
-                    {collection.product_count}
-                  </span>
-                </button>
+                  <button
+                    onClick={() => {
+                      onCollectionSelect(collection.id);
+                      onTagSelect(null);
+                    }}
+                    className={`flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm ${
+                      selectedCollection === collection.id
+                        ? 'bg-purple-100 text-purple-700'
+                        : 'text-neutral-700 hover:bg-neutral-100'
+                    }`}
+                  >
+                    <FolderOpen
+                      className="h-4 w-4 shrink-0"
+                      style={{ color: collection.color || undefined }}
+                    />
+                    <span className="truncate flex-1">{collection.name}</span>
+                    <span className="text-xs text-neutral-500 group-hover:hidden">
+                      {collection.product_count}
+                    </span>
+                    <button
+                      onClick={(e) => handleEditCollection(collection, e)}
+                      className="hidden rounded p-1 text-neutral-400 hover:bg-neutral-200 hover:text-neutral-600 group-hover:block"
+                      aria-label={`Edit ${collection.name}`}
+                      title="Edit collection"
+                    >
+                      <Pencil className="h-3 w-3" />
+                    </button>
+                  </button>
+                </div>
               ))}
               {(!collections || collections.length === 0) && (
                 <p className="px-3 py-2 text-xs text-neutral-500">No collections yet</p>
@@ -201,39 +234,64 @@ export function Sidebar({
         </div>
 
         <div className="mt-4">
-          <button
-            onClick={() => setTagsExpanded(!tagsExpanded)}
-            aria-expanded={tagsExpanded}
-            aria-controls="tags-list"
-            className="flex w-full items-center gap-2 px-3 py-1.5 text-xs font-semibold uppercase tracking-wider text-neutral-500"
-          >
-            {tagsExpanded ? (
-              <ChevronDown className="h-3 w-3" />
-            ) : (
-              <ChevronRight className="h-3 w-3" />
-            )}
-            Tags
-          </button>
+          <div className="flex items-center justify-between px-3 py-1.5">
+            <button
+              onClick={() => setTagsExpanded(!tagsExpanded)}
+              aria-expanded={tagsExpanded}
+              aria-controls="tags-list"
+              className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-neutral-500"
+            >
+              {tagsExpanded ? (
+                <ChevronDown className="h-3 w-3" />
+              ) : (
+                <ChevronRight className="h-3 w-3" />
+              )}
+              Tags
+            </button>
+            <button
+              onClick={() => {
+                setEditingTag(null);
+                setShowTagManager(true);
+              }}
+              className="rounded p-1 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-600"
+              aria-label="Create tag"
+              title="Create tag"
+            >
+              <Plus className="h-3.5 w-3.5" />
+            </button>
+          </div>
 
           {tagsExpanded && (
             <div id="tags-list" className="mt-1 space-y-0.5" role="list">
               {tags?.map((tag) => (
-                <button
+                <div
                   key={tag.id}
-                  onClick={() => {
-                    onTagSelect(tag.id);
-                    onCollectionSelect(null);
-                  }}
-                  className={`flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm ${
-                    selectedTag === tag.id
-                      ? 'bg-purple-100 text-purple-700'
-                      : 'text-neutral-700 hover:bg-neutral-100'
-                  }`}
+                  className="group relative"
                 >
-                  <Tag className="h-4 w-4" style={{ color: tag.color || undefined }} />
-                  <span className="truncate">{tag.name}</span>
-                  <span className="ml-auto text-xs text-neutral-500">{tag.product_count}</span>
-                </button>
+                  <button
+                    onClick={() => {
+                      onTagSelect(tag.id);
+                      onCollectionSelect(null);
+                    }}
+                    className={`flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm ${
+                      selectedTag === tag.id
+                        ? 'bg-purple-100 text-purple-700'
+                        : 'text-neutral-700 hover:bg-neutral-100'
+                    }`}
+                  >
+                    <Tag className="h-4 w-4 shrink-0" style={{ color: tag.color || undefined }} />
+                    <span className="truncate flex-1">{tag.name}</span>
+                    <span className="text-xs text-neutral-500 group-hover:hidden">{tag.product_count}</span>
+                    <button
+                      onClick={(e) => handleEditTag(tag, e)}
+                      className="hidden rounded p-1 text-neutral-400 hover:bg-neutral-200 hover:text-neutral-600 group-hover:block"
+                      aria-label={`Edit ${tag.name}`}
+                      title="Edit tag"
+                    >
+                      <Pencil className="h-3 w-3" />
+                    </button>
+                  </button>
+                </div>
               ))}
               {(!tags || tags.length === 0) && (
                 <p className="px-3 py-2 text-xs text-neutral-500">No tags yet</p>
@@ -664,6 +722,18 @@ export function Sidebar({
           Processing Queue
         </button>
         <button
+          onClick={() => onViewChange('tools')}
+          aria-current={activeView === 'tools' ? 'page' : undefined}
+          className={`flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm ${
+            activeView === 'tools'
+              ? 'bg-purple-100 text-purple-700'
+              : 'text-neutral-700 hover:bg-neutral-100'
+          }`}
+        >
+          <Wrench className="h-4 w-4" aria-hidden="true" />
+          Tools
+        </button>
+        <button
           onClick={() => onViewChange('settings')}
           aria-current={activeView === 'settings' ? 'page' : undefined}
           className={`flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm ${
@@ -686,6 +756,28 @@ export function Sidebar({
           </div>
         )}
       </div>
+
+      {/* Collection Manager Modal */}
+      {showCollectionManager && (
+        <CollectionManager
+          collection={editingCollection}
+          onClose={() => {
+            setShowCollectionManager(false);
+            setEditingCollection(null);
+          }}
+        />
+      )}
+
+      {/* Tag Manager Modal */}
+      {showTagManager && (
+        <TagManager
+          tag={editingTag}
+          onClose={() => {
+            setShowTagManager(false);
+            setEditingTag(null);
+          }}
+        />
+      )}
     </aside>
   );
 }

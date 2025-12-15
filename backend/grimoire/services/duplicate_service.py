@@ -7,7 +7,7 @@ from typing import Any
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from grimoire.models import Product, WatchedFolder
+from grimoire.models import Product, WatchedFolder, DeletedDuplicate
 
 logger = logging.getLogger(__name__)
 
@@ -272,6 +272,7 @@ async def bulk_delete_duplicates(
     
     deleted_records = 0
     deleted_files = 0
+    tracked_paths = 0
     errors = []
     space_freed = 0
     
@@ -301,6 +302,10 @@ async def bulk_delete_duplicates(
                     logger.info(f"Deleted file: {product.file_path}")
             except Exception as e:
                 errors.append(f"Failed to delete file for {product_id}: {str(e)}")
+        else:
+            # Track deleted duplicate path to prevent re-import on next scan
+            await _track_deleted_duplicate(db, product)
+            tracked_paths += 1
         
         # Delete the database record
         await db.delete(product)
@@ -318,6 +323,7 @@ async def bulk_delete_duplicates(
         "space_freed_bytes": space_freed,
         "space_freed_mb": round(space_freed / (1024 * 1024), 2),
         "orphans_cleaned": cleanup_result.get("cleaned", 0),
+        "tracked_paths": tracked_paths,
         "errors": errors,
     }
 
@@ -679,3 +685,63 @@ async def resolve_duplicates_with_source_of_truth(
         "space_freed_mb": round(space_freed / (1024 * 1024), 2),
         "errors": errors if errors else None,
     }
+
+
+async def _track_deleted_duplicate(db: AsyncSession, product: Product) -> None:
+    """Record a deleted duplicate path to prevent re-import on next scan."""
+    # Check if already tracked
+    existing = await db.execute(
+        select(DeletedDuplicate).where(DeletedDuplicate.file_path == product.file_path)
+    )
+    if existing.scalar_one_or_none():
+        return
+    
+    deleted_dup = DeletedDuplicate(
+        file_path=product.file_path,
+        file_hash=product.file_hash,
+        original_product_id=product.id,
+    )
+    db.add(deleted_dup)
+    logger.info(f"Tracked deleted duplicate: {product.file_path}")
+
+
+async def is_deleted_duplicate(db: AsyncSession, file_path: str) -> bool:
+    """Check if a file path was previously deleted as a duplicate."""
+    result = await db.execute(
+        select(DeletedDuplicate).where(DeletedDuplicate.file_path == file_path)
+    )
+    return result.scalar_one_or_none() is not None
+
+
+async def get_deleted_duplicates(db: AsyncSession) -> list[DeletedDuplicate]:
+    """Get all tracked deleted duplicates."""
+    result = await db.execute(
+        select(DeletedDuplicate).order_by(DeletedDuplicate.deleted_at.desc())
+    )
+    return list(result.scalars().all())
+
+
+async def clear_deleted_duplicate(db: AsyncSession, file_path: str) -> bool:
+    """Remove a path from the deleted duplicates list, allowing re-import."""
+    result = await db.execute(
+        select(DeletedDuplicate).where(DeletedDuplicate.file_path == file_path)
+    )
+    deleted_dup = result.scalar_one_or_none()
+    if deleted_dup:
+        await db.delete(deleted_dup)
+        await db.commit()
+        logger.info(f"Cleared deleted duplicate tracking: {file_path}")
+        return True
+    return False
+
+
+async def clear_all_deleted_duplicates(db: AsyncSession) -> int:
+    """Clear all deleted duplicate tracking, allowing all files to be re-imported."""
+    result = await db.execute(select(DeletedDuplicate))
+    deleted_dups = list(result.scalars().all())
+    count = len(deleted_dups)
+    for dup in deleted_dups:
+        await db.delete(dup)
+    await db.commit()
+    logger.info(f"Cleared {count} deleted duplicate records")
+    return count

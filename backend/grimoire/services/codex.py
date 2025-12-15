@@ -39,8 +39,10 @@ class CodexProduct:
     id: str
     title: str
     publisher: str | None = None
+    author: str | None = None
     game_system: str | None = None
     game_system_slug: str | None = None
+    genre: str | None = None
     product_type: str | None = None
     publication_year: int | None = None
     page_count: int | None = None
@@ -60,8 +62,10 @@ class CodexProduct:
             id=data.get("id", ""),
             title=data.get("title", ""),
             publisher=data.get("publisher"),
+            author=data.get("author"),
             game_system=data.get("game_system"),
             game_system_slug=data.get("game_system_slug"),
+            genre=data.get("genre"),
             product_type=data.get("product_type"),
             publication_year=data.get("publication_year"),
             page_count=data.get("page_count"),
@@ -81,8 +85,10 @@ class CodexProduct:
             "id": self.id,
             "title": self.title,
             "publisher": self.publisher,
+            "author": self.author,
             "game_system": self.game_system,
             "game_system_slug": self.game_system_slug,
+            "genre": self.genre,
             "product_type": self.product_type,
             "publication_year": self.publication_year,
             "page_count": self.page_count,
@@ -348,9 +354,9 @@ class CodexClient:
             payload["contribution_type"] = "new_product"
         
         try:
-            async with httpx.AsyncClient(timeout=self.timeout) as client:
+            async with httpx.AsyncClient(timeout=self.timeout, follow_redirects=True) as client:
                 response = await client.post(
-                    f"{self.base_url}/contributions",
+                    f"{self.base_url}/contributions/",
                     json=payload,
                     headers={"Authorization": f"Token {self.api_key}"},
                 )
@@ -365,8 +371,9 @@ class CodexClient:
                 return result
                 
         except httpx.HTTPStatusError as e:
-            logger.warning(f"Codex contribution failed: {e.response.status_code} - {e.response.text}")
-            return ContributionResult.failure(f"http_error_{e.response.status_code}")
+            error_detail = e.response.text[:200] if e.response.text else "No details"
+            logger.warning(f"Codex contribution failed: {e.response.status_code} - {error_detail}")
+            return ContributionResult.failure(f"http_error_{e.response.status_code}: {error_detail}")
         except Exception as e:
             logger.warning(f"Codex contribution failed: {e}")
             return ContributionResult.failure(str(e))

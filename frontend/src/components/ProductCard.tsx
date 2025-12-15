@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { Book, FileText, Loader2, Check } from 'lucide-react';
 import { useMutation } from '@tanstack/react-query';
 import type { Product } from '../types/product';
@@ -8,10 +8,16 @@ import apiClient from '../api/client';
 interface ProductCardProps {
   product: Product;
   onClick?: (product: Product) => void;
+  viewMode?: 'grid' | 'list';
 }
 
-export function ProductCard({ product, onClick }: ProductCardProps) {
+export function ProductCard({ product, onClick, viewMode = 'grid' }: ProductCardProps) {
   const [queued, setQueued] = useState(false);
+  const [coverError, setCoverError] = useState(false);
+
+  const handleCoverError = useCallback(() => {
+    setCoverError(true);
+  }, []);
 
   const queueMutation = useMutation({
     mutationFn: async () => {
@@ -39,6 +45,89 @@ export function ProductCard({ product, onClick }: ProductCardProps) {
 
   const needsExtraction = !product.processing_status?.text_extracted;
 
+  if (viewMode === 'list') {
+    return (
+      <article
+        className="group flex items-center gap-4 rounded-lg border border-neutral-200 bg-white p-3 shadow-sm transition-all hover:shadow-md hover:border-purple-300 cursor-pointer"
+        onClick={handleClick}
+        role="button"
+        tabIndex={0}
+        onKeyDown={(e) => e.key === 'Enter' && handleClick()}
+      >
+        <div className="h-16 w-12 flex-shrink-0 overflow-hidden rounded bg-neutral-100 relative">
+          {product.cover_url && !coverError ? (
+            <img
+              src={getCoverUrl(product.id)}
+              alt={`${product.title || product.file_name} cover`}
+              className="h-full w-full object-cover"
+              loading="lazy"
+              onError={handleCoverError}
+            />
+          ) : (
+            <div className="flex h-full w-full items-center justify-center bg-neutral-200">
+              <Book className="h-6 w-6 text-neutral-400" />
+            </div>
+          )}
+        </div>
+
+        <div className="flex-1 min-w-0">
+          <h3 className="truncate text-sm font-medium text-neutral-900">
+            {product.title || product.file_name}
+          </h3>
+          <div className="mt-1 flex items-center gap-2 text-xs text-neutral-500">
+            {product.publisher && <span>{product.publisher}</span>}
+            {product.page_count && <span>• {product.page_count} pages</span>}
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2">
+          {product.game_system && (
+            <span className="inline-flex items-center rounded-full bg-purple-100 px-2 py-0.5 text-xs font-medium text-purple-700">
+              {product.game_system}
+            </span>
+          )}
+          {product.product_type && (
+            <span className="inline-flex items-center rounded-full bg-neutral-100 px-2 py-0.5 text-xs font-medium text-neutral-600">
+              {product.product_type}
+            </span>
+          )}
+          {product.processing_status?.text_extracted && (
+            <div className="rounded-full bg-green-500 p-1" title="Text extracted">
+              <FileText className="h-3 w-3 text-white" />
+            </div>
+          )}
+          {needsExtraction && (
+            <button
+              onClick={handleQueueClick}
+              disabled={queued || queueMutation.isPending}
+              className={`rounded-lg px-2 py-1.5 text-xs font-medium flex items-center gap-1 ${
+                queued
+                  ? 'bg-green-600 text-white'
+                  : queueMutation.isPending
+                  ? 'bg-blue-500 text-white'
+                  : 'bg-blue-600 text-white hover:bg-blue-700'
+              }`}
+              title="Add to text extraction queue"
+            >
+              {queued ? (
+                <>
+                  <Check className="h-3 w-3" />
+                  Queued
+                </>
+              ) : queueMutation.isPending ? (
+                <>
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                </>
+              ) : (
+                <FileText className="h-3 w-3" />
+              )}
+            </button>
+          )}
+        </div>
+      </article>
+    );
+  }
+
   return (
     <article
       className="group relative flex flex-col overflow-hidden rounded-lg border border-neutral-200 bg-white shadow-sm transition-all hover:shadow-md hover:border-purple-300 cursor-pointer"
@@ -48,12 +137,13 @@ export function ProductCard({ product, onClick }: ProductCardProps) {
       onKeyDown={(e) => e.key === 'Enter' && handleClick()}
     >
       <div className="aspect-[3/4] w-full overflow-hidden bg-neutral-100 relative">
-        {product.cover_url ? (
+        {product.cover_url && !coverError ? (
           <img
             src={getCoverUrl(product.id)}
             alt={`${product.title || product.file_name} cover`}
             className="h-full w-full object-cover transition-transform group-hover:scale-105"
             loading="lazy"
+            onError={handleCoverError}
           />
         ) : (
           <div className="flex h-full w-full items-center justify-center bg-neutral-200">

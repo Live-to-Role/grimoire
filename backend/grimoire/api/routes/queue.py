@@ -336,7 +336,32 @@ async def rebuild_fts_index(
 
 @router.get("/fts/stats")
 async def get_fts_stats(db: DbSession) -> dict:
-    """Get FTS indexing statistics."""
+    """Get FTS indexing statistics and diagnose issues."""
+    from sqlalchemy import text
+    
+    # Check if FTS5 table exists
+    fts_exists = False
+    fts_schema = None
+    fts_count = 0
+    
+    try:
+        result = await db.execute(
+            text("SELECT name FROM sqlite_master WHERE type='table' AND name='products_fts'")
+        )
+        fts_exists = result.fetchone() is not None
+        
+        if fts_exists:
+            # Get table schema
+            schema_result = await db.execute(text("PRAGMA table_info(products_fts)"))
+            columns = [row[1] for row in schema_result.fetchall()]
+            fts_schema = columns
+            
+            # Count indexed items
+            count_result = await db.execute(text("SELECT COUNT(*) FROM products_fts"))
+            fts_count = count_result.scalar() or 0
+    except Exception as e:
+        fts_schema = f"Error: {e}"
+    
     # Products with text but not indexed
     need_indexing_query = select(func.count()).select_from(Product).where(
         Product.text_extracted == True,
@@ -352,11 +377,59 @@ async def get_fts_stats(db: DbSession) -> dict:
     indexed_result = await db.execute(indexed_query)
     indexed = indexed_result.scalar() or 0
     
+    # Check for schema issue
+    has_extracted_text_column = fts_schema and "extracted_text" in fts_schema if isinstance(fts_schema, list) else False
+    
     return {
+        "fts_table_exists": fts_exists,
+        "fts_schema": fts_schema,
+        "fts_indexed_count": fts_count,
+        "has_extracted_text_column": has_extracted_text_column,
         "indexed": indexed,
         "need_indexing": need_indexing,
         "total_with_text": indexed + need_indexing,
+        "issue": None if has_extracted_text_column else "FTS5 table missing 'extracted_text' column. Run: POST /queue/fts/recreate",
     }
+
+
+@router.post("/fts/recreate")
+async def recreate_fts_table(db: DbSession) -> dict:
+    """Recreate the FTS5 table with correct schema including extracted_text column."""
+    from sqlalchemy import text
+    
+    try:
+        # Drop existing table and triggers
+        await db.execute(text("DROP TRIGGER IF EXISTS products_fts_insert"))
+        await db.execute(text("DROP TRIGGER IF EXISTS products_fts_update"))
+        await db.execute(text("DROP TRIGGER IF EXISTS products_fts_delete"))
+        await db.execute(text("DROP TABLE IF EXISTS products_fts"))
+        
+        # Create with correct schema
+        await db.execute(text("""
+            CREATE VIRTUAL TABLE products_fts USING fts5(
+                title,
+                file_name,
+                publisher,
+                game_system,
+                product_type,
+                extracted_text
+            )
+        """))
+        
+        # Reset deep_indexed flag so items can be reprocessed
+        await db.execute(text("UPDATE products SET deep_indexed = 0"))
+        
+        await db.commit()
+        
+        return {
+            "success": True,
+            "message": "FTS5 table recreated with extracted_text column. All products marked for re-indexing.",
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e),
+        }
 
 
 @router.get("/text-extraction/stats")
@@ -397,6 +470,151 @@ async def get_text_extraction_stats(db: DbSession) -> dict:
         "total": need_extraction + extracted,
         "queue_pending": pending,
         "queue_processing": processing,
+    }
+
+
+@router.post("/{item_id}/retry")
+async def retry_queue_item(
+    db: DbSession,
+    item_id: int,
+) -> dict:
+    """Retry a failed queue item."""
+    query = select(ProcessingQueue).where(ProcessingQueue.id == item_id)
+    result = await db.execute(query)
+    item = result.scalar_one_or_none()
+    
+    if not item:
+        raise HTTPException(status_code=404, detail="Queue item not found")
+    
+    if item.status != "failed":
+        raise HTTPException(
+            status_code=400,
+            detail="Can only retry failed items"
+        )
+    
+    item.status = "pending"
+    item.attempts = 0
+    item.error_message = None
+    item.started_at = None
+    item.completed_at = None
+    
+    await db.commit()
+    
+    return {"retried": True, "id": item_id}
+
+
+@router.post("/retry-all-failed")
+async def retry_all_failed(
+    db: DbSession,
+    task_type: str | None = Query(None, description="Filter by task type"),
+) -> dict:
+    """Retry all failed queue items."""
+    query = select(ProcessingQueue).where(ProcessingQueue.status == "failed")
+    
+    if task_type:
+        query = query.where(ProcessingQueue.task_type == task_type)
+    
+    result = await db.execute(query)
+    items = list(result.scalars().all())
+    
+    for item in items:
+        item.status = "pending"
+        item.attempts = 0
+        item.error_message = None
+        item.started_at = None
+        item.completed_at = None
+    
+    await db.commit()
+    
+    return {
+        "retried": len(items),
+        "task_type_filter": task_type,
+        "message": f"Reset {len(items)} failed items for retry",
+    }
+
+
+@router.post("/{item_id}/dismiss")
+async def dismiss_queue_item(
+    db: DbSession,
+    item_id: int,
+    mark_as_art: bool = Query(False, description="Mark product as art/maps (skip future text extraction)"),
+) -> dict:
+    """Dismiss a failed queue item permanently.
+    
+    Optionally marks the product as art/maps to skip future text extraction attempts.
+    """
+    query = select(ProcessingQueue).where(ProcessingQueue.id == item_id)
+    result = await db.execute(query)
+    item = result.scalar_one_or_none()
+    
+    if not item:
+        raise HTTPException(status_code=404, detail="Queue item not found")
+    
+    product_updated = False
+    if mark_as_art:
+        # Get the product and mark it as art/maps
+        product_query = select(Product).where(Product.id == item.product_id)
+        product_result = await db.execute(product_query)
+        product = product_result.scalar_one_or_none()
+        
+        if product:
+            if not product.product_type:
+                product.product_type = "Art/Maps"
+            # Mark text extraction as "done" to prevent future attempts
+            product.text_extracted = True
+            product_updated = True
+    
+    await db.delete(item)
+    await db.commit()
+    
+    return {
+        "dismissed": True,
+        "id": item_id,
+        "product_marked_as_art": product_updated,
+    }
+
+
+@router.post("/dismiss-all-failed")
+async def dismiss_all_failed(
+    db: DbSession,
+    task_type: str | None = Query(None, description="Filter by task type"),
+    mark_as_art: bool = Query(False, description="Mark products as art/maps"),
+) -> dict:
+    """Dismiss all failed queue items.
+    
+    Optionally marks products as art/maps to skip future text extraction.
+    """
+    query = select(ProcessingQueue).where(ProcessingQueue.status == "failed")
+    
+    if task_type:
+        query = query.where(ProcessingQueue.task_type == task_type)
+    
+    result = await db.execute(query)
+    items = list(result.scalars().all())
+    
+    products_marked = 0
+    if mark_as_art:
+        product_ids = [item.product_id for item in items]
+        if product_ids:
+            products_query = select(Product).where(Product.id.in_(product_ids))
+            products_result = await db.execute(products_query)
+            products = list(products_result.scalars().all())
+            
+            for product in products:
+                if not product.product_type:
+                    product.product_type = "Art/Maps"
+                product.text_extracted = True
+                products_marked += 1
+    
+    for item in items:
+        await db.delete(item)
+    
+    await db.commit()
+    
+    return {
+        "dismissed": len(items),
+        "products_marked_as_art": products_marked,
+        "task_type_filter": task_type,
     }
 
 

@@ -47,6 +47,9 @@ class Campaign(Base):
         secondary=campaign_products,
         backref="campaigns",
     )
+    
+    # Run notes associated with this campaign
+    run_notes = relationship("RunNote", back_populates="campaign")
 
 
 class Session(Base):

@@ -19,17 +19,29 @@ async def lifespan(app: FastAPI):
     
     await init_db()
 
-    from grimoire.services.watcher import start_watcher, stop_watcher
-    await start_watcher()
+    # Watcher disabled temporarily - causing startup hang with watched folders
+    # from grimoire.services.watcher import start_watcher, stop_watcher
+    # await start_watcher()
     
-    # Start queue worker
+    # Start queue worker for PDF processing
     from grimoire.services.queue_processor import run_queue_worker
     queue_stop_event = asyncio.Event()
     queue_task = asyncio.create_task(
         run_queue_worker(poll_interval=5.0, batch_size=3, stop_event=queue_stop_event)
     )
+    
+    # Start contribution queue processor for Codex submissions
+    from grimoire.services.contribution_queue_processor import (
+        start_queue_processor,
+        stop_queue_processor,
+    )
+    from grimoire.database import get_db_session
+    await start_queue_processor(get_db_session)
 
     yield
+
+    # Stop contribution queue processor
+    stop_queue_processor()
 
     # Stop queue worker
     queue_stop_event.set()
@@ -39,7 +51,8 @@ async def lifespan(app: FastAPI):
     except asyncio.CancelledError:
         pass
     
-    await stop_watcher()
+    # Watcher disabled
+    # await stop_watcher()
 
 
 app = FastAPI(

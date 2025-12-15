@@ -6,6 +6,7 @@ import { Campaigns } from './pages/Campaigns';
 import { LibraryManagement } from './pages/LibraryManagement';
 import { Sidebar } from './components/Sidebar';
 import { ProcessingQueue } from './components/ProcessingQueue';
+import { MaintenanceTools } from './components/MaintenanceTools';
 import type { ProductFilters } from './api/products';
 
 const queryClient = new QueryClient({
@@ -60,6 +61,8 @@ function App() {
             <Settings />
           ) : activeView === 'queue' ? (
             <ProcessingQueue onClose={() => setActiveView('library')} />
+          ) : activeView === 'tools' ? (
+            <MaintenanceTools onClose={() => setActiveView('library')} />
           ) : activeView === 'campaigns' ? (
             <Campaigns />
           ) : activeView === 'library-management' ? (

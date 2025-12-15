@@ -8,6 +8,8 @@ import {
   Clock,
   Trash2,
   RefreshCw,
+  RotateCcw,
+  ImageOff,
 } from 'lucide-react';
 import api from '../api/client';
 
@@ -88,6 +90,36 @@ export function ProcessingQueue({ onClose }: ProcessingQueueProps) {
   const clearMutation = useMutation({
     mutationFn: async (status: string) => {
       await api.delete('/queue', { params: { status } });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['queue-items'] });
+      queryClient.invalidateQueries({ queryKey: ['queue-stats'] });
+    },
+  });
+
+  const retryMutation = useMutation({
+    mutationFn: async (itemId: number) => {
+      await api.post(`/queue/${itemId}/retry`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['queue-items'] });
+      queryClient.invalidateQueries({ queryKey: ['queue-stats'] });
+    },
+  });
+
+  const retryAllMutation = useMutation({
+    mutationFn: async () => {
+      await api.post('/queue/retry-all-failed');
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['queue-items'] });
+      queryClient.invalidateQueries({ queryKey: ['queue-stats'] });
+    },
+  });
+
+  const dismissMutation = useMutation({
+    mutationFn: async ({ itemId, markAsArt }: { itemId: number; markAsArt: boolean }) => {
+      await api.post(`/queue/${itemId}/dismiss`, null, { params: { mark_as_art: markAsArt } });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['queue-items'] });
@@ -246,24 +278,46 @@ export function ProcessingQueue({ onClose }: ProcessingQueueProps) {
                       </span>
                     </td>
                     <td className="px-6 py-4">
-                      {item.status === 'pending' && (
-                        <button
-                          onClick={() => cancelMutation.mutate(item.id)}
-                          disabled={cancelMutation.isPending}
-                          className="rounded p-1 text-neutral-400 hover:bg-red-50 hover:text-red-600"
-                          title="Cancel"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
-                      )}
-                      {item.error_message && (
-                        <span
-                          className="ml-2 text-xs text-red-500 cursor-help"
-                          title={item.error_message}
-                        >
-                          Error
-                        </span>
-                      )}
+                      <div className="flex items-center gap-1">
+                        {item.status === 'pending' && (
+                          <button
+                            onClick={() => cancelMutation.mutate(item.id)}
+                            disabled={cancelMutation.isPending}
+                            className="rounded p-1 text-neutral-400 hover:bg-red-50 hover:text-red-600"
+                            title="Cancel"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        )}
+                        {item.status === 'failed' && (
+                          <>
+                            <button
+                              onClick={() => retryMutation.mutate(item.id)}
+                              disabled={retryMutation.isPending}
+                              className="rounded p-1 text-neutral-400 hover:bg-blue-50 hover:text-blue-600"
+                              title="Retry"
+                            >
+                              <RotateCcw className="h-4 w-4" />
+                            </button>
+                            <button
+                              onClick={() => dismissMutation.mutate({ itemId: item.id, markAsArt: true })}
+                              disabled={dismissMutation.isPending}
+                              className="rounded p-1 text-neutral-400 hover:bg-purple-50 hover:text-purple-600"
+                              title="Dismiss & mark as Art/Maps"
+                            >
+                              <ImageOff className="h-4 w-4" />
+                            </button>
+                          </>
+                        )}
+                        {item.error_message && (
+                          <span
+                            className="ml-2 text-xs text-red-500 cursor-help"
+                            title={item.error_message}
+                          >
+                            Error
+                          </span>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -286,14 +340,24 @@ export function ProcessingQueue({ onClose }: ProcessingQueueProps) {
               </button>
             )}
             {stats && stats.failed > 0 && (
-              <button
-                onClick={() => clearMutation.mutate('failed')}
-                disabled={clearMutation.isPending}
-                className="inline-flex items-center gap-2 rounded-lg border border-red-300 px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-50"
-              >
-                <Trash2 className="h-4 w-4" />
-                Clear Failed
-              </button>
+              <>
+                <button
+                  onClick={() => retryAllMutation.mutate()}
+                  disabled={retryAllMutation.isPending}
+                  className="inline-flex items-center gap-2 rounded-lg border border-blue-300 px-3 py-2 text-sm font-medium text-blue-700 hover:bg-blue-50"
+                >
+                  <RotateCcw className="h-4 w-4" />
+                  Retry All Failed
+                </button>
+                <button
+                  onClick={() => clearMutation.mutate('failed')}
+                  disabled={clearMutation.isPending}
+                  className="inline-flex items-center gap-2 rounded-lg border border-red-300 px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-50"
+                >
+                  <Trash2 className="h-4 w-4" />
+                  Clear Failed
+                </button>
+              </>
             )}
           </div>
           <button

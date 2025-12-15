@@ -20,6 +20,7 @@ from grimoire.schemas.product import (
     ProductResponse,
     ProductUpdate,
     ProcessingStatus,
+    RunStatus,
 )
 from grimoire.schemas.tag import TagResponse
 
@@ -28,13 +29,25 @@ router = APIRouter()
 
 def product_to_response(product: Product) -> ProductResponse:
     """Convert a Product model to ProductResponse schema."""
+    cover_url = None
+    
     # For duplicates, use the original's cover if available
     if product.is_duplicate and product.duplicate_of_id:
         cover_url = f"/api/v1/products/{product.id}/cover"
-    elif product.cover_extracted:
-        cover_url = f"/api/v1/products/{product.id}/cover"
-    else:
-        cover_url = None
+    elif product.cover_extracted and product.cover_image_path:
+        # Only set cover_url if the cover file actually exists
+        if Path(product.cover_image_path).exists():
+            cover_url = f"/api/v1/products/{product.id}/cover"
+
+    # Build run status if any run tracking data exists
+    run_status = None
+    if product.run_status or product.run_rating or product.run_difficulty:
+        run_status = RunStatus(
+            status=product.run_status,
+            rating=product.run_rating,
+            difficulty=product.run_difficulty,
+            completed_at=product.run_completed_at,
+        )
 
     tags = []
     for pt in product.product_tags:
@@ -75,6 +88,7 @@ def product_to_response(product: Product) -> ProductResponse:
             deep_indexed=product.deep_indexed,
             ai_identified=product.ai_identified,
         ),
+        run_status=run_status,
         created_at=product.created_at,
         updated_at=product.updated_at,
         last_opened_at=product.last_opened_at,
@@ -238,9 +252,18 @@ async def get_product(db: DbSession, product_id: int) -> ProductResponse:
 
 @router.patch("/{product_id}", response_model=ProductResponse)
 async def update_product(
-    db: DbSession, product_id: int, update_data: ProductUpdate
+    db: DbSession,
+    product_id: int,
+    update_data: ProductUpdate,
+    send_to_codex: bool = False,
 ) -> ProductResponse:
-    """Update product metadata."""
+    """
+    Update product metadata.
+    
+    Args:
+        send_to_codex: If True, explicitly queue this product for Codex contribution
+                       regardless of auto-contribute setting.
+    """
     query = (
         select(Product)
         .where(Product.id == product_id)
@@ -260,9 +283,15 @@ async def update_product(
     await db.commit()
     await db.refresh(product)
 
-    # Queue edit for Codex sync if enabled
-    from grimoire.services.sync_service import queue_local_edit_for_sync
-    await queue_local_edit_for_sync(db, product, update_dict)
+    # Queue for Codex contribution
+    if send_to_codex:
+        # User explicitly requested to send to Codex
+        from grimoire.services.sync_service import queue_product_for_contribution
+        await queue_product_for_contribution(db, product, submit_immediately=True)
+    else:
+        # Auto-queue edit if contribute is enabled in settings
+        from grimoire.services.sync_service import queue_local_edit_for_sync
+        await queue_local_edit_for_sync(db, product, update_dict)
 
     return product_to_response(product)
 
@@ -334,6 +363,12 @@ async def get_product_pdf(db: DbSession, product_id: int) -> FileResponse:
     if not product:
         raise HTTPException(status_code=404, detail="Product not found")
 
+    if product.is_missing:
+        raise HTTPException(
+            status_code=404, 
+            detail="PDF file is missing from disk. The file may have been moved or deleted."
+        )
+
     pdf_path = Path(product.file_path)
     
     # Validate path is within the product's watched folder
@@ -351,9 +386,12 @@ async def get_product_pdf(db: DbSession, product_id: int) -> FileResponse:
     if not pdf_path.exists():
         raise HTTPException(status_code=404, detail="PDF file not found")
 
-    # Update last opened timestamp
-    product.last_opened_at = datetime.now(datetime.UTC)
-    await db.commit()
+    # Update last opened timestamp (non-blocking - don't fail if DB is locked)
+    try:
+        product.last_opened_at = datetime.now(UTC)
+        await db.commit()
+    except Exception:
+        await db.rollback()  # Don't let failed update block PDF serving
 
     return FileResponse(
         pdf_path,
@@ -500,3 +538,99 @@ async def remove_tag_from_product(db: DbSession, product_id: int, tag_id: int) -
     await db.commit()
 
     return Response(status_code=204)
+
+
+@router.get("/{product_id}/collections")
+async def get_product_collections(db: DbSession, product_id: int) -> dict:
+    """Get the collections a product belongs to."""
+    from grimoire.models import CollectionProduct
+    
+    query = select(Product).where(Product.id == product_id)
+    result = await db.execute(query)
+    product = result.scalar_one_or_none()
+
+    if not product:
+        raise HTTPException(status_code=404, detail="Product not found")
+
+    collections_query = select(CollectionProduct.collection_id).where(
+        CollectionProduct.product_id == product_id
+    )
+    collections_result = await db.execute(collections_query)
+    collection_ids = [row[0] for row in collections_result.fetchall()]
+
+    return {"collection_ids": collection_ids}
+
+
+@router.put("/{product_id}/run-status")
+async def update_run_status(
+    db: DbSession,
+    product_id: int,
+    run_status: str | None = Query(None, description="Run status: want_to_run, running, completed"),
+    run_rating: int | None = Query(None, ge=1, le=5, description="Rating 1-5"),
+    run_difficulty: str | None = Query(None, description="Difficulty: easier, as_written, harder"),
+) -> dict:
+    """Update run tracking status for a product."""
+    query = select(Product).where(Product.id == product_id)
+    result = await db.execute(query)
+    product = result.scalar_one_or_none()
+
+    if not product:
+        raise HTTPException(status_code=404, detail="Product not found")
+
+    # Validate run_status
+    valid_statuses = {"want_to_run", "running", "completed", None}
+    if run_status is not None and run_status not in valid_statuses:
+        raise HTTPException(status_code=400, detail=f"Invalid run_status. Must be one of: {valid_statuses}")
+
+    # Validate run_difficulty
+    valid_difficulties = {"easier", "as_written", "harder", None}
+    if run_difficulty is not None and run_difficulty not in valid_difficulties:
+        raise HTTPException(status_code=400, detail=f"Invalid run_difficulty. Must be one of: {valid_difficulties}")
+
+    # Update fields
+    if run_status is not None:
+        product.run_status = run_status if run_status else None
+        # Set completed timestamp when marking as completed
+        if run_status == "completed" and not product.run_completed_at:
+            product.run_completed_at = datetime.now(UTC)
+        elif run_status != "completed":
+            product.run_completed_at = None
+
+    if run_rating is not None:
+        product.run_rating = run_rating
+
+    if run_difficulty is not None:
+        product.run_difficulty = run_difficulty if run_difficulty else None
+
+    await db.commit()
+
+    return {
+        "id": product.id,
+        "run_status": product.run_status,
+        "run_rating": product.run_rating,
+        "run_difficulty": product.run_difficulty,
+        "run_completed_at": product.run_completed_at.isoformat() if product.run_completed_at else None,
+    }
+
+
+@router.delete("/{product_id}/run-status")
+async def clear_run_status(
+    db: DbSession,
+    product_id: int,
+) -> dict:
+    """Clear all run tracking data for a product."""
+    query = select(Product).where(Product.id == product_id)
+    result = await db.execute(query)
+    product = result.scalar_one_or_none()
+
+    if not product:
+        raise HTTPException(status_code=404, detail="Product not found")
+
+    product.run_status = None
+    product.run_rating = None
+    product.run_difficulty = None
+    product.run_completed_at = None
+
+    await db.commit()
+
+    return {"id": product.id, "cleared": True}

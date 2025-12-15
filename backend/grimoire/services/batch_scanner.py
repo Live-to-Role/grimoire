@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from grimoire.models import Product, WatchedFolder, ScanJob, ScanJobStatus
 from grimoire.services.scanner import calculate_file_hash
 from grimoire.services.exclusion_service import create_exclusion_matcher, increment_rule_match
-from grimoire.services.duplicate_service import check_and_mark_duplicate
+from grimoire.services.duplicate_service import check_and_mark_duplicate, is_deleted_duplicate
 
 logger = logging.getLogger(__name__)
 
@@ -142,6 +142,10 @@ async def batch_scan_folder(
                 continue
             
             file_path_str = str(pdf_path)
+            
+            # Skip files that were previously deleted as duplicates
+            if await is_deleted_duplicate(db, file_path_str):
+                continue
             
             # Check if product exists
             existing_query = select(Product).where(Product.file_path == file_path_str)

@@ -195,6 +195,7 @@ export function Library({ selectedCollection, selectedTag, sidebarFilters = {} }
               <ProductGrid
                 products={displayProducts}
                 onProductClick={handleProductClick}
+                viewMode={viewMode}
               />
             </>
           ) : null}

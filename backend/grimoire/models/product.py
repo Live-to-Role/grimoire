@@ -12,6 +12,7 @@ if TYPE_CHECKING:
     from grimoire.models.collection import CollectionProduct
     from grimoire.models.folder import WatchedFolder
     from grimoire.models.tag import ProductTag
+    from grimoire.models.run_note import RunNote
 
 
 class Product(Base):
@@ -90,6 +91,12 @@ class Product(Base):
     is_missing: Mapped[bool] = mapped_column(Boolean, default=False)
     missing_since: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
+    # Run tracking (for campaigns/adventures)
+    run_status: Mapped[str | None] = mapped_column(String(20), nullable=True)  # want_to_run, running, completed
+    run_rating: Mapped[int | None] = mapped_column(Integer, nullable=True)  # 1-5 stars
+    run_difficulty: Mapped[str | None] = mapped_column(String(20), nullable=True)  # easier, as_written, harder
+    run_completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
     # Timestamps
     file_modified_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
@@ -114,6 +121,11 @@ class Product(Base):
     # Self-referential relationship for duplicates
     duplicate_of: Mapped["Product | None"] = relationship(
         "Product", remote_side="Product.id", foreign_keys="Product.duplicate_of_id"
+    )
+    
+    # Run notes
+    run_notes: Mapped[list["RunNote"]] = relationship(
+        "RunNote", back_populates="product", cascade="all, delete-orphan"
     )
 
     def __repr__(self) -> str:

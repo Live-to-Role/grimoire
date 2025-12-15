@@ -13,6 +13,9 @@ from grimoire.services.duplicate_service import (
     delete_all_duplicates_in_group,
     preview_duplicate_resolution,
     resolve_duplicates_with_source_of_truth,
+    get_deleted_duplicates,
+    clear_deleted_duplicate,
+    clear_all_deleted_duplicates,
 )
 
 router = APIRouter()
@@ -121,3 +124,43 @@ async def execute_resolution(
     if not result.get("success"):
         raise HTTPException(status_code=400, detail=result.get("error", "Unknown error"))
     return result
+
+
+@router.get("/deleted")
+async def list_deleted_duplicates(db: DbSession) -> dict:
+    """Get list of file paths that were deleted as duplicates and won't be re-imported."""
+    deleted = await get_deleted_duplicates(db)
+    return {
+        "deleted_duplicates": [
+            {
+                "id": d.id,
+                "file_path": d.file_path,
+                "file_hash": d.file_hash,
+                "original_product_id": d.original_product_id,
+                "deleted_at": d.deleted_at.isoformat() if d.deleted_at else None,
+            }
+            for d in deleted
+        ],
+        "total": len(deleted),
+    }
+
+
+class ClearDeletedDuplicateRequest(BaseModel):
+    """Request to clear a deleted duplicate tracking entry."""
+    file_path: str
+
+
+@router.post("/deleted/clear")
+async def clear_deleted(db: DbSession, request: ClearDeletedDuplicateRequest) -> dict:
+    """Remove a path from deleted duplicates list, allowing it to be re-imported on next scan."""
+    success = await clear_deleted_duplicate(db, request.file_path)
+    if not success:
+        raise HTTPException(status_code=404, detail="Deleted duplicate not found")
+    return {"success": True, "file_path": request.file_path}
+
+
+@router.post("/deleted/clear-all")
+async def clear_all_deleted(db: DbSession) -> dict:
+    """Clear all deleted duplicate tracking, allowing all files to be re-imported."""
+    count = await clear_all_deleted_duplicates(db)
+    return {"success": True, "cleared": count}
