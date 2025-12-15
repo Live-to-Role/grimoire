@@ -23,6 +23,7 @@ class WatchedFolderUpdate(BaseModel):
 
     label: str | None = Field(None, max_length=255)
     enabled: bool | None = None
+    is_source_of_truth: bool | None = None
 
 
 class WatchedFolderResponse(WatchedFolderBase):
@@ -30,6 +31,7 @@ class WatchedFolderResponse(WatchedFolderBase):
 
     id: int
     enabled: bool
+    is_source_of_truth: bool = False
     last_scanned_at: datetime | None
     created_at: datetime
     product_count: int = 0

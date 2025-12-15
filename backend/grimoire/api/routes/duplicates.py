@@ -11,6 +11,8 @@ from grimoire.services.duplicate_service import (
     resolve_duplicate,
     bulk_delete_duplicates,
     delete_all_duplicates_in_group,
+    preview_duplicate_resolution,
+    resolve_duplicates_with_source_of_truth,
 )
 
 router = APIRouter()
@@ -81,6 +83,41 @@ async def delete_group_duplicates(
 ) -> dict:
     """Delete all duplicates in a group, keeping only the canonical."""
     result = await delete_all_duplicates_in_group(db, file_hash, delete_files=delete_files)
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail=result.get("error", "Unknown error"))
+    return result
+
+
+class ResolveWithSourceOfTruthRequest(BaseModel):
+    """Request to resolve duplicates using source of truth rules."""
+    delete_files: bool = False
+
+
+@router.get("/resolve/preview")
+async def preview_resolution(db: DbSession) -> dict:
+    """
+    Preview what would happen if duplicates were resolved using source of truth rules.
+    
+    Rules:
+    1. If a duplicate exists in source of truth folder, keep that version
+    2. Otherwise, keep the newest version (by file_modified_at)
+    """
+    return await preview_duplicate_resolution(db)
+
+
+@router.post("/resolve/execute")
+async def execute_resolution(
+    db: DbSession,
+    request: ResolveWithSourceOfTruthRequest,
+) -> dict:
+    """
+    Execute duplicate resolution using source of truth rules.
+    
+    Rules:
+    1. If a duplicate exists in source of truth folder, keep that version
+    2. Otherwise, keep the newest version (by file_modified_at)
+    """
+    result = await resolve_duplicates_with_source_of_truth(db, delete_files=request.delete_files)
     if not result.get("success"):
         raise HTTPException(status_code=400, detail=result.get("error", "Unknown error"))
     return result

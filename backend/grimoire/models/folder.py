@@ -21,6 +21,7 @@ class WatchedFolder(Base):
     path: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
     label: Mapped[str | None] = mapped_column(String(255), nullable=True)
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    is_source_of_truth: Mapped[bool] = mapped_column(Boolean, default=False)
     last_scanned_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(

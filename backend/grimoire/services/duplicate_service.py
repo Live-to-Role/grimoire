@@ -7,7 +7,7 @@ from typing import Any
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from grimoire.models import Product
+from grimoire.models import Product, WatchedFolder
 
 logger = logging.getLogger(__name__)
 
@@ -392,3 +392,247 @@ async def cleanup_orphaned_duplicates(db: AsyncSession) -> dict[str, Any]:
         logger.info(f"Cleaned up {cleaned} orphaned duplicate records")
     
     return {"cleaned": cleaned}
+
+
+async def get_source_of_truth_folder(db: AsyncSession) -> WatchedFolder | None:
+    """Get the folder marked as source of truth, if any."""
+    query = select(WatchedFolder).where(WatchedFolder.is_source_of_truth == True)
+    result = await db.execute(query)
+    return result.scalar_one_or_none()
+
+
+async def set_source_of_truth_folder(
+    db: AsyncSession,
+    folder_id: int | None,
+) -> dict[str, Any]:
+    """
+    Set a folder as the source of truth. Only one folder can be source of truth.
+    Pass folder_id=None to clear the source of truth.
+    """
+    # Clear existing source of truth
+    query = select(WatchedFolder).where(WatchedFolder.is_source_of_truth == True)
+    result = await db.execute(query)
+    for folder in result.scalars().all():
+        folder.is_source_of_truth = False
+    
+    if folder_id is not None:
+        # Set new source of truth
+        folder_query = select(WatchedFolder).where(WatchedFolder.id == folder_id)
+        folder_result = await db.execute(folder_query)
+        folder = folder_result.scalar_one_or_none()
+        
+        if not folder:
+            return {"success": False, "error": "Folder not found"}
+        
+        folder.is_source_of_truth = True
+        await db.commit()
+        return {"success": True, "folder_id": folder_id, "folder_path": folder.path}
+    
+    await db.commit()
+    return {"success": True, "folder_id": None, "message": "Source of truth cleared"}
+
+
+async def preview_duplicate_resolution(db: AsyncSession) -> dict[str, Any]:
+    """
+    Preview what would happen if duplicates were resolved using source of truth rules.
+    
+    Rules:
+    1. If a duplicate exists in source of truth folder, keep that version
+    2. Otherwise, keep the newest version (by file_modified_at)
+    
+    Returns:
+        Preview of resolution actions without executing them
+    """
+    source_folder = await get_source_of_truth_folder(db)
+    
+    # Get all duplicate groups
+    groups = await get_duplicate_groups(db)
+    
+    if not groups:
+        return {
+            "success": True,
+            "has_source_of_truth": source_folder is not None,
+            "source_of_truth_folder": source_folder.path if source_folder else None,
+            "groups": [],
+            "total_duplicates": 0,
+            "total_space_bytes": 0,
+            "total_space_mb": 0,
+        }
+    
+    resolution_preview = []
+    total_to_delete = 0
+    total_space_to_free = 0
+    
+    for group in groups:
+        file_hash = group["file_hash"]
+        
+        # Get full product objects for this group
+        query = select(Product).where(Product.file_hash == file_hash)
+        result = await db.execute(query)
+        products = list(result.scalars().all())
+        
+        if len(products) < 2:
+            continue
+        
+        # Determine which to keep
+        keep_product = None
+        keep_reason = ""
+        
+        if source_folder:
+            # Check if any product is in source of truth folder
+            for p in products:
+                if p.watched_folder_id == source_folder.id:
+                    keep_product = p
+                    keep_reason = "source_of_truth"
+                    break
+        
+        if not keep_product:
+            # Keep newest by file modification time
+            products_with_mtime = [p for p in products if p.file_modified_at]
+            if products_with_mtime:
+                keep_product = max(products_with_mtime, key=lambda p: p.file_modified_at)
+                keep_reason = "newest"
+            else:
+                # Fallback to oldest by created_at (original behavior)
+                keep_product = min(products, key=lambda p: p.created_at)
+                keep_reason = "oldest_fallback"
+        
+        # Products to delete
+        to_delete = [p for p in products if p.id != keep_product.id]
+        space_freed = sum(p.file_size or 0 for p in to_delete)
+        
+        total_to_delete += len(to_delete)
+        total_space_to_free += space_freed
+        
+        resolution_preview.append({
+            "file_hash": file_hash,
+            "keep": {
+                "id": keep_product.id,
+                "title": keep_product.title or keep_product.file_name,
+                "file_path": keep_product.file_path,
+                "file_size": keep_product.file_size,
+                "folder_id": keep_product.watched_folder_id,
+            },
+            "keep_reason": keep_reason,
+            "delete": [
+                {
+                    "id": p.id,
+                    "title": p.title or p.file_name,
+                    "file_path": p.file_path,
+                    "file_size": p.file_size,
+                    "folder_id": p.watched_folder_id,
+                }
+                for p in to_delete
+            ],
+            "space_freed_bytes": space_freed,
+        })
+    
+    return {
+        "success": True,
+        "has_source_of_truth": source_folder is not None,
+        "source_of_truth_folder": source_folder.path if source_folder else None,
+        "source_of_truth_folder_id": source_folder.id if source_folder else None,
+        "groups": resolution_preview,
+        "total_groups": len(resolution_preview),
+        "total_duplicates": total_to_delete,
+        "total_space_bytes": total_space_to_free,
+        "total_space_mb": round(total_space_to_free / (1024 * 1024), 2),
+    }
+
+
+async def resolve_duplicates_with_source_of_truth(
+    db: AsyncSession,
+    delete_files: bool = False,
+) -> dict[str, Any]:
+    """
+    Resolve all duplicates using source of truth rules.
+    
+    Rules:
+    1. If a duplicate exists in source of truth folder, keep that version
+    2. Otherwise, keep the newest version (by file_modified_at)
+    
+    Args:
+        db: Database session
+        delete_files: If True, also delete the actual files from disk
+        
+    Returns:
+        Summary of resolution actions
+    """
+    from pathlib import Path
+    
+    preview = await preview_duplicate_resolution(db)
+    
+    if not preview["success"]:
+        return preview
+    
+    if not preview["groups"]:
+        return {
+            "success": True,
+            "message": "No duplicates to resolve",
+            "deleted_records": 0,
+            "deleted_files": 0,
+            "space_freed_bytes": 0,
+            "space_freed_mb": 0,
+        }
+    
+    deleted_records = 0
+    deleted_files = 0
+    space_freed = 0
+    errors = []
+    
+    for group in preview["groups"]:
+        keep_id = group["keep"]["id"]
+        
+        for to_delete in group["delete"]:
+            product_id = to_delete["id"]
+            
+            # Get the product
+            query = select(Product).where(Product.id == product_id)
+            result = await db.execute(query)
+            product = result.scalar_one_or_none()
+            
+            if not product:
+                errors.append(f"Product {product_id} not found")
+                continue
+            
+            space_freed += product.file_size or 0
+            
+            # Delete the actual file if requested
+            if delete_files:
+                try:
+                    file_path = Path(product.file_path)
+                    if file_path.exists():
+                        file_path.unlink()
+                        deleted_files += 1
+                        logger.info(f"Deleted file: {product.file_path}")
+                except Exception as e:
+                    errors.append(f"Failed to delete file for {product_id}: {str(e)}")
+            
+            # Delete the database record
+            await db.delete(product)
+            deleted_records += 1
+        
+        # Update the kept product to not be a duplicate
+        keep_query = select(Product).where(Product.id == keep_id)
+        keep_result = await db.execute(keep_query)
+        keep_product = keep_result.scalar_one_or_none()
+        if keep_product:
+            keep_product.is_duplicate = False
+            keep_product.duplicate_of_id = None
+            keep_product.duplicate_reason = None
+    
+    await db.commit()
+    
+    logger.info(
+        f"Duplicate resolution complete: deleted {deleted_records} records, "
+        f"freed {round(space_freed / (1024 * 1024), 2)} MB"
+    )
+    
+    return {
+        "success": True,
+        "deleted_records": deleted_records,
+        "deleted_files": deleted_files,
+        "space_freed_bytes": space_freed,
+        "space_freed_mb": round(space_freed / (1024 * 1024), 2),
+        "errors": errors if errors else None,
+    }

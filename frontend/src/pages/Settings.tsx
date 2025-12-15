@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Save, Database, Sparkles, Check, AlertCircle, FolderOpen, Plus, Trash2 } from 'lucide-react';
+import { Save, Database, Sparkles, Check, AlertCircle, FolderOpen, Plus, Trash2, Star, Copy, X } from 'lucide-react';
 import apiClient from '../api/client';
 
 interface CodexStatus {
@@ -28,9 +28,40 @@ interface WatchedFolder {
   path: string;
   label: string;
   enabled: boolean;
+  is_source_of_truth: boolean;
   last_scanned_at: string | null;
   created_at: string;
   product_count: number;
+}
+
+interface DuplicatePreview {
+  success: boolean;
+  has_source_of_truth: boolean;
+  source_of_truth_folder: string | null;
+  source_of_truth_folder_id: number | null;
+  groups: Array<{
+    file_hash: string;
+    keep: {
+      id: number;
+      title: string;
+      file_path: string;
+      file_size: number;
+      folder_id: number;
+    };
+    keep_reason: string;
+    delete: Array<{
+      id: number;
+      title: string;
+      file_path: string;
+      file_size: number;
+      folder_id: number;
+    }>;
+    space_freed_bytes: number;
+  }>;
+  total_groups: number;
+  total_duplicates: number;
+  total_space_bytes: number;
+  total_space_mb: number;
 }
 
 export function Settings() {
@@ -47,6 +78,11 @@ export function Settings() {
   const [newFolderPath, setNewFolderPath] = useState('');
   const [newFolderLabel, setNewFolderLabel] = useState('');
   const [folderError, setFolderError] = useState<string | null>(null);
+  const [showDuplicateModal, setShowDuplicateModal] = useState(false);
+  const [duplicatePreview, setDuplicatePreview] = useState<DuplicatePreview | null>(null);
+  const [isLoadingPreview, setIsLoadingPreview] = useState(false);
+  const [isResolving, setIsResolving] = useState(false);
+  const [deleteFiles, setDeleteFiles] = useState(false);
 
   const { data: codexStatus } = useQuery({
     queryKey: ['codex-status'],
@@ -114,6 +150,42 @@ export function Settings() {
     },
   });
 
+  const setSourceOfTruthMutation = useMutation({
+    mutationFn: async ({ id, isSourceOfTruth }: { id: number; isSourceOfTruth: boolean }) => {
+      await apiClient.patch(`/folders/${id}`, { is_source_of_truth: isSourceOfTruth });
+    },
+    onSuccess: () => {
+      refetchFolders();
+    },
+  });
+
+  const loadDuplicatePreview = async () => {
+    setIsLoadingPreview(true);
+    try {
+      const res = await apiClient.get<DuplicatePreview>('/duplicates/resolve/preview');
+      setDuplicatePreview(res.data);
+      setShowDuplicateModal(true);
+    } catch (error) {
+      console.error('Failed to load duplicate preview:', error);
+    } finally {
+      setIsLoadingPreview(false);
+    }
+  };
+
+  const executeDuplicateResolution = async () => {
+    setIsResolving(true);
+    try {
+      await apiClient.post('/duplicates/resolve/execute', { delete_files: deleteFiles });
+      setShowDuplicateModal(false);
+      setDuplicatePreview(null);
+      refetchFolders();
+    } catch (error) {
+      console.error('Failed to resolve duplicates:', error);
+    } finally {
+      setIsResolving(false);
+    }
+  };
+
   useEffect(() => {
     if (savedSettings) {
       setSettings((prev) => ({ ...prev, ...savedSettings }));
@@ -167,7 +239,11 @@ export function Settings() {
                 watchedFolders.map((folder) => (
                   <div
                     key={folder.id}
-                    className="flex items-center justify-between rounded-lg border border-neutral-200 bg-neutral-50 p-3"
+                    className={`flex items-center justify-between rounded-lg border p-3 ${
+                      folder.is_source_of_truth
+                        ? 'border-amber-300 bg-amber-50'
+                        : 'border-neutral-200 bg-neutral-50'
+                    }`}
                   >
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
@@ -179,6 +255,12 @@ export function Settings() {
                             ({folder.path})
                           </span>
                         )}
+                        {folder.is_source_of_truth && (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">
+                            <Star className="h-3 w-3 fill-amber-500" />
+                            Source of Truth
+                          </span>
+                        )}
                       </div>
                       <p className="text-xs text-neutral-500">
                         {folder.product_count} products
@@ -188,6 +270,22 @@ export function Settings() {
                       </p>
                     </div>
                     <div className="flex items-center gap-2 ml-2">
+                      <button
+                        onClick={() =>
+                          setSourceOfTruthMutation.mutate({
+                            id: folder.id,
+                            isSourceOfTruth: !folder.is_source_of_truth,
+                          })
+                        }
+                        className={`p-1 ${
+                          folder.is_source_of_truth
+                            ? 'text-amber-500 hover:text-amber-600'
+                            : 'text-neutral-400 hover:text-amber-500'
+                        }`}
+                        title={folder.is_source_of_truth ? 'Remove as source of truth' : 'Set as source of truth'}
+                      >
+                        <Star className={`h-4 w-4 ${folder.is_source_of_truth ? 'fill-amber-500' : ''}`} />
+                      </button>
                       <label className="flex items-center gap-1">
                         <input
                           type="checkbox"
@@ -263,6 +361,26 @@ export function Settings() {
               <p className="mt-2 text-xs text-neutral-500">
                 Enter the path to a folder containing PDF files. The folder must be accessible to the application.
               </p>
+            </div>
+
+            {/* Duplicate Resolution */}
+            <div className="border-t border-neutral-200 pt-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-neutral-700">Duplicate Management</p>
+                  <p className="text-xs text-neutral-500">
+                    Resolve duplicate files using source of truth rules
+                  </p>
+                </div>
+                <button
+                  onClick={loadDuplicatePreview}
+                  disabled={isLoadingPreview}
+                  className="inline-flex items-center gap-2 rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-50 disabled:opacity-50"
+                >
+                  <Copy className="h-4 w-4" />
+                  {isLoadingPreview ? 'Loading...' : 'Resolve Duplicates'}
+                </button>
+              </div>
             </div>
           </section>
 
@@ -448,6 +566,139 @@ export function Settings() {
           </button>
         </div>
       </footer>
+
+      {/* Duplicate Resolution Modal */}
+      {showDuplicateModal && duplicatePreview && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="mx-4 max-h-[80vh] w-full max-w-2xl overflow-hidden rounded-xl bg-white shadow-xl">
+            <div className="flex items-center justify-between border-b border-neutral-200 px-6 py-4">
+              <h2 className="text-lg font-semibold text-neutral-900">Resolve Duplicates</h2>
+              <button
+                onClick={() => {
+                  setShowDuplicateModal(false);
+                  setDuplicatePreview(null);
+                }}
+                className="p-1 text-neutral-400 hover:text-neutral-600"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="max-h-[60vh] overflow-auto p-6">
+              {duplicatePreview.total_duplicates === 0 ? (
+                <div className="text-center py-8">
+                  <Check className="mx-auto h-12 w-12 text-green-500" />
+                  <p className="mt-2 text-lg font-medium text-neutral-900">No duplicates found</p>
+                  <p className="text-sm text-neutral-500">Your library is clean!</p>
+                </div>
+              ) : (
+                <>
+                  {/* Summary */}
+                  <div className="mb-6 rounded-lg bg-neutral-50 p-4">
+                    <div className="grid grid-cols-3 gap-4 text-center">
+                      <div>
+                        <p className="text-2xl font-bold text-neutral-900">{duplicatePreview.total_groups}</p>
+                        <p className="text-xs text-neutral-500">Duplicate Groups</p>
+                      </div>
+                      <div>
+                        <p className="text-2xl font-bold text-neutral-900">{duplicatePreview.total_duplicates}</p>
+                        <p className="text-xs text-neutral-500">Files to Remove</p>
+                      </div>
+                      <div>
+                        <p className="text-2xl font-bold text-amber-600">{duplicatePreview.total_space_mb} MB</p>
+                        <p className="text-xs text-neutral-500">Space to Free</p>
+                      </div>
+                    </div>
+                    {duplicatePreview.has_source_of_truth && (
+                      <p className="mt-3 text-center text-sm text-neutral-600">
+                        Source of truth: <span className="font-medium">{duplicatePreview.source_of_truth_folder}</span>
+                      </p>
+                    )}
+                    {!duplicatePreview.has_source_of_truth && (
+                      <p className="mt-3 text-center text-sm text-amber-600">
+                        No source of truth set. Will keep newest version of each duplicate.
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Preview list */}
+                  <div className="space-y-3">
+                    <p className="text-sm font-medium text-neutral-700">Preview (first 10 groups):</p>
+                    {duplicatePreview.groups.slice(0, 10).map((group) => (
+                      <div key={group.file_hash} className="rounded-lg border border-neutral-200 p-3">
+                        <div className="flex items-start justify-between">
+                          <div className="flex-1 min-w-0">
+                            <p className="font-medium text-neutral-900 truncate">{group.keep.title}</p>
+                            <p className="text-xs text-green-600">
+                              Keep ({group.keep_reason === 'source_of_truth' ? 'source of truth' : 'newest'})
+                            </p>
+                          </div>
+                          <span className="ml-2 text-xs text-neutral-500">
+                            {Math.round(group.space_freed_bytes / 1024 / 1024)} MB freed
+                          </span>
+                        </div>
+                        <div className="mt-2 space-y-1">
+                          {group.delete.map((item) => (
+                            <p key={item.id} className="text-xs text-red-600 truncate">
+                              Remove: {item.file_path}
+                            </p>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                    {duplicatePreview.groups.length > 10 && (
+                      <p className="text-center text-sm text-neutral-500">
+                        ...and {duplicatePreview.groups.length - 10} more groups
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Options */}
+                  <div className="mt-6 rounded-lg border border-amber-200 bg-amber-50 p-4">
+                    <label className="flex items-start gap-3">
+                      <input
+                        type="checkbox"
+                        checked={deleteFiles}
+                        onChange={(e) => setDeleteFiles(e.target.checked)}
+                        className="mt-0.5 h-4 w-4 rounded border-neutral-300 text-amber-600 focus:ring-amber-500"
+                      />
+                      <div>
+                        <span className="text-sm font-medium text-amber-800">
+                          Also delete files from disk
+                        </span>
+                        <p className="text-xs text-amber-700">
+                          If unchecked, only database records will be removed. Files will remain on disk.
+                        </p>
+                      </div>
+                    </label>
+                  </div>
+                </>
+              )}
+            </div>
+
+            <div className="flex items-center justify-end gap-3 border-t border-neutral-200 px-6 py-4">
+              <button
+                onClick={() => {
+                  setShowDuplicateModal(false);
+                  setDuplicatePreview(null);
+                }}
+                className="rounded-lg border border-neutral-300 px-4 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-50"
+              >
+                Cancel
+              </button>
+              {duplicatePreview.total_duplicates > 0 && (
+                <button
+                  onClick={executeDuplicateResolution}
+                  disabled={isResolving}
+                  className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50"
+                >
+                  {isResolving ? 'Resolving...' : `Remove ${duplicatePreview.total_duplicates} Duplicates`}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

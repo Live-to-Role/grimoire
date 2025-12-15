@@ -39,6 +39,7 @@ async def list_folders(db: DbSession) -> list[WatchedFolderResponse]:
                 path=folder.path,
                 label=folder.label,
                 enabled=folder.enabled,
+                is_source_of_truth=folder.is_source_of_truth,
                 last_scanned_at=folder.last_scanned_at,
                 created_at=folder.created_at,
                 product_count=product_count,
@@ -74,6 +75,7 @@ async def create_folder(db: DbSession, data: WatchedFolderCreate) -> WatchedFold
         path=folder.path,
         label=folder.label,
         enabled=folder.enabled,
+        is_source_of_truth=folder.is_source_of_truth,
         last_scanned_at=folder.last_scanned_at,
         created_at=folder.created_at,
         product_count=0,
@@ -99,6 +101,7 @@ async def get_folder(db: DbSession, folder_id: int) -> WatchedFolderResponse:
         path=folder.path,
         label=folder.label,
         enabled=folder.enabled,
+        is_source_of_truth=folder.is_source_of_truth,
         last_scanned_at=folder.last_scanned_at,
         created_at=folder.created_at,
         product_count=product_count,
@@ -118,6 +121,17 @@ async def update_folder(
         raise HTTPException(status_code=404, detail="Folder not found")
 
     update_dict = data.model_dump(exclude_unset=True)
+    
+    # If setting this folder as source of truth, clear others first
+    if update_dict.get("is_source_of_truth") is True:
+        clear_query = select(WatchedFolder).where(
+            WatchedFolder.is_source_of_truth == True,
+            WatchedFolder.id != folder_id
+        )
+        clear_result = await db.execute(clear_query)
+        for other_folder in clear_result.scalars().all():
+            other_folder.is_source_of_truth = False
+    
     for field, value in update_dict.items():
         setattr(folder, field, value)
 
@@ -133,6 +147,7 @@ async def update_folder(
         path=folder.path,
         label=folder.label,
         enabled=folder.enabled,
+        is_source_of_truth=folder.is_source_of_truth,
         last_scanned_at=folder.last_scanned_at,
         created_at=folder.created_at,
         product_count=product_count,
