@@ -9,6 +9,8 @@ import {
   Sparkles,
   Settings,
   ListTodo,
+  BookOpen,
+  HardDrive,
 } from 'lucide-react';
 import apiClient from '../api/client';
 
@@ -240,6 +242,30 @@ export function Sidebar({
       </nav>
 
       <div className="border-t border-neutral-200 p-2 space-y-1">
+        <button
+          onClick={() => onViewChange('campaigns')}
+          aria-current={activeView === 'campaigns' ? 'page' : undefined}
+          className={`flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm ${
+            activeView === 'campaigns'
+              ? 'bg-purple-100 text-purple-700'
+              : 'text-neutral-700 hover:bg-neutral-100'
+          }`}
+        >
+          <BookOpen className="h-4 w-4" aria-hidden="true" />
+          Campaigns
+        </button>
+        <button
+          onClick={() => onViewChange('library-management')}
+          aria-current={activeView === 'library-management' ? 'page' : undefined}
+          className={`flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm ${
+            activeView === 'library-management'
+              ? 'bg-purple-100 text-purple-700'
+              : 'text-neutral-700 hover:bg-neutral-100'
+          }`}
+        >
+          <HardDrive className="h-4 w-4" aria-hidden="true" />
+          Library Management
+        </button>
         <button
           onClick={() => onViewChange('queue')}
           aria-current={activeView === 'queue' ? 'page' : undefined}

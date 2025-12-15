@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Library } from './pages/Library';
 import { Settings } from './pages/Settings';
+import { Campaigns } from './pages/Campaigns';
+import { LibraryManagement } from './pages/LibraryManagement';
 import { Sidebar } from './components/Sidebar';
 import { ProcessingQueue } from './components/ProcessingQueue';
 
@@ -35,6 +37,10 @@ function App() {
             <Settings />
           ) : activeView === 'queue' ? (
             <ProcessingQueue onClose={() => setActiveView('library')} />
+          ) : activeView === 'campaigns' ? (
+            <Campaigns />
+          ) : activeView === 'library-management' ? (
+            <LibraryManagement />
           ) : (
             <Library
               selectedCollection={selectedCollection}

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Save, Database, Sparkles, Check, AlertCircle } from 'lucide-react';
+import { Save, Database, Sparkles, Check, AlertCircle, FolderOpen, Plus, Trash2 } from 'lucide-react';
 import apiClient from '../api/client';
 
 interface CodexStatus {
@@ -23,6 +23,16 @@ interface SettingsData {
   ollama_base_url?: string;
 }
 
+interface WatchedFolder {
+  id: number;
+  path: string;
+  label: string;
+  enabled: boolean;
+  last_scanned_at: string | null;
+  created_at: string;
+  product_count: number;
+}
+
 export function Settings() {
   const queryClient = useQueryClient();
   const [settings, setSettings] = useState<SettingsData>({
@@ -34,6 +44,9 @@ export function Settings() {
     ollama_base_url: 'http://localhost:11434',
   });
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  const [newFolderPath, setNewFolderPath] = useState('');
+  const [newFolderLabel, setNewFolderLabel] = useState('');
+  const [folderError, setFolderError] = useState<string | null>(null);
 
   const { data: codexStatus } = useQuery({
     queryKey: ['codex-status'],
@@ -56,6 +69,48 @@ export function Settings() {
     queryFn: async () => {
       const res = await apiClient.get<SettingsData>('/settings');
       return res.data;
+    },
+  });
+
+  const { data: watchedFolders, refetch: refetchFolders } = useQuery({
+    queryKey: ['watched-folders'],
+    queryFn: async () => {
+      const res = await apiClient.get<WatchedFolder[]>('/folders');
+      return res.data;
+    },
+  });
+
+  const addFolderMutation = useMutation({
+    mutationFn: async ({ path, label }: { path: string; label: string }) => {
+      const res = await apiClient.post('/folders', { path, label });
+      return res.data;
+    },
+    onSuccess: () => {
+      setNewFolderPath('');
+      setNewFolderLabel('');
+      setFolderError(null);
+      refetchFolders();
+    },
+    onError: (error: any) => {
+      setFolderError(error.response?.data?.detail || 'Failed to add folder');
+    },
+  });
+
+  const deleteFolderMutation = useMutation({
+    mutationFn: async (folderId: number) => {
+      await apiClient.delete(`/folders/${folderId}`);
+    },
+    onSuccess: () => {
+      refetchFolders();
+    },
+  });
+
+  const toggleFolderMutation = useMutation({
+    mutationFn: async ({ id, enabled }: { id: number; enabled: boolean }) => {
+      await apiClient.patch(`/folders/${id}`, { enabled });
+    },
+    onSuccess: () => {
+      refetchFolders();
     },
   });
 
@@ -94,6 +149,123 @@ export function Settings() {
 
       <main className="flex-1 overflow-auto p-6">
         <div className="mx-auto max-w-2xl space-y-8">
+          {/* Library Folders */}
+          <section className="rounded-xl border border-neutral-200 bg-white p-6">
+            <div className="mb-4 flex items-center gap-3">
+              <FolderOpen className="h-6 w-6 text-amber-500" />
+              <div>
+                <h2 className="text-lg font-semibold text-neutral-900">Library Folders</h2>
+                <p className="text-sm text-neutral-500">
+                  Configure folders containing your PDF library
+                </p>
+              </div>
+            </div>
+
+            {/* Existing folders */}
+            <div className="mb-4 space-y-2">
+              {watchedFolders && watchedFolders.length > 0 ? (
+                watchedFolders.map((folder) => (
+                  <div
+                    key={folder.id}
+                    className="flex items-center justify-between rounded-lg border border-neutral-200 bg-neutral-50 p-3"
+                  >
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium text-neutral-900 truncate">
+                          {folder.label || folder.path}
+                        </span>
+                        {folder.label && (
+                          <span className="text-xs text-neutral-500 truncate">
+                            ({folder.path})
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs text-neutral-500">
+                        {folder.product_count} products
+                        {folder.last_scanned_at && (
+                          <> · Last scanned {new Date(folder.last_scanned_at).toLocaleDateString()}</>
+                        )}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2 ml-2">
+                      <label className="flex items-center gap-1">
+                        <input
+                          type="checkbox"
+                          checked={folder.enabled}
+                          onChange={(e) =>
+                            toggleFolderMutation.mutate({ id: folder.id, enabled: e.target.checked })
+                          }
+                          className="h-4 w-4 rounded border-neutral-300 text-purple-600 focus:ring-purple-500"
+                        />
+                        <span className="text-xs text-neutral-500">Enabled</span>
+                      </label>
+                      <button
+                        onClick={() => {
+                          if (confirm('Remove this folder from your library?')) {
+                            deleteFolderMutation.mutate(folder.id);
+                          }
+                        }}
+                        className="p-1 text-neutral-400 hover:text-red-600"
+                        title="Remove folder"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="rounded-lg border border-dashed border-neutral-300 bg-neutral-50 p-4 text-center">
+                  <FolderOpen className="mx-auto h-8 w-8 text-neutral-300" />
+                  <p className="mt-2 text-sm text-neutral-500">No library folders configured</p>
+                </div>
+              )}
+            </div>
+
+            {/* Add new folder */}
+            <div className="border-t border-neutral-200 pt-4">
+              <p className="mb-2 text-sm font-medium text-neutral-700">Add Library Folder</p>
+              {folderError && (
+                <div className="mb-2 rounded-lg bg-red-50 p-2 text-sm text-red-600">
+                  {folderError}
+                </div>
+              )}
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={newFolderPath}
+                  onChange={(e) => setNewFolderPath(e.target.value)}
+                  placeholder="/path/to/pdfs"
+                  className="flex-1 rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500"
+                />
+                <input
+                  type="text"
+                  value={newFolderLabel}
+                  onChange={(e) => setNewFolderLabel(e.target.value)}
+                  placeholder="Label (optional)"
+                  className="w-40 rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500"
+                />
+                <button
+                  onClick={() => {
+                    if (newFolderPath.trim()) {
+                      addFolderMutation.mutate({
+                        path: newFolderPath.trim(),
+                        label: newFolderLabel.trim() || newFolderPath.trim().split('/').pop() || 'Library',
+                      });
+                    }
+                  }}
+                  disabled={!newFolderPath.trim() || addFolderMutation.isPending}
+                  className="inline-flex items-center gap-1 rounded-lg bg-purple-600 px-3 py-2 text-sm font-medium text-white hover:bg-purple-700 disabled:opacity-50"
+                >
+                  <Plus className="h-4 w-4" />
+                  Add
+                </button>
+              </div>
+              <p className="mt-2 text-xs text-neutral-500">
+                Enter the path to a folder containing PDF files. The folder must be accessible to the application.
+              </p>
+            </div>
+          </section>
+
           {/* Codex Settings */}
           <section className="rounded-xl border border-neutral-200 bg-white p-6">
             <div className="mb-4 flex items-center gap-3">

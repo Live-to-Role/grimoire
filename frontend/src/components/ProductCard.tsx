@@ -1,6 +1,9 @@
-import { Book } from 'lucide-react';
+import { useState } from 'react';
+import { Book, FileText, Loader2, Check } from 'lucide-react';
+import { useMutation } from '@tanstack/react-query';
 import type { Product } from '../types/product';
 import { getCoverUrl } from '../api/products';
+import apiClient from '../api/client';
 
 interface ProductCardProps {
   product: Product;
@@ -8,9 +11,33 @@ interface ProductCardProps {
 }
 
 export function ProductCard({ product, onClick }: ProductCardProps) {
+  const [queued, setQueued] = useState(false);
+
+  const queueMutation = useMutation({
+    mutationFn: async () => {
+      await apiClient.post('/queue', {
+        product_id: product.id,
+        task_type: 'text',
+        priority: 5,
+      });
+    },
+    onSuccess: () => {
+      setQueued(true);
+    },
+  });
+
   const handleClick = () => {
     onClick?.(product);
   };
+
+  const handleQueueClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!queued && !queueMutation.isPending) {
+      queueMutation.mutate();
+    }
+  };
+
+  const needsExtraction = !product.processing_status?.text_extracted;
 
   return (
     <article
@@ -20,7 +47,7 @@ export function ProductCard({ product, onClick }: ProductCardProps) {
       tabIndex={0}
       onKeyDown={(e) => e.key === 'Enter' && handleClick()}
     >
-      <div className="aspect-[3/4] w-full overflow-hidden bg-neutral-100">
+      <div className="aspect-[3/4] w-full overflow-hidden bg-neutral-100 relative">
         {product.cover_url ? (
           <img
             src={getCoverUrl(product.id)}
@@ -31,6 +58,46 @@ export function ProductCard({ product, onClick }: ProductCardProps) {
         ) : (
           <div className="flex h-full w-full items-center justify-center bg-neutral-200">
             <Book className="h-12 w-12 text-neutral-400" />
+          </div>
+        )}
+        
+        {/* Queue button - shows on hover for products needing extraction */}
+        {needsExtraction && (
+          <button
+            onClick={handleQueueClick}
+            disabled={queued || queueMutation.isPending}
+            className={`absolute bottom-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity rounded-lg px-2 py-1.5 text-xs font-medium shadow-lg flex items-center gap-1 ${
+              queued
+                ? 'bg-green-600 text-white'
+                : queueMutation.isPending
+                ? 'bg-blue-500 text-white'
+                : 'bg-blue-600 text-white hover:bg-blue-700'
+            }`}
+            title="Add to text extraction queue"
+          >
+            {queued ? (
+              <>
+                <Check className="h-3 w-3" />
+                Queued
+              </>
+            ) : queueMutation.isPending ? (
+              <>
+                <Loader2 className="h-3 w-3 animate-spin" />
+                Adding...
+              </>
+            ) : (
+              <>
+                <FileText className="h-3 w-3" />
+                Queue
+              </>
+            )}
+          </button>
+        )}
+        
+        {/* Extraction status indicator */}
+        {product.processing_status?.text_extracted && (
+          <div className="absolute top-2 right-2 rounded-full bg-green-500 p-1" title="Text extracted">
+            <FileText className="h-3 w-3 text-white" />
           </div>
         )}
       </div>

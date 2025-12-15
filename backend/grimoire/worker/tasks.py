@@ -4,6 +4,8 @@ import asyncio
 from datetime import datetime, UTC
 from pathlib import Path
 
+from huey import crontab
+
 from grimoire.worker.queue import huey
 
 
@@ -95,7 +97,7 @@ def process_metadata(product_id: int) -> bool:
 
 @huey.task()
 def scan_folder_task(folder_id: int, force: bool = False) -> int:
-    """Scan a folder for new PDFs.
+    """Scan a folder for new PDFs and queue them for processing.
 
     Args:
         folder_id: ID of the folder to scan
@@ -119,16 +121,101 @@ def scan_folder_task(folder_id: int, force: bool = False) -> int:
             if not folder:
                 return 0
 
-            products = await scan_folder(db, folder, force=force)
+            # scan_folder now queues products in batches during the scan
+            result = await scan_folder(db, folder, force=force)
             folder.last_scanned_at = datetime.now(UTC)
             await db.commit()
+            
+            # Trigger queue processing to handle any queued items
+            process_queue_task()
 
-            return len(products)
+            return result.get("new_count", 0)
 
     return run_async(_scan())
 
 
-from huey import crontab
+@huey.task()
+def process_queue_task(batch_size: int = 50) -> int:
+    """Process pending items from the ProcessingQueue.
+    
+    Args:
+        batch_size: Number of items to process per run
+        
+    Returns:
+        Number of items processed
+    """
+    from sqlalchemy import select
+    
+    from grimoire.database import async_session_maker
+    from grimoire.models import ProcessingQueue, Product
+    from grimoire.services.processor import process_cover_sync
+    
+    async def _process():
+        async with async_session_maker() as db:
+            # Get pending items ordered by priority
+            query = (
+                select(ProcessingQueue)
+                .where(ProcessingQueue.status == "pending")
+                .order_by(ProcessingQueue.priority.desc(), ProcessingQueue.created_at.asc())
+                .limit(batch_size)
+            )
+            result = await db.execute(query)
+            items = list(result.scalars().all())
+            
+            if not items:
+                return 0
+                
+            processed = 0
+            for item in items:
+                # Mark as processing
+                item.status = "processing"
+                item.started_at = datetime.now(UTC)
+                await db.commit()
+                
+                # Get the product
+                prod_result = await db.execute(
+                    select(Product).where(Product.id == item.product_id)
+                )
+                product = prod_result.scalar_one_or_none()
+                
+                if not product:
+                    item.status = "failed"
+                    item.error_message = "Product not found"
+                    item.completed_at = datetime.now(UTC)
+                    await db.commit()
+                    continue
+                
+                # Process based on task type
+                success = False
+                if item.task_type == "cover":
+                    success = process_cover_sync(product)
+                
+                # Update queue item status
+                if success:
+                    item.status = "completed"
+                    processed += 1
+                else:
+                    item.attempts += 1
+                    if item.attempts >= item.max_attempts:
+                        item.status = "failed"
+                        item.error_message = "Max attempts reached"
+                    else:
+                        item.status = "pending"  # Retry later
+                
+                item.completed_at = datetime.now(UTC)
+                await db.commit()
+            
+            # If there are more pending items, queue another batch
+            remaining = await db.execute(
+                select(ProcessingQueue).where(ProcessingQueue.status == "pending").limit(1)
+            )
+            if remaining.scalar_one_or_none():
+                process_queue_task()  # Queue next batch
+                
+            return processed
+    
+    return run_async(_process())
+
 
 @huey.periodic_task(crontab(minute="*/30"))
 def periodic_scan() -> None:

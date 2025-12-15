@@ -1,5 +1,20 @@
 import { useState } from 'react';
-import { X, FileText, Book, Calendar, Users, Clock, ExternalLink, Eye } from 'lucide-react';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import {
+  X,
+  FileText,
+  Book,
+  Calendar,
+  Users,
+  Clock,
+  ExternalLink,
+  Eye,
+  Download,
+  Wand2,
+  Loader2,
+  Sparkles,
+} from 'lucide-react';
+import apiClient from '../api/client';
 import type { Product } from '../types/product';
 import { getProductText } from '../api/search';
 import { getCoverUrl } from '../api/products';
@@ -12,12 +27,100 @@ interface ProductDetailProps {
 }
 
 export function ProductDetail({ product, onClose }: ProductDetailProps) {
+  const queryClient = useQueryClient();
   const focusTrapRef = useFocusTrap<HTMLDivElement>({ enabled: true, restoreFocus: true });
-  const [activeTab, setActiveTab] = useState<'info' | 'text'>('info');
+  const [activeTab, setActiveTab] = useState<'info' | 'text' | 'extract' | 'export'>('info');
   const [textContent, setTextContent] = useState<string | null>(null);
   const [textLoading, setTextLoading] = useState(false);
   const [textError, setTextError] = useState<string | null>(null);
   const [showPdfViewer, setShowPdfViewer] = useState(false);
+  const [extractedContent, setExtractedContent] = useState<Record<string, unknown[]> | null>(null);
+  const [localProduct, setLocalProduct] = useState(product);
+
+  const extractTextMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiClient.post(`/products/${product.id}/extract`, {}, {
+        params: { use_marker: false },
+      });
+      return res.data;
+    },
+    onSuccess: () => {
+      setLocalProduct(prev => ({
+        ...prev,
+        processing_status: { ...prev.processing_status, text_extracted: true },
+      }));
+      setTextError(null);
+      queryClient.invalidateQueries({ queryKey: ['products'] });
+      loadText();
+    },
+  });
+
+  const identifyMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiClient.post(`/ai/identify/${product.id}`, {
+        provider: 'ollama',
+        apply: true,
+      });
+      return res.data;
+    },
+    onSuccess: (data) => {
+      if (data.applied && data.identification) {
+        setLocalProduct(prev => ({
+          ...prev,
+          title: data.identification.title || prev.title,
+          publisher: data.identification.publisher || prev.publisher,
+          game_system: data.identification.game_system || prev.game_system,
+          product_type: data.identification.product_type || prev.product_type,
+          processing_status: { ...prev.processing_status, ai_identified: true },
+        }));
+        queryClient.invalidateQueries({ queryKey: ['products'] });
+      }
+    },
+  });
+
+  const extractMutation = useMutation({
+    mutationFn: async (types: { monsters?: boolean; spells?: boolean; items?: boolean; npcs?: boolean }) => {
+      const res = await apiClient.post(`/structured/all/${product.id}`, {}, {
+        params: types,
+      });
+      return res.data;
+    },
+    onSuccess: (data) => {
+      setExtractedContent(data);
+    },
+  });
+
+  const exportFoundryMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiClient.post(`/export/foundry/${product.id}`, {});
+      return res.data;
+    },
+    onSuccess: (data) => {
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${product.title || 'export'}-foundry.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+    },
+  });
+
+  const exportObsidianMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiClient.post(`/export/obsidian/${product.id}`, {});
+      return res.data;
+    },
+    onSuccess: (data) => {
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${product.title || 'export'}-obsidian.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+    },
+  });
 
   const loadText = async () => {
     if (textContent) return;
@@ -33,7 +136,7 @@ export function ProductDetail({ product, onClose }: ProductDetailProps) {
     }
   };
 
-  const handleTabChange = (tab: 'info' | 'text') => {
+  const handleTabChange = (tab: 'info' | 'text' | 'extract' | 'export') => {
     setActiveTab(tab);
     if (tab === 'text') {
       loadText();
@@ -95,6 +198,34 @@ export function ProductDetail({ product, onClose }: ProductDetailProps) {
             }`}
           >
             Extracted Text
+          </button>
+          <button
+            onClick={() => handleTabChange('extract')}
+            role="tab"
+            aria-selected={activeTab === 'extract'}
+            aria-controls="panel-extract"
+            id="tab-extract"
+            className={`px-6 py-3 text-sm font-medium ${
+              activeTab === 'extract'
+                ? 'border-b-2 border-purple-600 text-purple-600'
+                : 'text-neutral-600 hover:text-neutral-900'
+            }`}
+          >
+            Extract Content
+          </button>
+          <button
+            onClick={() => handleTabChange('export')}
+            role="tab"
+            aria-selected={activeTab === 'export'}
+            aria-controls="panel-export"
+            id="tab-export"
+            className={`px-6 py-3 text-sm font-medium ${
+              activeTab === 'export'
+                ? 'border-b-2 border-purple-600 text-purple-600'
+                : 'text-neutral-600 hover:text-neutral-900'
+            }`}
+          >
+            Export
           </button>
         </div>
 
@@ -220,20 +351,96 @@ export function ProductDetail({ product, onClose }: ProductDetailProps) {
                 </div>
               </div>
             </div>
-          ) : (
+          ) : activeTab === 'text' ? (
             <div 
               role="tabpanel"
               id="panel-text"
               aria-labelledby="tab-text"
               className="p-6"
             >
+              {/* Processing Status Bar */}
+              <div className="mb-4 flex items-center gap-4 rounded-lg border border-neutral-200 p-3">
+                <div className="flex items-center gap-2">
+                  <span className={`h-2 w-2 rounded-full ${localProduct.processing_status?.text_extracted ? 'bg-green-500' : 'bg-neutral-300'}`} />
+                  <span className="text-sm text-neutral-600">Text Extracted</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className={`h-2 w-2 rounded-full ${localProduct.processing_status?.ai_identified ? 'bg-green-500' : 'bg-neutral-300'}`} />
+                  <span className="text-sm text-neutral-600">AI Identified</span>
+                </div>
+                <div className="flex-1" />
+                {!localProduct.processing_status?.text_extracted && (
+                  <button
+                    onClick={() => extractTextMutation.mutate()}
+                    disabled={extractTextMutation.isPending}
+                    className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+                  >
+                    {extractTextMutation.isPending ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <FileText className="h-4 w-4" />
+                    )}
+                    Extract Text
+                  </button>
+                )}
+                {localProduct.processing_status?.text_extracted && !localProduct.processing_status?.ai_identified && (
+                  <button
+                    onClick={() => identifyMutation.mutate()}
+                    disabled={identifyMutation.isPending}
+                    className="inline-flex items-center gap-2 rounded-lg bg-purple-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-purple-700 disabled:opacity-50"
+                  >
+                    {identifyMutation.isPending ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Sparkles className="h-4 w-4" />
+                    )}
+                    AI Identify
+                  </button>
+                )}
+              </div>
+
+              {/* Extraction in progress */}
+              {extractTextMutation.isPending && (
+                <div className="mb-4 rounded-lg bg-blue-50 p-4 text-blue-800">
+                  <div className="flex items-center gap-2">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    <span>Extracting text from PDF... This may take a moment.</span>
+                  </div>
+                </div>
+              )}
+
+              {/* Identification result */}
+              {identifyMutation.isSuccess && identifyMutation.data?.applied && (
+                <div className="mb-4 rounded-lg bg-green-50 p-4 text-green-800">
+                  <p className="font-medium">AI Identification Complete!</p>
+                  <p className="text-sm mt-1">
+                    Identified as: {identifyMutation.data.identification?.title || 'Unknown'}
+                    {identifyMutation.data.identification?.game_system && ` (${identifyMutation.data.identification.game_system})`}
+                  </p>
+                </div>
+              )}
+
               {textLoading ? (
                 <div className="flex items-center justify-center py-12">
                   <div className="h-8 w-8 animate-spin rounded-full border-4 border-purple-200 border-t-purple-600" />
                 </div>
-              ) : textError ? (
-                <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-center text-amber-700">
-                  {textError}
+              ) : textError && !extractTextMutation.isPending ? (
+                <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-center">
+                  <p className="text-amber-700 mb-3">{textError}</p>
+                  {!localProduct.processing_status?.text_extracted && (
+                    <button
+                      onClick={() => extractTextMutation.mutate()}
+                      disabled={extractTextMutation.isPending}
+                      className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+                    >
+                      {extractTextMutation.isPending ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <FileText className="h-4 w-4" />
+                      )}
+                      Extract Text Now
+                    </button>
+                  )}
                 </div>
               ) : textContent ? (
                 <div className="prose prose-sm max-w-none">
@@ -243,7 +450,184 @@ export function ProductDetail({ product, onClose }: ProductDetailProps) {
                 </div>
               ) : null}
             </div>
-          )}
+          ) : activeTab === 'extract' ? (
+            <div
+              role="tabpanel"
+              id="panel-extract"
+              aria-labelledby="tab-extract"
+              className="p-6"
+            >
+              <div className="mb-6">
+                <h3 className="text-lg font-semibold text-neutral-900 mb-2">Extract Structured Content</h3>
+                <p className="text-sm text-neutral-500 mb-4">
+                  Use AI to extract monsters, spells, magic items, and NPCs from this product.
+                </p>
+                <button
+                  onClick={() => extractMutation.mutate({ monsters: true, spells: true, items: true, npcs: true })}
+                  disabled={extractMutation.isPending || !product.processing_status?.text_extracted}
+                  className="inline-flex items-center gap-2 rounded-lg bg-purple-600 px-4 py-2 text-sm font-medium text-white hover:bg-purple-700 disabled:opacity-50"
+                >
+                  {extractMutation.isPending ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Wand2 className="h-4 w-4" />
+                  )}
+                  Extract All Content
+                </button>
+                {!product.processing_status?.text_extracted && (
+                  <p className="mt-2 text-sm text-amber-600">
+                    Text must be extracted first. Add this product to the processing queue.
+                  </p>
+                )}
+              </div>
+
+              {extractMutation.isError && (
+                <div className="mb-4 rounded-lg border border-red-200 bg-red-50 p-4 text-red-700">
+                  Extraction failed. Make sure an AI provider is configured in Settings.
+                </div>
+              )}
+
+              {extractedContent && (
+                <div className="space-y-4">
+                  {extractedContent.monsters && (extractedContent.monsters as unknown[]).length > 0 && (
+                    <div className="rounded-lg border border-neutral-200 p-4">
+                      <h4 className="font-medium text-neutral-900 mb-2">
+                        Monsters ({(extractedContent.monsters as unknown[]).length})
+                      </h4>
+                      <div className="space-y-2">
+                        {(extractedContent.monsters as Array<{ name: string; cr?: string }>).slice(0, 5).map((m, i) => (
+                          <div key={i} className="text-sm text-neutral-600">
+                            {m.name} {m.cr && <span className="text-neutral-400">CR {m.cr}</span>}
+                          </div>
+                        ))}
+                        {(extractedContent.monsters as unknown[]).length > 5 && (
+                          <p className="text-xs text-neutral-400">...and {(extractedContent.monsters as unknown[]).length - 5} more</p>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {extractedContent.spells && (extractedContent.spells as unknown[]).length > 0 && (
+                    <div className="rounded-lg border border-neutral-200 p-4">
+                      <h4 className="font-medium text-neutral-900 mb-2">
+                        Spells ({(extractedContent.spells as unknown[]).length})
+                      </h4>
+                      <div className="space-y-2">
+                        {(extractedContent.spells as Array<{ name: string; level?: number }>).slice(0, 5).map((s, i) => (
+                          <div key={i} className="text-sm text-neutral-600">
+                            {s.name} {s.level !== undefined && <span className="text-neutral-400">Level {s.level}</span>}
+                          </div>
+                        ))}
+                        {(extractedContent.spells as unknown[]).length > 5 && (
+                          <p className="text-xs text-neutral-400">...and {(extractedContent.spells as unknown[]).length - 5} more</p>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {extractedContent.magic_items && (extractedContent.magic_items as unknown[]).length > 0 && (
+                    <div className="rounded-lg border border-neutral-200 p-4">
+                      <h4 className="font-medium text-neutral-900 mb-2">
+                        Magic Items ({(extractedContent.magic_items as unknown[]).length})
+                      </h4>
+                      <div className="space-y-2">
+                        {(extractedContent.magic_items as Array<{ name: string; rarity?: string }>).slice(0, 5).map((item, i) => (
+                          <div key={i} className="text-sm text-neutral-600">
+                            {item.name} {item.rarity && <span className="text-neutral-400">({item.rarity})</span>}
+                          </div>
+                        ))}
+                        {(extractedContent.magic_items as unknown[]).length > 5 && (
+                          <p className="text-xs text-neutral-400">...and {(extractedContent.magic_items as unknown[]).length - 5} more</p>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {extractedContent.npcs && (extractedContent.npcs as unknown[]).length > 0 && (
+                    <div className="rounded-lg border border-neutral-200 p-4">
+                      <h4 className="font-medium text-neutral-900 mb-2">
+                        NPCs ({(extractedContent.npcs as unknown[]).length})
+                      </h4>
+                      <div className="space-y-2">
+                        {(extractedContent.npcs as Array<{ name: string; role?: string }>).slice(0, 5).map((npc, i) => (
+                          <div key={i} className="text-sm text-neutral-600">
+                            {npc.name} {npc.role && <span className="text-neutral-400">- {npc.role}</span>}
+                          </div>
+                        ))}
+                        {(extractedContent.npcs as unknown[]).length > 5 && (
+                          <p className="text-xs text-neutral-400">...and {(extractedContent.npcs as unknown[]).length - 5} more</p>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          ) : activeTab === 'export' ? (
+            <div
+              role="tabpanel"
+              id="panel-export"
+              aria-labelledby="tab-export"
+              className="p-6"
+            >
+              <h3 className="text-lg font-semibold text-neutral-900 mb-2">Export Content</h3>
+              <p className="text-sm text-neutral-500 mb-6">
+                Export extracted content to various formats for use in other tools.
+              </p>
+
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="rounded-lg border border-neutral-200 p-4">
+                  <h4 className="font-medium text-neutral-900 mb-1">Foundry VTT</h4>
+                  <p className="text-sm text-neutral-500 mb-3">
+                    Export monsters, spells, and items to Foundry VTT compendium format.
+                  </p>
+                  <button
+                    onClick={() => exportFoundryMutation.mutate()}
+                    disabled={exportFoundryMutation.isPending || !product.processing_status?.text_extracted}
+                    className="inline-flex items-center gap-2 rounded-lg bg-orange-600 px-4 py-2 text-sm font-medium text-white hover:bg-orange-700 disabled:opacity-50"
+                  >
+                    {exportFoundryMutation.isPending ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Download className="h-4 w-4" />
+                    )}
+                    Export to Foundry
+                  </button>
+                </div>
+
+                <div className="rounded-lg border border-neutral-200 p-4">
+                  <h4 className="font-medium text-neutral-900 mb-1">Obsidian Markdown</h4>
+                  <p className="text-sm text-neutral-500 mb-3">
+                    Export content as Obsidian-compatible markdown with YAML frontmatter.
+                  </p>
+                  <button
+                    onClick={() => exportObsidianMutation.mutate()}
+                    disabled={exportObsidianMutation.isPending || !product.processing_status?.text_extracted}
+                    className="inline-flex items-center gap-2 rounded-lg bg-purple-600 px-4 py-2 text-sm font-medium text-white hover:bg-purple-700 disabled:opacity-50"
+                  >
+                    {exportObsidianMutation.isPending ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Download className="h-4 w-4" />
+                    )}
+                    Export to Obsidian
+                  </button>
+                </div>
+              </div>
+
+              {!product.processing_status?.text_extracted && (
+                <p className="mt-4 text-sm text-amber-600">
+                  Text must be extracted first before exporting. Add this product to the processing queue.
+                </p>
+              )}
+
+              {(exportFoundryMutation.isError || exportObsidianMutation.isError) && (
+                <div className="mt-4 rounded-lg border border-red-200 bg-red-50 p-4 text-red-700">
+                  Export failed. Make sure an AI provider is configured in Settings.
+                </div>
+              )}
+            </div>
+          ) : null}
         </div>
       </div>
 

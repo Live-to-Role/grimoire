@@ -279,7 +279,7 @@ Grimoire is a self-hosted application that:
 - [x] Export to Obsidian markdown
 - [x] Campaign management (link products to campaigns)
 - [x] Session prep assistant
-- [ ] Community metadata sync (opt-in)
+- [x] Community metadata sync (opt-in)
 
 ### 4.5 Version 0.5 - "It's Connected to Codex"
 
@@ -291,7 +291,7 @@ Grimoire is a self-hosted application that:
 - [x] Fallback chain: Codex → AI → Manual
 - [x] Opt-in contribution of new identifications back to Codex
 - [x] Offline mode with graceful degradation (contribution queue)
-- [ ] Sync local edits when reconnected
+- [x] Sync local edits when reconnected
 
 ### 4.6 Future Considerations
 
