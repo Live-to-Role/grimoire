@@ -9,7 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from grimoire.models import ContributionQueue, ContributionStatus, Product
-from grimoire.services.codex import CodexClient, get_codex_client
+from grimoire.services.codex import CodexClient, ContributionResult, get_codex_client
 
 logger = logging.getLogger(__name__)
 
@@ -63,19 +63,22 @@ async def submit_contribution(
     
     try:
         data = json.loads(contribution.contribution_data)
-        success = await codex.contribute(data, contribution.file_hash)
+        result = await codex.contribute(data, contribution.file_hash)
         
-        if success:
+        if result.success:
             contribution.status = ContributionStatus.SUBMITTED
             contribution.error_message = None
-            logger.info(f"Successfully submitted contribution {contribution.id}")
+            logger.info(
+                f"Successfully submitted contribution {contribution.id}: "
+                f"status={result.status}, product_id={result.product_id or result.contribution_id}"
+            )
         else:
             contribution.status = ContributionStatus.FAILED
-            contribution.error_message = "Submission returned false"
-            logger.warning(f"Failed to submit contribution {contribution.id}")
+            contribution.error_message = result.reason or "Submission failed"
+            logger.warning(f"Failed to submit contribution {contribution.id}: {result.reason}")
         
         await db.commit()
-        return success
+        return result.success
         
     except Exception as e:
         contribution.status = ContributionStatus.FAILED

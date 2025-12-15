@@ -100,13 +100,13 @@ Django REST Framework Token Authentication:
 headers={"Authorization": f"Token {token}"}
 ```
 
-#### Impact: **Potentially Breaking**
-- If Grimoire sends `Bearer` prefix, Codex may reject it
-- Need to verify DRF token auth accepts `Bearer` or only `Token` prefix
+#### Impact: **Breaking** (if Grimoire uses `Bearer`)
 
-#### Resolution:
-- Codex should accept both `Bearer` and `Token` prefixes for flexibility
-- OR document that Grimoire must use `Token` prefix
+#### Resolution: **Grimoire uses `Token` prefix** ✅
+- `Token` is the DRF standard for API key authentication
+- `Bearer` is typically for OAuth/JWT tokens
+- Requires zero Codex changes
+- Grimoire planning doc will be updated to reflect this
 
 ### 4. `/identify` Endpoint
 
@@ -148,6 +148,38 @@ The `/identify` endpoint in Codex follows the documented format.
 
 #### Impact: **Non-critical**
 These are optional enrichment fields. Grimoire can still function without them.
+
+---
+
+## Future Codex Enhancements
+
+The following fields are documented in the Grimoire planning spec but not yet implemented in Codex. These are **non-blocking** for initial integration but should be tracked for future enhancement.
+
+### Product Model Additions
+
+| Field | Type | Purpose | Priority |
+|-------|------|---------|----------|
+| `dtrpg_id` | string | DriveThruRPG product ID for direct linking | Medium |
+| `itch_id` | string | Itch.io product ID | Low |
+| `other_urls` | array | Additional purchase/info URLs | Low |
+| `themes` | array | Thematic tags (horror, exploration, political) | Medium |
+| `content_warnings` | array | Content advisories (violence, mature themes) | Medium |
+| `average_rating` | float | Community rating aggregation | Low |
+
+### Rationale for Priority
+
+- **Medium priority**: Fields that enhance discoverability and user experience
+- **Low priority**: Fields that are nice-to-have but not essential for core functionality
+
+### Implementation Notes
+
+1. **`themes[]` vs `tags[]`**: Consider whether themes should be separate from tags or merged. Current Codex has `tags[]` which could encompass themes.
+
+2. **`content_warnings[]`**: Important for accessibility and user safety. Should be a curated list, not free-form.
+
+3. **`dtrpg_id`**: Useful for affiliate linking and cross-referencing. Can be extracted from `dtrpg_url` if needed.
+
+4. **`average_rating`**: Requires rating system implementation. Could pull from external sources or be community-contributed.
 
 ---
 
@@ -204,13 +236,14 @@ class ContributionCreateSerializer(serializers.ModelSerializer):
         return attrs
 ```
 
-#### 1.2 Verify Token Authentication Accepts Both Prefixes
+#### 1.2 Authentication Decision
 
-Check if DRF token auth works with both:
-- `Authorization: Token <token>`
-- `Authorization: Bearer <token>`
+**Decision: Grimoire will use `Token` prefix** (no Codex changes needed)
 
-If not, add custom authentication class to accept both.
+DRF Token Authentication uses `Token` prefix by default. This is the correct choice because:
+- `Token` is the standard for API key authentication in DRF
+- `Bearer` is conventionally used for OAuth2/JWT tokens
+- No custom authentication class needed in Codex
 
 ### Phase 2: Grimoire Client Updates
 
@@ -238,7 +271,7 @@ async def contribute(
             "file_hash": file_hash,
             "source": "grimoire"
         },
-        headers={"Authorization": f"Token {api_key}"}
+        headers={"Authorization": f"Token {api_key}"}  # Note: Token prefix, not Bearer
     )
     
     # Handle new response format
@@ -319,14 +352,22 @@ POST /contributions
 - [ ] Update `ContributionCreateSerializer` to accept `product_id` field
 - [ ] Auto-infer `contribution_type` when not provided
 - [ ] Test `/contributions` endpoint with Grimoire-style payload
-- [ ] Verify token auth accepts both `Token` and `Bearer` prefixes
 - [ ] Update API documentation
+
+### Codex Changes (Future Enhancement)
+
+- [ ] Add `dtrpg_id` field to Product model
+- [ ] Add `itch_id` field to Product model
+- [ ] Add `other_urls` array field to Product model
+- [ ] Add `themes` array field (or merge with tags)
+- [ ] Add `content_warnings` array field
+- [ ] Add `average_rating` field (requires rating system)
 
 ### Grimoire Changes (Recommended)
 
 - [ ] Update `CodexClient` to handle new response format
 - [ ] Add support for `contribution_type` field
-- [ ] Update token auth header to use `Token` prefix (if needed)
+- [ ] Update auth header to use `Token` prefix (required)
 - [ ] Add `ContributionResult` dataclass for typed responses
 - [ ] Update tests for new API contract
 

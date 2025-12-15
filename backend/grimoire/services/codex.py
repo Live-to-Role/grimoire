@@ -109,6 +109,35 @@ class CodexMatch:
 
 
 @dataclass
+class ContributionResult:
+    """Result of a contribution submission to Codex."""
+    success: bool
+    status: str | None = None  # "applied" or "pending"
+    product_id: str | None = None  # UUID if status=applied
+    product_slug: str | None = None
+    contribution_id: str | None = None  # UUID if status=pending
+    message: str | None = None
+    reason: str | None = None  # Error reason if success=False
+
+    @classmethod
+    def from_response(cls, data: dict[str, Any]) -> "ContributionResult":
+        """Create from Codex API response."""
+        return cls(
+            success=True,
+            status=data.get("status"),
+            product_id=data.get("product_id"),
+            product_slug=data.get("product_slug"),
+            contribution_id=data.get("contribution_id"),
+            message=data.get("message"),
+        )
+
+    @classmethod
+    def failure(cls, reason: str) -> "ContributionResult":
+        """Create a failure result."""
+        return cls(success=False, reason=reason)
+
+
+@dataclass
 class Identification:
     """Result of the full identification chain."""
     source: IdentificationSource
@@ -275,35 +304,68 @@ class CodexClient:
         self,
         product_data: dict[str, Any],
         file_hash: str | None = None,
-    ) -> bool:
+        existing_product_id: str | None = None,
+    ) -> ContributionResult:
         """
         Contribute new or corrected product data back to Codex.
         Requires API key and user opt-in.
+        
+        Args:
+            product_data: The product metadata to contribute
+            file_hash: SHA-256 hash of the source file
+            existing_product_id: Codex product UUID if editing existing product
+        
+        Returns:
+            ContributionResult with status and IDs from Codex
         """
         if not self.api_key:
             logger.debug("Codex contribution skipped: no API key configured")
-            return False
+            return ContributionResult.failure("no_api_key")
         
         if self.use_mock:
             logger.info(f"Mock: Would contribute product '{product_data.get('title')}' to Codex")
-            return True
+            return ContributionResult(
+                success=True,
+                status="pending",
+                message="Mock contribution queued",
+            )
+        
+        # Build payload with contribution_type for explicit control
+        payload: dict[str, Any] = {
+            "data": product_data,
+            "file_hash": file_hash,
+            "source": "grimoire",
+        }
+        
+        if existing_product_id:
+            payload["contribution_type"] = "edit_product"
+            payload["product"] = existing_product_id
+        else:
+            payload["contribution_type"] = "new_product"
         
         try:
             async with httpx.AsyncClient(timeout=self.timeout) as client:
                 response = await client.post(
                     f"{self.base_url}/contributions",
-                    json={
-                        "data": product_data,
-                        "file_hash": file_hash,
-                        "source": "grimoire",
-                    },
-                    headers={"Authorization": f"Bearer {self.api_key}"},
+                    json=payload,
+                    headers={"Authorization": f"Token {self.api_key}"},
                 )
                 response.raise_for_status()
-                return True
+                data = response.json()
+                
+                result = ContributionResult.from_response(data)
+                logger.info(
+                    f"Contribution submitted: status={result.status}, "
+                    f"product_id={result.product_id or result.contribution_id}"
+                )
+                return result
+                
+        except httpx.HTTPStatusError as e:
+            logger.warning(f"Codex contribution failed: {e.response.status_code} - {e.response.text}")
+            return ContributionResult.failure(f"http_error_{e.response.status_code}")
         except Exception as e:
             logger.warning(f"Codex contribution failed: {e}")
-            return False
+            return ContributionResult.failure(str(e))
 
     async def search(
         self,

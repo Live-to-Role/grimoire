@@ -485,11 +485,26 @@ GET /authors/{id}/credits
 POST /contributions
   Request Body:
     {
-      "product_id": UUID | null,  # null = new product
+      # Preferred format (explicit)
+      "contribution_type": "new_product" | "edit_product",
+      "product": UUID | null,  # Required for edit_product
+      
+      # Legacy format (still supported for backward compatibility)
+      # "product_id": UUID | null,  # Auto-infers contribution_type
+      
       "data": {...},
       "source": "grimoire" | "web" | "api",
       "file_hash": string | null
     }
+  Response: 201 Created
+    {
+      "status": "applied" | "pending",
+      "message": string,
+      "product_id": UUID,      # If status=applied
+      "product_slug": string,  # If status=applied  
+      "contribution_id": UUID  # If status=pending
+    }
+  Authentication: Token {api_key}  # DRF Token auth, not Bearer
 
 # User
 GET /users/me
@@ -538,22 +553,32 @@ class CodexClient:
         self,
         product_data: dict,
         file_hash: str = None,
-        api_key: str = None
-    ) -> bool:
+        existing_product_id: str = None,  # Codex product UUID if editing
+    ) -> ContributionResult:
         """Contribute new or corrected product data back to Codex."""
-        if not api_key:
-            return False  # Opt-in only
+        if not self.api_key:
+            return ContributionResult.failure("no_api_key")
         
-        await self.post(
+        payload = {
+            "data": product_data,
+            "file_hash": file_hash,
+            "source": "grimoire"
+        }
+        
+        # Use explicit contribution_type for clarity
+        if existing_product_id:
+            payload["contribution_type"] = "edit_product"
+            payload["product"] = existing_product_id
+        else:
+            payload["contribution_type"] = "new_product"
+        
+        response = await self.post(
             "/contributions",
-            json={
-                "data": product_data,
-                "file_hash": file_hash,
-                "source": "grimoire"
-            },
-            headers={"Authorization": f"Bearer {api_key}"}
+            json=payload,
+            headers={"Authorization": f"Token {self.api_key}"}  # DRF Token auth
         )
-        return True
+        
+        return ContributionResult.from_response(response)
 
 
 # Identification chain in Grimoire

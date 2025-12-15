@@ -39,7 +39,7 @@ class Settings(BaseSettings):
     secret_key: str = Field(default_factory=lambda: secrets.token_urlsafe(32))
     
     # Codex API
-    codex_api_url: str = "https://api.codex.livetorole.com/v1"
+    codex_api_url: str = "https://api.codex.livetorole.com/api/v1"
     codex_api_key: str = ""  # Optional, for contributions
     codex_contribute_enabled: bool = False  # Opt-in
     codex_timeout: int = 10  # seconds
