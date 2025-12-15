@@ -181,9 +181,9 @@ class CodexClient:
         timeout: float = 10.0,
         use_mock: bool = True,  # Default to mock until Codex is live
     ):
-        self.base_url = base_url or getattr(settings, "CODEX_API_URL", "https://api.codex.livetorole.com/v1")
-        self.api_key = api_key or getattr(settings, "CODEX_API_KEY", None)
-        self.timeout = timeout
+        self.base_url = base_url or settings.codex_api_url
+        self.api_key = api_key or settings.codex_api_key or None
+        self.timeout = timeout or settings.codex_timeout
         self.use_mock = use_mock
         self._available: bool | None = None
 
@@ -386,9 +386,11 @@ class CodexClient:
 _codex_client: CodexClient | None = None
 
 
-def get_codex_client() -> CodexClient:
+def get_codex_client(use_mock: bool | None = None) -> CodexClient:
     """Get or create the Codex client singleton."""
     global _codex_client
     if _codex_client is None:
-        _codex_client = CodexClient()
+        # Default to real API if codex_api_url is configured
+        mock_mode = use_mock if use_mock is not None else not bool(settings.codex_api_key)
+        _codex_client = CodexClient(use_mock=mock_mode)
     return _codex_client

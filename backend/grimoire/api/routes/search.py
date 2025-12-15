@@ -66,13 +66,45 @@ async def search_products(
     game_system: str | None = Query(None, description="Filter by game system"),
     product_type: str | None = Query(None, description="Filter by product type"),
     search_content: bool = Query(False, description="Search within extracted text"),
+    use_fts: bool = Query(True, description="Use PostgreSQL full-text search"),
     limit: int = Query(20, ge=1, le=100, description="Maximum results"),
 ) -> dict:
-    """Full-text search across products."""
+    """Full-text search across products.
+    
+    When use_fts=True (default), uses PostgreSQL full-text search with ranking.
+    Falls back to ILIKE search if FTS index is not available.
+    """
     import time
 
     start_time = time.time()
+    
+    # Try FTS first if enabled and searching content
+    if use_fts and search_content:
+        try:
+            from grimoire.services.fts_service import search_fts
+            
+            fts_results = await search_fts(
+                db, q, 
+                game_system=game_system,
+                product_type=product_type,
+                limit=limit
+            )
+            
+            if fts_results:
+                query_time_ms = int((time.time() - start_time) * 1000)
+                return {
+                    "results": fts_results,
+                    "total": len(fts_results),
+                    "query_time_ms": query_time_ms,
+                    "content_search": True,
+                    "search_method": "fts",
+                }
+        except Exception as e:
+            # Fall back to legacy search if FTS fails
+            import logging
+            logging.warning(f"FTS search failed, falling back to legacy: {e}")
 
+    # Legacy ILIKE search for metadata
     search_term = f"%{q}%"
     query = (
         select(Product)
@@ -151,4 +183,5 @@ async def search_products(
         "total": len(results),
         "query_time_ms": query_time_ms,
         "content_search": search_content,
+        "search_method": "legacy",
     }

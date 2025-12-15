@@ -28,7 +28,13 @@ router = APIRouter()
 
 def product_to_response(product: Product) -> ProductResponse:
     """Convert a Product model to ProductResponse schema."""
-    cover_url = f"/api/v1/products/{product.id}/cover" if product.cover_extracted else None
+    # For duplicates, use the original's cover if available
+    if product.is_duplicate and product.duplicate_of_id:
+        cover_url = f"/api/v1/products/{product.id}/cover"
+    elif product.cover_extracted:
+        cover_url = f"/api/v1/products/{product.id}/cover"
+    else:
+        cover_url = None
 
     tags = []
     for pt in product.product_tags:
@@ -186,6 +192,10 @@ async def update_product(
     await db.commit()
     await db.refresh(product)
 
+    # Queue edit for Codex sync if enabled
+    from grimoire.services.sync_service import queue_local_edit_for_sync
+    await queue_local_edit_for_sync(db, product, update_dict)
+
     return product_to_response(product)
 
 
@@ -214,6 +224,14 @@ async def get_product_cover(db: DbSession, product_id: int) -> FileResponse:
 
     if not product:
         raise HTTPException(status_code=404, detail="Product not found")
+
+    # For duplicates, get the original's cover
+    if product.is_duplicate and product.duplicate_of_id:
+        orig_query = select(Product).where(Product.id == product.duplicate_of_id)
+        orig_result = await db.execute(orig_query)
+        original = orig_result.scalar_one_or_none()
+        if original and original.cover_extracted and original.cover_image_path:
+            product = original
 
     if not product.cover_extracted or not product.cover_image_path:
         raise HTTPException(status_code=404, detail="Cover not available")

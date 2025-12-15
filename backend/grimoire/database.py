@@ -41,6 +41,11 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
 
 
 async def init_db() -> None:
-    """Initialize database tables."""
+    """Initialize database tables and seed default data."""
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+    
+    # Seed default exclusion rules
+    from grimoire.services.exclusion_service import seed_default_rules
+    async with async_session_maker() as session:
+        await seed_default_rules(session)

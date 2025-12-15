@@ -9,6 +9,8 @@ from grimoire.models.settings import Setting
 from grimoire.models.contribution import ContributionQueue, ContributionStatus
 from grimoire.models.embedding import ProductEmbedding
 from grimoire.models.campaign import Campaign, Session
+from grimoire.models.exclusion import ExclusionRule, ExclusionRuleType, DEFAULT_EXCLUSION_RULES
+from grimoire.models.scan_job import ScanJob, ScanJobStatus
 
 __all__ = [
     "Product",
@@ -24,4 +26,9 @@ __all__ = [
     "ProductEmbedding",
     "Campaign",
     "Session",
+    "ExclusionRule",
+    "ExclusionRuleType",
+    "DEFAULT_EXCLUSION_RULES",
+    "ScanJob",
+    "ScanJobStatus",
 ]

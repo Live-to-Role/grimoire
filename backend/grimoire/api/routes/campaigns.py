@@ -283,6 +283,41 @@ async def remove_product_from_campaign(
     return {"removed": True}
 
 
+@router.get("/{campaign_id}/sessions")
+async def list_sessions(
+    db: DbSession,
+    campaign_id: int,
+) -> dict:
+    """List all sessions for a campaign."""
+    # Verify campaign exists
+    campaign_query = select(Campaign).where(Campaign.id == campaign_id)
+    campaign_result = await db.execute(campaign_query)
+    campaign = campaign_result.scalar_one_or_none()
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+
+    query = select(Session).where(Session.campaign_id == campaign_id).order_by(Session.session_number)
+    result = await db.execute(query)
+    sessions = result.scalars().all()
+
+    return {
+        "sessions": [
+            {
+                "id": s.id,
+                "campaign_id": s.campaign_id,
+                "session_number": s.session_number,
+                "title": s.title,
+                "scheduled_date": s.scheduled_date.isoformat() if s.scheduled_date else None,
+                "actual_date": s.actual_date.isoformat() if s.actual_date else None,
+                "status": s.status,
+                "summary": s.summary,
+            }
+            for s in sessions
+        ],
+        "total": len(sessions),
+    }
+
+
 @router.post("/{campaign_id}/sessions")
 async def create_session(
     db: DbSession,

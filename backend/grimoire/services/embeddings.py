@@ -145,7 +145,7 @@ def find_similar(
     threshold: float = 0.0,
 ) -> list[tuple[int, float]]:
     """
-    Find most similar items to a query embedding.
+    Find most similar items to a query embedding (in-memory fallback).
 
     Args:
         query_embedding: The query vector
@@ -164,6 +164,8 @@ def find_similar(
 
     scores.sort(key=lambda x: x[1], reverse=True)
     return scores[:top_k]
+
+
 
 
 def chunk_text(text: str, chunk_size: int = 500, overlap: int = 50) -> list[str]:

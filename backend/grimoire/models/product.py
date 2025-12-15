@@ -24,6 +24,10 @@ class Product(Base):
         Index("ix_products_product_type", "product_type"),
         Index("ix_products_created_at", "created_at"),
         Index("ix_products_file_hash", "file_hash"),
+        Index("ix_products_publisher", "publisher"),
+        Index("ix_products_is_duplicate", "is_duplicate"),
+        Index("ix_products_file_size", "file_size"),
+        Index("ix_products_system_type", "game_system", "product_type"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -68,6 +72,20 @@ class Product(Base):
     cover_image_path: Mapped[str | None] = mapped_column(Text, nullable=True)
     extracted_text_path: Mapped[str | None] = mapped_column(Text, nullable=True)
 
+    # Duplicate detection
+    is_duplicate: Mapped[bool] = mapped_column(Boolean, default=False)
+    duplicate_of_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("products.id"), nullable=True
+    )
+    duplicate_reason: Mapped[str | None] = mapped_column(String(50), nullable=True)  # 'exact_hash', 'same_content'
+
+    # Exclusion/missing status
+    is_excluded: Mapped[bool] = mapped_column(Boolean, default=False)
+    excluded_by_rule_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    exclusion_override: Mapped[bool] = mapped_column(Boolean, default=False)  # User forced include
+    is_missing: Mapped[bool] = mapped_column(Boolean, default=False)
+    missing_since: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
     # Timestamps
     file_modified_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
@@ -87,6 +105,11 @@ class Product(Base):
     )
     collection_products: Mapped[list["CollectionProduct"]] = relationship(
         "CollectionProduct", back_populates="product", cascade="all, delete-orphan"
+    )
+    
+    # Self-referential relationship for duplicates
+    duplicate_of: Mapped["Product | None"] = relationship(
+        "Product", remote_side="Product.id", foreign_keys="Product.duplicate_of_id"
     )
 
     def __repr__(self) -> str:

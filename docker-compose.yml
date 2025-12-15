@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   grimoire:
     build:
@@ -10,6 +8,8 @@ services:
     volumes:
       - grimoire_data:/app/data
       - ${PDF_LIBRARY_PATH:-./pdfs}:/library:ro
+      - ${PDF_LIBRARY_PATH_2:-./pdfs}:/library2:ro
+      - ${PDF_LIBRARY_PATH_3:-./pdfs}:/library3:ro
     environment:
       - DATABASE_URL=sqlite+aiosqlite:///./data/grimoire.db
       - LIBRARY_PATH=/library
@@ -17,7 +17,7 @@ services:
       - COVERS_DIR=/app/data/covers
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - DEBUG=${DEBUG:-false}
-      - CORS_ORIGINS=["http://localhost:5173","http://localhost:3000","http://localhost:8000"]
+      - CORS_ORIGINS=["http://localhost:5173","http://localhost:5174","http://localhost:5175","http://localhost:3000","http://localhost:8000"]
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
@@ -33,6 +33,8 @@ services:
     volumes:
       - grimoire_data:/app/data
       - ${PDF_LIBRARY_PATH:-./pdfs}:/library:ro
+      - ${PDF_LIBRARY_PATH_2:-./pdfs}:/library2:ro
+      - ${PDF_LIBRARY_PATH_3:-./pdfs}:/library3:ro
     environment:
       - DATABASE_URL=sqlite+aiosqlite:///./data/grimoire.db
       - LIBRARY_PATH=/library

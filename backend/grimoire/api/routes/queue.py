@@ -234,6 +234,172 @@ async def create_batch_queue(
     }
 
 
+@router.post("/text-extraction/queue-all")
+async def queue_all_for_text_extraction(
+    db: DbSession,
+    force: bool = Query(False, description="Re-queue already extracted products"),
+) -> dict:
+    """Queue all products that need text extraction."""
+    # Find products without text extraction
+    if force:
+        query = select(Product).order_by(Product.file_size.desc())
+    else:
+        query = select(Product).where(
+            Product.text_extracted == False
+        ).order_by(Product.file_size.desc())
+    
+    result = await db.execute(query)
+    products = list(result.scalars().all())
+    
+    created = 0
+    skipped = 0
+    
+    for product in products:
+        # Check for existing pending/processing task
+        existing_query = select(ProcessingQueue).where(
+            ProcessingQueue.product_id == product.id,
+            ProcessingQueue.task_type == "text",
+            ProcessingQueue.status.in_(["pending", "processing"])
+        )
+        existing_result = await db.execute(existing_query)
+        if existing_result.scalar_one_or_none():
+            skipped += 1
+            continue
+        
+        item = ProcessingQueue(
+            product_id=product.id,
+            task_type="text",
+            priority=5,
+            status="pending",
+        )
+        db.add(item)
+        created += 1
+    
+    await db.commit()
+    
+    return {
+        "message": f"Queued {created} products for text extraction",
+        "created": created,
+        "skipped": skipped,
+        "total": len(products),
+    }
+
+
+@router.post("/fts/rebuild-all")
+async def rebuild_fts_index(
+    db: DbSession,
+    batch_size: int = Query(100, ge=1, le=1000, description="Batch size"),
+) -> dict:
+    """Queue all products with extracted text for FTS indexing."""
+    # Find products with text extracted but not deep indexed
+    query = select(Product).where(
+        Product.text_extracted == True,
+        Product.deep_indexed == False,
+    ).order_by(Product.file_size.desc())
+    
+    result = await db.execute(query)
+    products = list(result.scalars().all())
+    
+    created = 0
+    skipped = 0
+    
+    for product in products:
+        # Check for existing pending/processing task
+        existing_query = select(ProcessingQueue).where(
+            ProcessingQueue.product_id == product.id,
+            ProcessingQueue.task_type == "fts_index",
+            ProcessingQueue.status.in_(["pending", "processing"])
+        )
+        existing_result = await db.execute(existing_query)
+        if existing_result.scalar_one_or_none():
+            skipped += 1
+            continue
+        
+        item = ProcessingQueue(
+            product_id=product.id,
+            task_type="fts_index",
+            priority=8,  # Lower priority than other tasks
+            status="pending",
+        )
+        db.add(item)
+        created += 1
+    
+    await db.commit()
+    
+    return {
+        "message": f"Queued {created} products for FTS indexing",
+        "created": created,
+        "skipped": skipped,
+        "total": len(products),
+    }
+
+
+@router.get("/fts/stats")
+async def get_fts_stats(db: DbSession) -> dict:
+    """Get FTS indexing statistics."""
+    # Products with text but not indexed
+    need_indexing_query = select(func.count()).select_from(Product).where(
+        Product.text_extracted == True,
+        Product.deep_indexed == False,
+    )
+    need_result = await db.execute(need_indexing_query)
+    need_indexing = need_result.scalar() or 0
+    
+    # Products fully indexed
+    indexed_query = select(func.count()).select_from(Product).where(
+        Product.deep_indexed == True,
+    )
+    indexed_result = await db.execute(indexed_query)
+    indexed = indexed_result.scalar() or 0
+    
+    return {
+        "indexed": indexed,
+        "need_indexing": need_indexing,
+        "total_with_text": indexed + need_indexing,
+    }
+
+
+@router.get("/text-extraction/stats")
+async def get_text_extraction_stats(db: DbSession) -> dict:
+    """Get text extraction queue statistics."""
+    # Products needing extraction
+    need_extraction_query = select(func.count()).select_from(Product).where(
+        Product.text_extracted == False
+    )
+    need_result = await db.execute(need_extraction_query)
+    need_extraction = need_result.scalar() or 0
+    
+    # Products already extracted
+    extracted_query = select(func.count()).select_from(Product).where(
+        Product.text_extracted == True
+    )
+    extracted_result = await db.execute(extracted_query)
+    extracted = extracted_result.scalar() or 0
+    
+    # Queue stats for text tasks
+    pending_query = select(func.count()).select_from(ProcessingQueue).where(
+        ProcessingQueue.task_type == "text",
+        ProcessingQueue.status == "pending"
+    )
+    pending_result = await db.execute(pending_query)
+    pending = pending_result.scalar() or 0
+    
+    processing_query = select(func.count()).select_from(ProcessingQueue).where(
+        ProcessingQueue.task_type == "text",
+        ProcessingQueue.status == "processing"
+    )
+    processing_result = await db.execute(processing_query)
+    processing = processing_result.scalar() or 0
+    
+    return {
+        "need_extraction": need_extraction,
+        "extracted": extracted,
+        "total": need_extraction + extracted,
+        "queue_pending": pending,
+        "queue_processing": processing,
+    }
+
+
 @router.delete("/{item_id}")
 async def cancel_queue_item(
     db: DbSession,
@@ -281,3 +447,25 @@ async def clear_completed(
     await db.commit()
     
     return {"cleared": len(items), "status": status}
+
+
+@router.post("/process")
+async def process_queue_items(
+    max_items: int = Query(10, ge=1, le=100, description="Max items to process"),
+) -> dict:
+    """Process pending items in the queue."""
+    from grimoire.services.queue_processor import process_queue
+    
+    result = await process_queue(max_items=max_items, delay=0.1)
+    return result
+
+
+@router.post("/{item_id}/process")
+async def process_single_item(
+    item_id: int,
+) -> dict:
+    """Process a single queue item immediately."""
+    from grimoire.services.queue_processor import process_queue_item
+    
+    success = await process_queue_item(item_id)
+    return {"success": success, "item_id": item_id}

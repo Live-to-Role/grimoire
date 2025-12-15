@@ -113,7 +113,7 @@ async def semantic_search(
     db: DbSession,
     request: SemanticSearchRequest,
 ) -> dict:
-    """Search products using semantic similarity."""
+    """Search products using semantic similarity (in-memory cosine similarity)."""
     # Generate query embedding
     try:
         query_embeddings = await generate_embeddings(
@@ -125,7 +125,7 @@ async def semantic_search(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Embedding failed: {e}")
 
-    # Get all stored embeddings
+    # In-memory search using cosine similarity
     emb_query = select(ProductEmbedding)
     emb_result = await db.execute(emb_query)
     stored_embeddings = list(emb_result.scalars().all())
@@ -143,11 +143,11 @@ async def semantic_search(
         for emb in stored_embeddings
     ]
 
-    # Find similar
+    # Find similar using cosine similarity
     similar = find_similar(
         query_vector,
         embeddings_list,
-        request.top_k * 2,  # Get more to dedupe by product
+        request.top_k * 2,
         request.threshold,
     )
 
@@ -156,7 +156,6 @@ async def semantic_search(
     results = []
 
     for emb_id, score in similar:
-        # Find the embedding record
         emb_record = next((e for e in stored_embeddings if e.id == emb_id), None)
         if not emb_record:
             continue
@@ -166,7 +165,6 @@ async def semantic_search(
             continue
         seen_products.add(product_id)
 
-        # Get product details
         prod_query = select(Product).where(Product.id == product_id)
         prod_result = await db.execute(prod_query)
         product = prod_result.scalar_one_or_none()
@@ -186,6 +184,129 @@ async def semantic_search(
         "query": request.query,
         "results": results,
         "total_matches": len(results),
+    }
+
+
+@router.post("/embed-batch")
+async def embed_batch(
+    db: DbSession,
+    product_ids: list[int] = Query(..., description="Product IDs to embed"),
+    provider: str | None = Query(None),
+    model: str | None = Query(None),
+    chunk_size: int = Query(500, ge=100, le=2000),
+) -> dict:
+    """Generate embeddings for multiple products."""
+    success = 0
+    failed = 0
+    skipped = 0
+    
+    for product_id in product_ids:
+        query = select(Product).where(Product.id == product_id)
+        result = await db.execute(query)
+        product = result.scalar_one_or_none()
+        
+        if not product:
+            failed += 1
+            continue
+        
+        text = get_extracted_text(product)
+        if not text:
+            skipped += 1
+            continue
+        
+        try:
+            # Delete existing embeddings
+            await db.execute(
+                delete(ProductEmbedding).where(ProductEmbedding.product_id == product_id)
+            )
+            
+            chunks = chunk_text(text, chunk_size, 50)
+            embeddings = await generate_embeddings(chunks, provider, model)
+            
+            for i, (chunk, emb_result) in enumerate(zip(chunks, embeddings)):
+                embedding_record = ProductEmbedding(
+                    product_id=product_id,
+                    chunk_index=i,
+                    chunk_text=chunk[:1000],
+                    embedding_model=emb_result.model,
+                    embedding_dim=len(emb_result.embedding),
+                )
+                embedding_record.set_embedding_vector(emb_result.embedding)
+                db.add(embedding_record)
+            
+            await db.commit()
+            success += 1
+        except Exception as e:
+            failed += 1
+            import logging
+            logging.error(f"Failed to embed product {product_id}: {e}")
+    
+    return {
+        "success": success,
+        "failed": failed,
+        "skipped": skipped,
+        "total": len(product_ids),
+    }
+
+
+@router.post("/embed-all")
+async def embed_all_products(
+    db: DbSession,
+    provider: str | None = Query(None),
+    limit: int = Query(100, ge=1, le=1000),
+) -> dict:
+    """Queue all products with extracted text for embedding generation."""
+    from sqlalchemy import func
+    
+    # Find products with text but no embeddings
+    embedded_query = select(ProductEmbedding.product_id).distinct()
+    embedded_result = await db.execute(embedded_query)
+    embedded_ids = set(embedded_result.scalars().all())
+    
+    products_query = select(Product).where(
+        Product.text_extracted == True,
+        Product.id.notin_(embedded_ids) if embedded_ids else True,
+    ).limit(limit)
+    
+    result = await db.execute(products_query)
+    products = list(result.scalars().all())
+    
+    if not products:
+        return {
+            "message": "All products with extracted text already have embeddings",
+            "queued": 0,
+        }
+    
+    # Queue for embedding (using ProcessingQueue)
+    from grimoire.models import ProcessingQueue
+    
+    queued = 0
+    for product in products:
+        existing = await db.execute(
+            select(ProcessingQueue).where(
+                ProcessingQueue.product_id == product.id,
+                ProcessingQueue.task_type == "embed",
+                ProcessingQueue.status.in_(["pending", "processing"])
+            )
+        )
+        if existing.scalar_one_or_none():
+            continue
+        
+        item = ProcessingQueue(
+            product_id=product.id,
+            task_type="embed",
+            priority=9,  # Low priority
+            status="pending",
+        )
+        db.add(item)
+        queued += 1
+    
+    await db.commit()
+    
+    return {
+        "message": f"Queued {queued} products for embedding generation",
+        "queued": queued,
+        "provider": provider or "auto",
     }
 
 

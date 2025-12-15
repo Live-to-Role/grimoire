@@ -27,18 +27,47 @@ A self-hosted digital library manager for tabletop RPG content with AI-powered o
    cd grimoire
    ```
 
-2. Configure your PDF library path:
+2. Start the services:
    ```bash
-   cp .env.example .env
-   # Edit .env and set PDF_LIBRARY_PATH to your PDFs folder
+   docker compose up -d
    ```
 
-3. Start the services:
-   ```bash
-   docker-compose up -d
-   ```
+3. Access the app:
+   - **Frontend**: http://localhost:5173 (if running dev server)
+   - **API Docs**: http://localhost:8000/api/docs
 
-4. Access the API at http://localhost:8000/api/docs
+4. Configure your library:
+   - Go to **Settings** in the app
+   - Add your PDF folder path(s) under **Library Folders**
+   - Click **Scan** in Library Management to discover your PDFs
+
+> **Note**: By default, the `./pdfs` folder is mounted. You can configure up to 3 library paths using environment variables.
+
+### Configuring Multiple Library Paths
+
+Create a `.env` file in the project root:
+
+```bash
+# Primary library (mounted at /library in container)
+PDF_LIBRARY_PATH=D:/Backup/Games
+
+# Additional libraries (mounted at /library2, /library3)
+PDF_LIBRARY_PATH_2=E:/RPG/PDFs
+PDF_LIBRARY_PATH_3=F:/DriveThruRPG
+```
+
+Then restart Docker:
+```bash
+docker compose down
+docker compose up -d
+```
+
+In the app **Settings**, add folders using the **container paths**:
+- `/library` (for PDF_LIBRARY_PATH)
+- `/library2` (for PDF_LIBRARY_PATH_2)
+- `/library3` (for PDF_LIBRARY_PATH_3)
+
+> **Important**: Enter the container path (e.g., `/library2`), not the Windows path (e.g., `D:/Backup/Games`).
 
 ## Development
 
@@ -69,7 +98,7 @@ grimoire/
 │   │   └── worker/        # Background tasks
 │   ├── requirements.txt
 │   └── pyproject.toml
-├── frontend/              # React frontend (coming soon)
+├── frontend/              # React frontend
 ├── docker/
 │   └── Dockerfile.backend
 ├── docker-compose.yml

@@ -15,13 +15,30 @@ from grimoire.middleware import RateLimitMiddleware, CacheMiddleware
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan handler."""
+    import asyncio
+    
     await init_db()
 
     from grimoire.services.watcher import start_watcher, stop_watcher
     await start_watcher()
+    
+    # Start queue worker
+    from grimoire.services.queue_processor import run_queue_worker
+    queue_stop_event = asyncio.Event()
+    queue_task = asyncio.create_task(
+        run_queue_worker(poll_interval=5.0, batch_size=3, stop_event=queue_stop_event)
+    )
 
     yield
 
+    # Stop queue worker
+    queue_stop_event.set()
+    queue_task.cancel()
+    try:
+        await queue_task
+    except asyncio.CancelledError:
+        pass
+    
     await stop_watcher()
 
 
