@@ -208,12 +208,16 @@ class CodexClient:
         base_url: str | None = None,
         api_key: str | None = None,
         timeout: float = 10.0,
-        use_mock: bool = True,  # Default to mock until Codex is live
+        use_mock: bool | None = None,  # None = auto-detect based on API key
     ):
         self.base_url = base_url or settings.codex_api_url
         self.api_key = api_key or settings.codex_api_key or None
         self.timeout = timeout or settings.codex_timeout
-        self.use_mock = use_mock
+        # Auto-detect mock mode: use real API if we have an API key
+        if use_mock is None:
+            self.use_mock = not bool(self.api_key)
+        else:
+            self.use_mock = use_mock
         self._available: bool | None = None
 
     async def is_available(self) -> bool:
@@ -448,11 +452,20 @@ class CodexClient:
 _codex_client: CodexClient | None = None
 
 
-def get_codex_client(use_mock: bool | None = None) -> CodexClient:
-    """Get or create the Codex client singleton."""
+def get_codex_client(use_mock: bool | None = None, refresh: bool = False) -> CodexClient:
+    """Get or create the Codex client singleton.
+    
+    Args:
+        use_mock: Force mock mode on/off. None = auto-detect based on API key.
+        refresh: If True, recreate the client (useful when settings change).
+    """
     global _codex_client
-    if _codex_client is None:
-        # Default to real API if codex_api_url is configured
-        mock_mode = use_mock if use_mock is not None else not bool(settings.codex_api_key)
-        _codex_client = CodexClient(use_mock=mock_mode)
+    if _codex_client is None or refresh:
+        _codex_client = CodexClient(use_mock=use_mock)
     return _codex_client
+
+
+def reset_codex_client():
+    """Reset the singleton client. Call when Codex settings change."""
+    global _codex_client
+    _codex_client = None

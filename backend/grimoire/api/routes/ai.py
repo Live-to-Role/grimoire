@@ -56,9 +56,24 @@ async def get_providers() -> dict:
 
 
 @router.get("/codex/status")
-async def get_codex_status() -> dict:
+async def get_codex_status(db: DbSession) -> dict:
     """Check Codex API availability."""
-    codex = get_codex_client()
+    import json
+    from grimoire.models import Setting
+    from grimoire.services.codex import CodexClient
+    from grimoire.config import settings as app_settings
+    
+    # Get API key from database settings (where frontend saves it)
+    query = select(Setting).where(Setting.key == "codex_api_key")
+    result = await db.execute(query)
+    setting = result.scalar_one_or_none()
+    db_api_key = json.loads(setting.value) if setting else None
+    
+    # Use API key from DB if set, otherwise fall back to env var
+    api_key = db_api_key or app_settings.codex_api_key
+    
+    # Create client with the correct API key
+    codex = CodexClient(api_key=api_key)
     available = await codex.is_available()
     return {
         "available": available,

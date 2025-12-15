@@ -9,7 +9,7 @@ from sqlalchemy import select
 from grimoire.api.deps import DbSession
 from grimoire.config import settings as app_settings
 from grimoire.models import Setting
-from grimoire.services.codex import get_codex_client
+from grimoire.services.codex import get_codex_client, reset_codex_client
 
 router = APIRouter()
 
@@ -117,17 +117,35 @@ async def delete_setting(db: DbSession, key: str) -> None:
 
 
 @router.get("/codex/status", response_model=CodexStatusResponse)
-async def get_codex_status() -> CodexStatusResponse:
+async def get_codex_status(db: DbSession) -> CodexStatusResponse:
     """Get Codex API connection status."""
-    client = get_codex_client()
+    # Get API key from database settings (where frontend saves it)
+    query = select(Setting).where(Setting.key == "codex_api_key")
+    result = await db.execute(query)
+    setting = result.scalar_one_or_none()
+    db_api_key = json.loads(setting.value) if setting else None
+    
+    # Get contribute_enabled from database
+    query = select(Setting).where(Setting.key == "codex_contribute_enabled")
+    result = await db.execute(query)
+    setting = result.scalar_one_or_none()
+    db_contribute_enabled = json.loads(setting.value) if setting else False
+    
+    # Use API key from DB if set, otherwise fall back to env var
+    api_key = db_api_key or app_settings.codex_api_key
+    has_api_key = bool(api_key)
+    
+    # Create client with the correct API key
+    from grimoire.services.codex import CodexClient
+    client = CodexClient(api_key=api_key)
     available = await client.is_available()
     
     return CodexStatusResponse(
         available=available,
         mock_mode=client.use_mock,
         base_url=app_settings.codex_api_url,
-        contribute_enabled=app_settings.codex_contribute_enabled,
-        has_api_key=bool(app_settings.codex_api_key),
+        contribute_enabled=db_contribute_enabled or app_settings.codex_contribute_enabled,
+        has_api_key=has_api_key,
     )
 
 
