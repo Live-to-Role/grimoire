@@ -558,7 +558,9 @@ async def resolve_duplicates_with_source_of_truth(
     Returns:
         Summary of resolution actions
     """
+    import asyncio
     from pathlib import Path
+    from sqlalchemy.exc import OperationalError
     
     preview = await preview_duplicate_resolution(db)
     
@@ -576,9 +578,10 @@ async def resolve_duplicates_with_source_of_truth(
         }
     
     deleted_records = 0
-    deleted_files = 0
+    deleted_files_count = 0
     space_freed = 0
     errors = []
+    max_retries = 3
     
     for group in preview["groups"]:
         keep_id = group["keep"]["id"]
@@ -586,42 +589,82 @@ async def resolve_duplicates_with_source_of_truth(
         for to_delete in group["delete"]:
             product_id = to_delete["id"]
             
-            # Get the product
-            query = select(Product).where(Product.id == product_id)
-            result = await db.execute(query)
-            product = result.scalar_one_or_none()
-            
-            if not product:
-                errors.append(f"Product {product_id} not found")
-                continue
-            
-            space_freed += product.file_size or 0
-            
-            # Delete the actual file if requested
-            if delete_files:
+            # Retry loop for database lock issues
+            for attempt in range(max_retries):
                 try:
-                    file_path = Path(product.file_path)
-                    if file_path.exists():
-                        file_path.unlink()
-                        deleted_files += 1
-                        logger.info(f"Deleted file: {product.file_path}")
-                except Exception as e:
-                    errors.append(f"Failed to delete file for {product_id}: {str(e)}")
-            
-            # Delete the database record
-            await db.delete(product)
-            deleted_records += 1
+                    # Get the product
+                    query = select(Product).where(Product.id == product_id)
+                    result = await db.execute(query)
+                    product = result.scalar_one_or_none()
+                    
+                    if not product:
+                        errors.append(f"Product {product_id} not found")
+                        break
+                    
+                    space_freed += product.file_size or 0
+                    
+                    # Delete the actual file if requested
+                    if delete_files:
+                        try:
+                            file_path = Path(product.file_path)
+                            if file_path.exists():
+                                file_path.unlink()
+                                deleted_files_count += 1
+                                logger.info(f"Deleted file: {product.file_path}")
+                        except Exception as e:
+                            errors.append(f"Failed to delete file for {product_id}: {str(e)}")
+                    
+                    # Delete the database record
+                    await db.delete(product)
+                    await db.flush()
+                    deleted_records += 1
+                    break  # Success, exit retry loop
+                    
+                except OperationalError as e:
+                    if "database is locked" in str(e) and attempt < max_retries - 1:
+                        logger.warning(f"Database locked, retrying ({attempt + 1}/{max_retries})...")
+                        await asyncio.sleep(0.5 * (attempt + 1))
+                        await db.rollback()
+                    else:
+                        errors.append(f"Failed to delete product {product_id}: {str(e)}")
+                        break
         
         # Update the kept product to not be a duplicate
-        keep_query = select(Product).where(Product.id == keep_id)
-        keep_result = await db.execute(keep_query)
-        keep_product = keep_result.scalar_one_or_none()
-        if keep_product:
-            keep_product.is_duplicate = False
-            keep_product.duplicate_of_id = None
-            keep_product.duplicate_reason = None
+        for attempt in range(max_retries):
+            try:
+                keep_query = select(Product).where(Product.id == keep_id)
+                keep_result = await db.execute(keep_query)
+                keep_product = keep_result.scalar_one_or_none()
+                if keep_product:
+                    keep_product.is_duplicate = False
+                    keep_product.duplicate_of_id = None
+                    keep_product.duplicate_reason = None
+                    await db.flush()
+                break
+            except OperationalError as e:
+                if "database is locked" in str(e) and attempt < max_retries - 1:
+                    await asyncio.sleep(0.5 * (attempt + 1))
+                    await db.rollback()
+                else:
+                    errors.append(f"Failed to update kept product {keep_id}: {str(e)}")
+                    break
     
-    await db.commit()
+    # Final commit with retry
+    for attempt in range(max_retries):
+        try:
+            await db.commit()
+            break
+        except OperationalError as e:
+            if "database is locked" in str(e) and attempt < max_retries - 1:
+                logger.warning(f"Database locked on commit, retrying ({attempt + 1}/{max_retries})...")
+                await asyncio.sleep(1.0 * (attempt + 1))
+            else:
+                return {
+                    "success": False,
+                    "error": f"Database locked, please try again: {str(e)}",
+                    "deleted_records": deleted_records,
+                    "deleted_files": deleted_files_count,
+                }
     
     logger.info(
         f"Duplicate resolution complete: deleted {deleted_records} records, "
@@ -631,7 +674,7 @@ async def resolve_duplicates_with_source_of_truth(
     return {
         "success": True,
         "deleted_records": deleted_records,
-        "deleted_files": deleted_files,
+        "deleted_files": deleted_files_count,
         "space_freed_bytes": space_freed,
         "space_freed_mb": round(space_freed / (1024 * 1024), 2),
         "errors": errors if errors else None,
