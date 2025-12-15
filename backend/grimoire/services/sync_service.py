@@ -329,7 +329,7 @@ def build_contribution_data(product: Product, include_cover: bool = True) -> dic
     if include_cover:
         cover_b64 = get_cover_image_base64(product)
         if cover_b64:
-            contribution_data["cover_image"] = cover_b64
+            contribution_data["cover_image_base64"] = cover_b64
     
     # Remove None values
     return {k: v for k, v in contribution_data.items() if v is not None}
