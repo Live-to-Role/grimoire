@@ -643,16 +643,55 @@ async def cancel_queue_item(
     return {"deleted": True, "id": item_id}
 
 
+@router.post("/deduplicate")
+async def deduplicate_queue(db: DbSession) -> dict:
+    """Remove duplicate pending queue items, keeping only the oldest per product+task."""
+    from sqlalchemy import func, and_
+    
+    # Find duplicates: same product_id + task_type with status pending
+    subquery = (
+        select(
+            ProcessingQueue.product_id,
+            ProcessingQueue.task_type,
+            func.min(ProcessingQueue.id).label("keep_id")
+        )
+        .where(ProcessingQueue.status == "pending")
+        .group_by(ProcessingQueue.product_id, ProcessingQueue.task_type)
+        .subquery()
+    )
+    
+    # Get all pending items that are NOT the ones to keep
+    duplicates_query = (
+        select(ProcessingQueue)
+        .where(ProcessingQueue.status == "pending")
+        .where(
+            ~ProcessingQueue.id.in_(
+                select(subquery.c.keep_id)
+            )
+        )
+    )
+    
+    result = await db.execute(duplicates_query)
+    duplicates = list(result.scalars().all())
+    
+    for item in duplicates:
+        await db.delete(item)
+    
+    await db.commit()
+    
+    return {"removed": len(duplicates), "message": f"Removed {len(duplicates)} duplicate queue items"}
+
+
 @router.delete("")
 async def clear_completed(
     db: DbSession,
     status: str = Query("completed", description="Status to clear"),
 ) -> dict:
     """Clear completed or failed items from the queue."""
-    if status not in ["completed", "failed"]:
+    if status not in ["completed", "failed", "pending"]:
         raise HTTPException(
             status_code=400,
-            detail="Can only clear completed or failed items"
+            detail="Status must be completed, failed, or pending"
         )
     
     query = select(ProcessingQueue).where(ProcessingQueue.status == status)
@@ -669,7 +708,7 @@ async def clear_completed(
 
 @router.post("/process")
 async def process_queue_items(
-    max_items: int = Query(10, ge=1, le=100, description="Max items to process"),
+    max_items: int = Query(10, ge=1, le=100000, description="Max items to process"),
 ) -> dict:
     """Process pending items in the queue."""
     from grimoire.services.queue_processor import process_queue

@@ -73,6 +73,30 @@ Grimoire uses Ollama for local AI processing (metadata extraction, embeddings). 
 
 > **Note**: By default, the `./pdfs` folder is mounted. You can configure up to 3 library paths using environment variables.
 
+### Configuring AI Providers
+
+Grimoire supports multiple AI providers for metadata extraction and identification:
+
+| Provider | Type | Cost | Configuration |
+|----------|------|------|---------------|
+| **Ollama** | Local | Free | Install Ollama + models on host machine |
+| **Anthropic** | Cloud | Paid | Add API key in Settings → AI Providers |
+| **OpenAI** | Cloud | Paid | Add API key in Settings → AI Providers |
+
+**For Docker users with Ollama:**
+
+Since Grimoire runs in Docker, it needs to reach Ollama on your host machine. Configure the Ollama Base URL in **Settings → AI Providers**:
+
+- **Windows/macOS**: `http://host.docker.internal:11434`
+- **Linux**: `http://172.17.0.1:11434` (or your Docker bridge IP)
+
+Alternatively, set the environment variable in your `.env` file:
+```bash
+OLLAMA_BASE_URL=http://host.docker.internal:11434
+```
+
+**Priority order**: Settings UI → Environment variables → Default (`http://localhost:11434`)
+
 ### Configuring Multiple Library Paths
 
 Create a `.env` file in the project root:

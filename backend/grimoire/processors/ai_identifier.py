@@ -3,7 +3,9 @@ AI-powered product identification.
 Uses LLMs to identify game system, publisher, product type, etc. from PDF content.
 """
 
+import asyncio
 import json
+import logging
 import os
 from dataclasses import dataclass
 from typing import Any
@@ -11,6 +13,13 @@ from typing import Any
 import httpx
 
 from grimoire.config import settings
+
+logger = logging.getLogger(__name__)
+
+# Rate limiting settings
+DEFAULT_REQUEST_DELAY = 1.5  # seconds between requests to avoid rate limits
+MAX_RETRIES = 3
+INITIAL_BACKOFF = 5  # seconds
 
 
 # Approximate pricing per 1M tokens (as of late 2024)
@@ -187,7 +196,7 @@ Text to analyze:
 Return ONLY the JSON object, nothing else."""
 
 
-async def identify_with_openai(text: str, api_key: str) -> dict[str, Any]:
+async def identify_with_openai(text: str, api_key: str, model: str = "gpt-4o-mini") -> dict[str, Any]:
     """Use OpenAI API for identification."""
     async with httpx.AsyncClient(timeout=60.0) as client:
         response = await client.post(
@@ -197,7 +206,7 @@ async def identify_with_openai(text: str, api_key: str) -> dict[str, Any]:
                 "Content-Type": "application/json",
             },
             json={
-                "model": "gpt-4o-mini",
+                "model": model,
                 "messages": [
                     {"role": "user", "content": IDENTIFICATION_PROMPT.format(text=text)}
                 ],
@@ -211,7 +220,7 @@ async def identify_with_openai(text: str, api_key: str) -> dict[str, Any]:
         return json.loads(content)
 
 
-async def identify_with_anthropic(text: str, api_key: str) -> dict[str, Any]:
+async def identify_with_anthropic(text: str, api_key: str, model: str = "claude-3-haiku-20240307") -> dict[str, Any]:
     """Use Anthropic API for identification."""
     async with httpx.AsyncClient(timeout=60.0) as client:
         response = await client.post(
@@ -222,7 +231,7 @@ async def identify_with_anthropic(text: str, api_key: str) -> dict[str, Any]:
                 "anthropic-version": "2023-06-01",
             },
             json={
-                "model": "claude-3-haiku-20240307",
+                "model": model,
                 "max_tokens": 1024,
                 "messages": [
                     {"role": "user", "content": IDENTIFICATION_PROMPT.format(text=text)}
@@ -263,6 +272,33 @@ async def identify_with_ollama(text: str, base_url: str, model: str = "gemma3:12
         return json.loads(content)
 
 
+async def get_setting_from_db(key_name: str) -> str:
+    """Get a setting value from database."""
+    from grimoire.database import get_db_session
+    from grimoire.models import Setting
+    from sqlalchemy import select
+    
+    try:
+        async with get_db_session() as session:
+            query = select(Setting).where(Setting.key == key_name)
+            result = await session.execute(query)
+            setting = result.scalar_one_or_none()
+            if setting:
+                return json.loads(setting.value) or ""
+    except Exception:
+        pass
+    return ""
+
+
+async def get_ollama_url() -> str:
+    """Get Ollama base URL from database or environment."""
+    # Check database first (user-configured), then env var, then default
+    db_url = await get_setting_from_db("ollama_base_url")
+    if db_url:
+        return db_url
+    return os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+
+
 async def identify_product(
     text: str,
     provider: str | None = None,
@@ -281,9 +317,10 @@ async def identify_product(
     """
     truncated_text = text[:4000]
     
-    openai_key = os.getenv("OPENAI_API_KEY", "")
-    anthropic_key = os.getenv("ANTHROPIC_API_KEY", "")
-    ollama_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+    # Check env vars first, then database settings
+    openai_key = os.getenv("OPENAI_API_KEY", "") or await get_setting_from_db("openai_api_key")
+    anthropic_key = os.getenv("ANTHROPIC_API_KEY", "") or await get_setting_from_db("anthropic_api_key")
+    ollama_url = await get_ollama_url()
     
     if provider is None:
         if openai_key:
@@ -295,49 +332,77 @@ async def identify_product(
         else:
             return {"error": "No AI provider configured"}
     
-    try:
-        if provider == "openai":
-            if not openai_key:
-                return {"error": "OpenAI API key not configured"}
-            result = await identify_with_openai(truncated_text, openai_key)
-        elif provider == "anthropic":
-            if not anthropic_key:
-                return {"error": "Anthropic API key not configured"}
-            result = await identify_with_anthropic(truncated_text, anthropic_key)
-        elif provider == "ollama":
-            result = await identify_with_ollama(
-                truncated_text, 
-                ollama_url, 
-                model or "gemma3:12b"
-            )
-        else:
-            return {"error": f"Unknown provider: {provider}"}
-        
-        result["provider"] = provider
-        return result
-        
-    except httpx.HTTPStatusError as e:
-        return {"error": f"API error: {e.response.status_code} - {e.response.text}"}
-    except json.JSONDecodeError as e:
-        return {"error": f"Failed to parse AI response as JSON: {str(e)[:100]}"}
-    except Exception as e:
-        return {"error": f"Identification failed: {str(e)}"}
+    # Retry loop with exponential backoff for rate limits
+    last_error = None
+    for attempt in range(MAX_RETRIES):
+        try:
+            if provider == "openai":
+                if not openai_key:
+                    return {"error": "OpenAI API key not configured"}
+                result = await identify_with_openai(
+                    truncated_text, 
+                    openai_key, 
+                    model or "gpt-4o-mini"
+                )
+            elif provider == "anthropic":
+                if not anthropic_key:
+                    return {"error": "Anthropic API key not configured"}
+                result = await identify_with_anthropic(
+                    truncated_text, 
+                    anthropic_key,
+                    model or "claude-3-haiku-20240307"
+                )
+            elif provider == "ollama":
+                result = await identify_with_ollama(
+                    truncated_text, 
+                    ollama_url, 
+                    model or "gemma3:12b"
+                )
+            else:
+                return {"error": f"Unknown provider: {provider}"}
+            
+            result["provider"] = provider
+            return result
+            
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 429:
+                # Rate limit - wait and retry with exponential backoff
+                wait_time = INITIAL_BACKOFF * (2 ** attempt)
+                logger.warning(f"Rate limited (attempt {attempt + 1}/{MAX_RETRIES}), waiting {wait_time}s...")
+                await asyncio.sleep(wait_time)
+                last_error = e
+                continue
+            return {"error": f"API error: {e.response.status_code} - {e.response.text}"}
+        except json.JSONDecodeError as e:
+            return {"error": f"Failed to parse AI response as JSON: {str(e)[:100]}"}
+        except Exception as e:
+            return {"error": f"Identification failed: {str(e)}"}
+    
+    # All retries exhausted
+    if last_error:
+        return {"error": f"Rate limit exceeded after {MAX_RETRIES} retries"}
 
 
-def check_ollama_available() -> bool:
-    """Check if Ollama is running locally."""
+def check_ollama_available(ollama_url: str | None = None) -> bool:
+    """Check if Ollama is running at the given URL."""
     import httpx
-    ollama_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+    url = ollama_url or os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
     try:
         with httpx.Client(timeout=2.0) as client:
-            response = client.get(f"{ollama_url}/api/tags")
+            response = client.get(f"{url}/api/tags")
             return response.status_code == 200
     except Exception:
         return False
 
 
+async def check_ollama_available_async() -> bool:
+    """Async version that checks database for URL first."""
+    ollama_url = await get_ollama_url()
+    return check_ollama_available(ollama_url)
+
+
 def get_available_providers() -> dict[str, bool]:
-    """Check which AI providers are available."""
+    """Check which AI providers are available (sync, env vars only)."""
     return {
         "openai": bool(os.getenv("OPENAI_API_KEY")),
         "anthropic": bool(os.getenv("ANTHROPIC_API_KEY")),
@@ -345,7 +410,7 @@ def get_available_providers() -> dict[str, bool]:
     }
 
 
-async def suggest_tags_with_openai(text: str, api_key: str) -> dict[str, Any]:
+async def suggest_tags_with_openai(text: str, api_key: str, model: str = "gpt-4o-mini") -> dict[str, Any]:
     """Use OpenAI API for tag suggestions."""
     async with httpx.AsyncClient(timeout=60.0) as client:
         response = await client.post(
@@ -355,7 +420,7 @@ async def suggest_tags_with_openai(text: str, api_key: str) -> dict[str, Any]:
                 "Content-Type": "application/json",
             },
             json={
-                "model": "gpt-4o-mini",
+                "model": model,
                 "messages": [
                     {"role": "user", "content": TAG_SUGGESTION_PROMPT.format(text=text)}
                 ],
@@ -369,7 +434,7 @@ async def suggest_tags_with_openai(text: str, api_key: str) -> dict[str, Any]:
         return json.loads(content)
 
 
-async def suggest_tags_with_anthropic(text: str, api_key: str) -> dict[str, Any]:
+async def suggest_tags_with_anthropic(text: str, api_key: str, model: str = "claude-3-haiku-20240307") -> dict[str, Any]:
     """Use Anthropic API for tag suggestions."""
     async with httpx.AsyncClient(timeout=60.0) as client:
         response = await client.post(
@@ -380,7 +445,7 @@ async def suggest_tags_with_anthropic(text: str, api_key: str) -> dict[str, Any]
                 "anthropic-version": "2023-06-01",
             },
             json={
-                "model": "claude-3-haiku-20240307",
+                "model": model,
                 "max_tokens": 1024,
                 "messages": [
                     {"role": "user", "content": TAG_SUGGESTION_PROMPT.format(text=text)}
@@ -437,9 +502,10 @@ async def suggest_tags(
     """
     truncated_text = text[:4000]
     
-    openai_key = os.getenv("OPENAI_API_KEY", "")
-    anthropic_key = os.getenv("ANTHROPIC_API_KEY", "")
-    ollama_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+    # Check env vars first, then database settings
+    openai_key = os.getenv("OPENAI_API_KEY", "") or await get_setting_from_db("openai_api_key")
+    anthropic_key = os.getenv("ANTHROPIC_API_KEY", "") or await get_setting_from_db("anthropic_api_key")
+    ollama_url = await get_ollama_url()
     
     if provider is None:
         if openai_key:
@@ -455,11 +521,19 @@ async def suggest_tags(
         if provider == "openai":
             if not openai_key:
                 return {"error": "OpenAI API key not configured"}
-            result = await suggest_tags_with_openai(truncated_text, openai_key)
+            result = await suggest_tags_with_openai(
+                truncated_text, 
+                openai_key,
+                model or "gpt-4o-mini"
+            )
         elif provider == "anthropic":
             if not anthropic_key:
                 return {"error": "Anthropic API key not configured"}
-            result = await suggest_tags_with_anthropic(truncated_text, anthropic_key)
+            result = await suggest_tags_with_anthropic(
+                truncated_text, 
+                anthropic_key,
+                model or "claude-3-haiku-20240307"
+            )
         elif provider == "ollama":
             result = await suggest_tags_with_ollama(
                 truncated_text, 

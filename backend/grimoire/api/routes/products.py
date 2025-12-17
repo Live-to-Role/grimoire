@@ -110,6 +110,8 @@ async def list_products(
     tags: str | None = Query(None, description="Comma-separated tag IDs"),
     collection: int | None = Query(None, description="Filter by collection ID"),
     has_cover: bool | None = Query(None, description="Filter by cover status"),
+    text_extracted: bool | None = Query(None, description="Filter by text extraction status"),
+    ai_identified: bool | None = Query(None, description="Filter by AI identification status"),
     publication_year_min: int | None = Query(None, description="Minimum publication year"),
     publication_year_max: int | None = Query(None, description="Maximum publication year"),
     level_min: int | None = Query(None, description="Minimum level (filters products with overlapping level range)"),
@@ -160,6 +162,12 @@ async def list_products(
 
     if has_cover is not None:
         query = query.where(Product.cover_extracted == has_cover)
+
+    if text_extracted is not None:
+        query = query.where(Product.text_extracted == text_extracted)
+
+    if ai_identified is not None:
+        query = query.where(Product.ai_identified == ai_identified)
 
     if tags:
         tag_ids = [int(t.strip()) for t in tags.split(",") if t.strip().isdigit()]

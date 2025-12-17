@@ -44,11 +44,47 @@ class BulkIdentifyRequest(BaseModel):
 
 
 @router.get("/providers")
-async def get_providers() -> dict:
-    """Get available AI providers."""
-    from grimoire.processors.ai_identifier import get_available_providers
-
-    providers = get_available_providers()
+async def get_providers(db: DbSession) -> dict:
+    """Get available AI providers, checking both env vars and database settings."""
+    import json
+    import os
+    from grimoire.models import Setting
+    from grimoire.processors.ai_identifier import check_ollama_available, get_ollama_url
+    
+    # Check environment variables first
+    openai_available = bool(os.getenv("OPENAI_API_KEY"))
+    anthropic_available = bool(os.getenv("ANTHROPIC_API_KEY"))
+    
+    # Also check database settings for API keys
+    if not openai_available:
+        query = select(Setting).where(Setting.key == "openai_api_key")
+        result = await db.execute(query)
+        setting = result.scalar_one_or_none()
+        if setting:
+            try:
+                openai_available = bool(json.loads(setting.value))
+            except (json.JSONDecodeError, TypeError):
+                pass
+    
+    if not anthropic_available:
+        query = select(Setting).where(Setting.key == "anthropic_api_key")
+        result = await db.execute(query)
+        setting = result.scalar_one_or_none()
+        if setting:
+            try:
+                anthropic_available = bool(json.loads(setting.value))
+            except (json.JSONDecodeError, TypeError):
+                pass
+    
+    # Get Ollama URL from database or env var
+    ollama_url = await get_ollama_url()
+    
+    providers = {
+        "openai": openai_available,
+        "anthropic": anthropic_available,
+        "ollama": check_ollama_available(ollama_url),
+    }
+    
     return {
         "providers": providers,
         "any_available": any(providers.values()),
@@ -404,8 +440,12 @@ async def identify_all(
     model: str | None = Query(None, description="Specific model"),
     apply: bool = Query(True, description="Apply to products"),
     force: bool = Query(False, description="Re-identify already identified products"),
+    delay: float = Query(1.5, ge=0, le=30, description="Delay between requests in seconds"),
 ) -> dict:
     """Identify all products that haven't been identified yet."""
+    import asyncio
+    import logging
+    logger = logging.getLogger(__name__)
     from grimoire.processors.ai_identifier import identify_product as ai_identify
 
     if force:
@@ -418,32 +458,52 @@ async def identify_all(
 
     result = await db.execute(query)
     products = list(result.scalars().all())
+    
+    logger.info(f"Starting AI identification for {len(products)} products with provider={provider}, model={model}")
 
     success = 0
     failed = 0
     errors = []
 
-    for product in products:
+    for i, product in enumerate(products):
         text = get_extracted_text(product)
         if not text:
             failed += 1
             errors.append(f"{product.file_name}: No extracted text")
+            logger.warning(f"[{i+1}/{len(products)}] {product.file_name}: No extracted text")
             continue
 
-        identification = await ai_identify(text, provider, model)
+        try:
+            identification = await ai_identify(text, provider, model)
+        except Exception as e:
+            failed += 1
+            errors.append(f"{product.file_name}: {str(e)}")
+            logger.error(f"[{i+1}/{len(products)}] {product.file_name}: Exception - {e}")
+            continue
 
         if "error" in identification:
             failed += 1
             errors.append(f"{product.file_name}: {identification['error']}")
+            logger.warning(f"[{i+1}/{len(products)}] {product.file_name}: {identification['error']}")
             continue
+        
+        logger.info(f"[{i+1}/{len(products)}] Identified: {product.file_name}")
+        
+        # Add delay between requests to avoid rate limits
+        if delay > 0 and i < len(products) - 1:
+            await asyncio.sleep(delay)
 
         if apply:
             if identification.get("game_system"):
                 product.game_system = identification["game_system"]
+            if identification.get("genre"):
+                product.genre = identification["genre"]
             if identification.get("product_type"):
                 product.product_type = identification["product_type"]
             if identification.get("publisher"):
                 product.publisher = identification["publisher"]
+            if identification.get("author"):
+                product.author = identification["author"]
             if identification.get("title"):
                 product.title = identification["title"]
             if identification.get("publication_year"):
@@ -459,6 +519,8 @@ async def identify_all(
 
     if apply:
         await db.commit()
+    
+    logger.info(f"AI identification complete: {success} succeeded, {failed} failed out of {len(products)} total")
 
     return {
         "message": "Batch identification completed",

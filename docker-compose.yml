@@ -18,6 +18,9 @@ services:
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - DEBUG=${DEBUG:-false}
       - CORS_ORIGINS=["http://localhost:5173","http://localhost:5174","http://localhost:5175","http://localhost:3000","http://localhost:8000"]
+      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
@@ -41,6 +44,9 @@ services:
       - DATA_DIR=/app/data
       - COVERS_DIR=/app/data/covers
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
     command: ["python", "-m", "huey.bin.huey_consumer", "grimoire.worker.tasks.huey", "-w", "2", "-k", "thread"]
     restart: unless-stopped
     depends_on:
