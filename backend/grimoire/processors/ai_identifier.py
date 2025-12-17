@@ -25,6 +25,7 @@ MODEL_PRICING = {
     "claude-3-opus-20240229": {"input": 15.00, "output": 75.00},
     "claude-3-5-sonnet-20241022": {"input": 3.00, "output": 15.00},
     # Ollama (free/local)
+    "gemma3:12b": {"input": 0.0, "output": 0.0},
     "llama3.2": {"input": 0.0, "output": 0.0},
     "llama3.1": {"input": 0.0, "output": 0.0},
     "mistral": {"input": 0.0, "output": 0.0},
@@ -34,7 +35,7 @@ MODEL_PRICING = {
 DEFAULT_MODELS = {
     "openai": "gpt-4o-mini",
     "anthropic": "claude-3-haiku-20240307",
-    "ollama": "llama3.2",
+    "ollama": "gemma3:12b",
 }
 
 
@@ -244,7 +245,7 @@ async def identify_with_anthropic(text: str, api_key: str) -> dict[str, Any]:
         return json.loads(content)
 
 
-async def identify_with_ollama(text: str, base_url: str, model: str = "llama3.2") -> dict[str, Any]:
+async def identify_with_ollama(text: str, base_url: str, model: str = "gemma3:12b") -> dict[str, Any]:
     """Use Ollama for local identification."""
     async with httpx.AsyncClient(timeout=120.0) as client:
         response = await client.post(
@@ -307,7 +308,7 @@ async def identify_product(
             result = await identify_with_ollama(
                 truncated_text, 
                 ollama_url, 
-                model or "llama3.2"
+                model or "gemma3:12b"
             )
         else:
             return {"error": f"Unknown provider: {provider}"}
@@ -323,12 +324,24 @@ async def identify_product(
         return {"error": f"Identification failed: {str(e)}"}
 
 
+def check_ollama_available() -> bool:
+    """Check if Ollama is running locally."""
+    import httpx
+    ollama_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+    try:
+        with httpx.Client(timeout=2.0) as client:
+            response = client.get(f"{ollama_url}/api/tags")
+            return response.status_code == 200
+    except Exception:
+        return False
+
+
 def get_available_providers() -> dict[str, bool]:
     """Check which AI providers are available."""
     return {
         "openai": bool(os.getenv("OPENAI_API_KEY")),
         "anthropic": bool(os.getenv("ANTHROPIC_API_KEY")),
-        "ollama": bool(os.getenv("OLLAMA_BASE_URL")),
+        "ollama": check_ollama_available(),
     }
 
 
@@ -388,7 +401,7 @@ async def suggest_tags_with_anthropic(text: str, api_key: str) -> dict[str, Any]
         return json.loads(content)
 
 
-async def suggest_tags_with_ollama(text: str, base_url: str, model: str = "llama3.2") -> dict[str, Any]:
+async def suggest_tags_with_ollama(text: str, base_url: str, model: str = "gemma3:12b") -> dict[str, Any]:
     """Use Ollama for local tag suggestions."""
     async with httpx.AsyncClient(timeout=120.0) as client:
         response = await client.post(
@@ -451,7 +464,7 @@ async def suggest_tags(
             result = await suggest_tags_with_ollama(
                 truncated_text, 
                 ollama_url, 
-                model or "llama3.2"
+                model or "gemma3:12b"
             )
         else:
             return {"error": f"Unknown provider: {provider}"}

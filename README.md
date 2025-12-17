@@ -18,6 +18,36 @@ A self-hosted digital library manager for tabletop RPG content with AI-powered o
 
 - Docker and Docker Compose
 - A folder containing your RPG PDFs
+- **Ollama** (for AI-powered metadata extraction)
+
+### Installing Ollama
+
+Grimoire uses Ollama for local AI processing (metadata extraction, embeddings). Install it before running Grimoire:
+
+1. Download and install Ollama from [ollama.com](https://ollama.com/download)
+
+2. Pull the required models:
+   ```bash
+   ollama pull gemma3:12b
+   ollama pull nomic-embed-text
+   ```
+
+**Model recommendations based on your hardware:**
+
+| GPU VRAM | Recommended Model | Notes |
+|----------|-------------------|-------|
+| 8GB+     | `gemma3:12b`      | Best accuracy for metadata extraction |
+| 4-8GB    | `gemma3:4b`       | Good balance of speed and quality |
+| CPU only | `gemma3:4b`       | Will run slower but works |
+
+**Embedding model:** Always install `nomic-embed-text` for semantic search features.
+
+3. Verify Ollama is running:
+   ```bash
+   ollama list
+   ```
+
+> **Note**: Ollama runs locally - no data leaves your computer. API keys for cloud providers (OpenAI, Anthropic) can be configured in Settings as alternatives.
 
 ### Installation
 
