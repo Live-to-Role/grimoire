@@ -36,11 +36,49 @@ async def handle_cover_task(db: AsyncSession, product: Product) -> bool:
     return success
 
 
+async def get_setting(db: AsyncSession, key: str, default=None):
+    """Get a setting value from the database."""
+    from grimoire.models import Setting
+    import json
+    
+    result = await db.execute(select(Setting).where(Setting.key == key))
+    setting = result.scalar_one_or_none()
+    if setting:
+        try:
+            return json.loads(setting.value)
+        except (json.JSONDecodeError, TypeError):
+            return setting.value
+    return default
+
+
+async def queue_ai_identify_if_enabled(db: AsyncSession, product: Product) -> bool:
+    """Queue AI identification task if auto-identify is enabled."""
+    auto_identify = await get_setting(db, "auto_identify_on_scan", False)
+    if not auto_identify:
+        return False
+    
+    # Check if already identified
+    if product.ai_identified:
+        return False
+    
+    # Queue AI identify task
+    ai_item = ProcessingQueue(
+        product_id=product.id,
+        task_type="ai_identify",
+        priority=3,  # Lower than text extraction
+        status="pending",
+    )
+    db.add(ai_item)
+    logger.info(f"Queued AI identification for product {product.id}")
+    return True
+
+
 @register_handler("text")
 async def handle_text_task(db: AsyncSession, product: Product) -> bool:
     """Handle text extraction task.
     
     If the PDF is detected as image-based (needs OCR), queues an ocr_text task instead.
+    After successful extraction, queues AI identification if enabled.
     """
     from grimoire.services.processor import process_text_extraction_sync
     from grimoire.services.fts_service import update_search_vector
@@ -69,6 +107,9 @@ async def handle_text_task(db: AsyncSession, product: Product) -> bool:
         await db.commit()
         # Also update the FTS index
         await update_search_vector(db, product)
+        # Queue AI identification if enabled
+        await queue_ai_identify_if_enabled(db, product)
+        await db.commit()
     return success
 
 
@@ -126,6 +167,10 @@ async def handle_ocr_text_task(db: AsyncSession, product: Product) -> bool:
         
         # Update FTS index
         await update_search_vector(db, product)
+        
+        # Queue AI identification if enabled
+        await queue_ai_identify_if_enabled(db, product)
+        await db.commit()
         
         logger.info(f"OCR extraction completed for product {product.id}: {len(markdown_text)} chars")
         return True
@@ -240,6 +285,61 @@ async def handle_identify_task(db: AsyncSession, product: Product) -> bool:
         return True
     
     return False
+
+
+@register_handler("ai_identify")
+async def handle_ai_identify_task(db: AsyncSession, product: Product) -> bool:
+    """Handle AI identification task using configured provider."""
+    from grimoire.processors.ai_identifier import identify_product
+    from grimoire.services.processor import get_extracted_text
+    
+    # Get configured provider
+    provider = await get_setting(db, "auto_identify_provider", "ollama")
+    
+    # Get extracted text
+    text = get_extracted_text(product)
+    if not text or len(text) < 100:
+        logger.warning(f"Product {product.id} has insufficient text for AI identification")
+        return False
+    
+    try:
+        # Call AI identifier
+        identification = await identify_product(text, provider=provider)
+        
+        if "error" in identification:
+            logger.error(f"AI identification failed for product {product.id}: {identification['error']}")
+            return False
+        
+        # Apply identification results
+        if identification.get("game_system"):
+            product.game_system = identification["game_system"]
+        if identification.get("genre"):
+            product.genre = identification["genre"]
+        if identification.get("product_type"):
+            product.product_type = identification["product_type"]
+        if identification.get("publisher"):
+            product.publisher = identification["publisher"]
+        if identification.get("author"):
+            product.author = identification["author"]
+        if identification.get("title"):
+            product.title = identification["title"]
+        if identification.get("publication_year"):
+            product.publication_year = identification["publication_year"]
+        if identification.get("level_range_min"):
+            product.level_range_min = identification["level_range_min"]
+        if identification.get("level_range_max"):
+            product.level_range_max = identification["level_range_max"]
+        
+        product.ai_identified = True
+        product.updated_at = datetime.now(UTC)
+        await db.commit()
+        
+        logger.info(f"AI identified product {product.id} using {provider}")
+        return True
+        
+    except Exception as e:
+        logger.error(f"AI identification failed for product {product.id}: {e}")
+        return False
 
 
 async def process_queue_item(item_id: int) -> bool:

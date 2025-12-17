@@ -6,13 +6,14 @@ from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Query, Response
 from fastapi.responses import FileResponse
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 from sqlalchemy.orm import selectinload
 
 from grimoire.api.deps import DbSession, Pagination
 from grimoire.config import settings
 from grimoire.utils.security import validate_covers_path, validate_path_in_directory, PathTraversalError
 from grimoire.models import Product, ProductTag, Tag
+from grimoire.services.fts_service import check_fts_available
 from grimoire.schemas.product import (
     ProductListResponse,
     ProductProcessRequest,
@@ -70,15 +71,26 @@ def product_to_response(product: Product) -> ProductResponse:
         title=product.title,
         author=product.author,
         publisher=product.publisher,
+        description=product.description,
         publication_year=product.publication_year,
         game_system=product.game_system,
         genre=product.genre,
         product_type=product.product_type,
+        setting=product.setting,
         level_range_min=product.level_range_min,
         level_range_max=product.level_range_max,
         party_size_min=product.party_size_min,
         party_size_max=product.party_size_max,
         estimated_runtime=product.estimated_runtime,
+        series=product.series,
+        series_order=product.series_order,
+        format=product.format,
+        isbn=product.isbn,
+        msrp=product.msrp,
+        dtrpg_url=product.dtrpg_url,
+        itch_url=product.itch_url,
+        themes=product.themes,
+        content_warnings=product.content_warnings,
         page_count=product.page_count,
         cover_url=cover_url,
         tags=tags,
@@ -125,10 +137,35 @@ async def list_products(
 
     # Apply filters
     if search:
-        search_term = f"%{search}%"
-        query = query.where(
-            (Product.title.ilike(search_term)) | (Product.file_name.ilike(search_term))
-        )
+        # Use FTS for fast search (only searches indexed products)
+        # Non-indexed products won't appear - this is intentional for speed
+        try:
+            if await check_fts_available(db):
+                terms = search.strip().split()
+                if terms:
+                    fts_query = " OR ".join(f'"{term}"*' for term in terms)
+                    fts_result = await db.execute(
+                        text("SELECT rowid FROM products_fts WHERE products_fts MATCH :query LIMIT 1000"),
+                        {"query": fts_query}
+                    )
+                    fts_product_ids = [row[0] for row in fts_result.fetchall()]
+                    if fts_product_ids:
+                        query = query.where(Product.id.in_(fts_product_ids))
+                    else:
+                        # No FTS matches - return empty
+                        query = query.where(Product.id == -1)
+            else:
+                # FTS not available, use ILIKE (slow)
+                search_term = f"%{search}%"
+                query = query.where(
+                    (Product.title.ilike(search_term)) | (Product.file_name.ilike(search_term))
+                )
+        except Exception:
+            # FTS failed, fall back to ILIKE
+            search_term = f"%{search}%"
+            query = query.where(
+                (Product.title.ilike(search_term)) | (Product.file_name.ilike(search_term))
+            )
 
     if game_system:
         if game_system == "Unknown":

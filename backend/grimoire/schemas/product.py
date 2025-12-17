@@ -23,15 +23,26 @@ class ProductBase(BaseModel):
     title: str | None = None
     author: str | None = None
     publisher: str | None = None
+    description: str | None = None
     publication_year: int | None = None
     game_system: str | None = None
     genre: str | None = None
     product_type: str | None = None
+    setting: str | None = None
     level_range_min: int | None = None
     level_range_max: int | None = None
     party_size_min: int | None = None
     party_size_max: int | None = None
     estimated_runtime: str | None = None
+    series: str | None = None
+    series_order: str | None = None
+    format: str | None = None
+    isbn: str | None = None
+    msrp: float | None = None
+    dtrpg_url: str | None = None
+    itch_url: str | None = None
+    themes: str | None = None
+    content_warnings: str | None = None
 
 
 class ProductCreate(ProductBase):
@@ -50,15 +61,27 @@ class ProductUpdate(BaseModel):
     title: str | None = None
     author: str | None = None
     publisher: str | None = None
+    description: str | None = None
     publication_year: int | None = None
+    page_count: int | None = None
     game_system: str | None = None
     genre: str | None = None
     product_type: str | None = None
+    setting: str | None = None
     level_range_min: int | None = None
     level_range_max: int | None = None
     party_size_min: int | None = None
     party_size_max: int | None = None
     estimated_runtime: str | None = None
+    series: str | None = None
+    series_order: str | None = None
+    format: str | None = None
+    isbn: str | None = None
+    msrp: float | None = None
+    dtrpg_url: str | None = None
+    itch_url: str | None = None
+    themes: str | None = None
+    content_warnings: str | None = None
 
 
 class RunStatus(BaseModel):

@@ -1,6 +1,9 @@
 """AI and Codex identification API endpoints."""
 
+import asyncio
+import logging
 from dataclasses import asdict
+
 from pydantic import BaseModel, Field
 from fastapi import APIRouter, HTTPException, Query
 from sqlalchemy import select
@@ -17,6 +20,7 @@ from grimoire.services.identifier import (
 from grimoire.services.codex import get_codex_client
 from grimoire.processors.ai_identifier import estimate_cost, estimate_batch_cost
 
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -441,11 +445,9 @@ async def identify_all(
     apply: bool = Query(True, description="Apply to products"),
     force: bool = Query(False, description="Re-identify already identified products"),
     delay: float = Query(1.5, ge=0, le=30, description="Delay between requests in seconds"),
+    min_text_length: int = Query(200, ge=0, description="Minimum text length to attempt identification"),
 ) -> dict:
     """Identify all products that haven't been identified yet."""
-    import asyncio
-    import logging
-    logger = logging.getLogger(__name__)
     from grimoire.processors.ai_identifier import identify_product as ai_identify
 
     if force:
@@ -463,14 +465,20 @@ async def identify_all(
 
     success = 0
     failed = 0
+    skipped = 0
     errors = []
 
     for i, product in enumerate(products):
         text = get_extracted_text(product)
         if not text:
-            failed += 1
-            errors.append(f"{product.file_name}: No extracted text")
-            logger.warning(f"[{i+1}/{len(products)}] {product.file_name}: No extracted text")
+            skipped += 1
+            logger.debug(f"[{i+1}/{len(products)}] {product.file_name}: No extracted text, skipping")
+            continue
+        
+        # Skip low-text PDFs (maps, image-only files)
+        if len(text) < min_text_length:
+            skipped += 1
+            logger.debug(f"[{i+1}/{len(products)}] {product.file_name}: Text too short ({len(text)} chars), skipping")
             continue
 
         try:
@@ -488,10 +496,6 @@ async def identify_all(
             continue
         
         logger.info(f"[{i+1}/{len(products)}] Identified: {product.file_name}")
-        
-        # Add delay between requests to avoid rate limits
-        if delay > 0 and i < len(products) - 1:
-            await asyncio.sleep(delay)
 
         if apply:
             if identification.get("game_system"):
@@ -516,17 +520,26 @@ async def identify_all(
             product.ai_identified = True
 
         success += 1
+        
+        # Commit periodically to save progress (every 10 products)
+        if success % 10 == 0:
+            await db.commit()
+        
+        # Add delay between requests to avoid rate limits
+        if delay > 0 and i < len(products) - 1:
+            await asyncio.sleep(delay)
 
     if apply:
         await db.commit()
     
-    logger.info(f"AI identification complete: {success} succeeded, {failed} failed out of {len(products)} total")
+    logger.info(f"AI identification complete: {success} succeeded, {failed} failed, {skipped} skipped out of {len(products)} total")
 
     return {
         "message": "Batch identification completed",
         "total": len(products),
         "success": success,
         "failed": failed,
+        "skipped": skipped,
         "errors": errors[:10],
     }
 

@@ -706,6 +706,31 @@ async def clear_completed(
     return {"cleared": len(items), "status": status}
 
 
+@router.post("/deduplicate")
+async def deduplicate_queue(
+    db: DbSession,
+) -> dict:
+    """Remove duplicate pending queue items, keeping only the oldest per product+task_type."""
+    # Find duplicates: same product_id + task_type with status=pending
+    # Keep the one with lowest id (oldest), delete the rest
+    result = await db.execute(
+        text("""
+            DELETE FROM processing_queue
+            WHERE id NOT IN (
+                SELECT MIN(id)
+                FROM processing_queue
+                WHERE status = 'pending'
+                GROUP BY product_id, task_type
+            )
+            AND status = 'pending'
+        """)
+    )
+    deleted = result.rowcount
+    await db.commit()
+    
+    return {"deleted": deleted, "message": f"Removed {deleted} duplicate queue items"}
+
+
 @router.post("/process")
 async def process_queue_items(
     max_items: int = Query(10, ge=1, le=100000, description="Max items to process"),

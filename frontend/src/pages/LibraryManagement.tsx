@@ -147,6 +147,7 @@ export function LibraryManagement() {
       const res = await apiClient.get<LibraryStats>('/library/stats');
       return res.data;
     },
+    refetchInterval: activeTab === 'processing' ? 5000 : false, // Refresh every 5s on processing tab
   });
 
   const { data: duplicateStats } = useQuery({
@@ -1063,10 +1064,84 @@ export function LibraryManagement() {
                     <div className={!appSettings?.auto_extract_text_on_scan ? 'opacity-50' : ''}>
                       <span className="text-sm font-medium text-neutral-900">Auto-identify with AI on scan</span>
                       <p className="text-xs text-neutral-500">
-                        Automatically identify products after text extraction (uses Ollama by default - free)
+                        Automatically identify products after text extraction
                       </p>
                     </div>
                   </label>
+
+                  {/* Provider Selection for Auto-Identify */}
+                  {appSettings?.auto_identify_on_scan && appSettings?.auto_extract_text_on_scan && (
+                    <div className="ml-7 mt-2 space-y-2">
+                      <p className="text-xs font-medium text-neutral-700">AI Provider for auto-identification:</p>
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          onClick={() => updateSettingMutation.mutate({
+                            key: 'auto_identify_provider',
+                            value: 'ollama',
+                          })}
+                          className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium ${
+                            (appSettings?.auto_identify_provider || 'ollama') === 'ollama'
+                              ? 'bg-purple-600 text-white'
+                              : 'bg-neutral-100 text-neutral-700 hover:bg-neutral-200'
+                          }`}
+                        >
+                          Ollama
+                          <span className={`rounded px-1 ${
+                            (appSettings?.auto_identify_provider || 'ollama') === 'ollama'
+                              ? 'bg-purple-500 text-white'
+                              : 'bg-green-100 text-green-700'
+                          }`}>Free</span>
+                        </button>
+                        <button
+                          onClick={() => updateSettingMutation.mutate({
+                            key: 'auto_identify_provider',
+                            value: 'openai',
+                          })}
+                          disabled={!aiProviders?.providers.openai}
+                          className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium ${
+                            appSettings?.auto_identify_provider === 'openai'
+                              ? 'bg-purple-600 text-white'
+                              : 'bg-neutral-100 text-neutral-700 hover:bg-neutral-200 disabled:opacity-50 disabled:cursor-not-allowed'
+                          }`}
+                        >
+                          OpenAI
+                          <span className={`rounded px-1 ${
+                            appSettings?.auto_identify_provider === 'openai'
+                              ? 'bg-purple-500 text-white'
+                              : 'bg-amber-100 text-amber-700'
+                          }`}>Paid</span>
+                        </button>
+                        <button
+                          onClick={() => updateSettingMutation.mutate({
+                            key: 'auto_identify_provider',
+                            value: 'anthropic',
+                          })}
+                          disabled={!aiProviders?.providers.anthropic}
+                          className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium ${
+                            appSettings?.auto_identify_provider === 'anthropic'
+                              ? 'bg-purple-600 text-white'
+                              : 'bg-neutral-100 text-neutral-700 hover:bg-neutral-200 disabled:opacity-50 disabled:cursor-not-allowed'
+                          }`}
+                        >
+                          Anthropic
+                          <span className={`rounded px-1 ${
+                            appSettings?.auto_identify_provider === 'anthropic'
+                              ? 'bg-purple-500 text-white'
+                              : 'bg-amber-100 text-amber-700'
+                          }`}>Paid</span>
+                        </button>
+                      </div>
+                      {(appSettings?.auto_identify_provider === 'openai' || appSettings?.auto_identify_provider === 'anthropic') && (
+                        <div className="rounded-lg bg-amber-50 p-2 mt-2">
+                          <p className="text-xs text-amber-800">
+                            <AlertTriangle className="inline h-3 w-3 mr-1" />
+                            <strong>Cost warning:</strong> Using {appSettings.auto_identify_provider} will incur API costs for each new product scanned.
+                            Estimated ~$0.002-0.01 per product depending on text length.
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
                 
                 {appSettings?.auto_extract_text_on_scan && (
@@ -1074,7 +1149,16 @@ export function LibraryManagement() {
                     <p className="text-sm text-blue-800">
                       <Info className="inline h-4 w-4 mr-1" />
                       New products will be automatically queued for processing when you scan your library.
-                      {appSettings?.auto_identify_on_scan && ' AI identification will use Ollama (local, free).'}
+                      {appSettings?.auto_identify_on_scan && (
+                        <>
+                          {' '}AI identification will use {' '}
+                          <strong>
+                            {appSettings?.auto_identify_provider === 'openai' ? 'OpenAI' :
+                             appSettings?.auto_identify_provider === 'anthropic' ? 'Anthropic' : 'Ollama'}
+                          </strong>
+                          {(appSettings?.auto_identify_provider || 'ollama') === 'ollama' ? ' (local, free)' : ' (cloud, paid)'}.
+                        </>
+                      )}
                     </p>
                   </div>
                 )}

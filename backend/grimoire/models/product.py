@@ -50,18 +50,37 @@ class Product(Base):
     publisher: Mapped[str | None] = mapped_column(String(255), nullable=True)
     publication_year: Mapped[int | None] = mapped_column(Integer, nullable=True)
     page_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # Classification
     game_system: Mapped[str | None] = mapped_column(String(100), nullable=True)
     genre: Mapped[str | None] = mapped_column(String(50), nullable=True)
     product_type: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    setting: Mapped[str | None] = mapped_column(String(255), nullable=True)  # Campaign setting name
 
     # Adventure-specific
     level_range_min: Mapped[int | None] = mapped_column(Integer, nullable=True)
     level_range_max: Mapped[int | None] = mapped_column(Integer, nullable=True)
     party_size_min: Mapped[int | None] = mapped_column(Integer, nullable=True)
     party_size_max: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    estimated_runtime: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    estimated_runtime: Mapped[str | None] = mapped_column(String(50), nullable=True)  # one-shot, 2-3 sessions, campaign
+
+    # Series information
+    series: Mapped[str | None] = mapped_column(String(255), nullable=True)  # Series name
+    series_order: Mapped[str | None] = mapped_column(String(50), nullable=True)  # e.g., "A1", "REF4", "1"
+
+    # Publication details
+    format: Mapped[str | None] = mapped_column(String(20), nullable=True)  # pdf, print, both
+    isbn: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    msrp: Mapped[float | None] = mapped_column(Float, nullable=True)  # Suggested retail price
+
+    # Marketplace links
+    dtrpg_url: Mapped[str | None] = mapped_column(Text, nullable=True)  # DriveThruRPG URL
+    itch_url: Mapped[str | None] = mapped_column(Text, nullable=True)  # Itch.io URL
+
+    # JSON array fields for Codex compatibility
+    themes: Mapped[str | None] = mapped_column(Text, nullable=True)  # JSON array of themes
+    content_warnings: Mapped[str | None] = mapped_column(Text, nullable=True)  # JSON array of warnings
 
     # Processing status
     cover_extracted: Mapped[bool] = mapped_column(Boolean, default=False)

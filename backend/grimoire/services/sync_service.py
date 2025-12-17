@@ -17,9 +17,11 @@ logger = logging.getLogger(__name__)
 
 # Fields that Codex tracks - used for no-change detection
 CONTRIBUTION_FIELDS = [
-    "publisher", "author", "game_system", "genre", "product_type",
-    "publication_year", "page_count", "level_range_min", "level_range_max",
-    "party_size_min", "party_size_max", "estimated_runtime",
+    "title", "publisher", "author", "description", "game_system", "genre", 
+    "product_type", "setting", "publication_year", "page_count", 
+    "level_range_min", "level_range_max", "party_size_min", "party_size_max", 
+    "estimated_runtime", "series", "series_order", "format", "isbn", "msrp",
+    "dtrpg_url", "itch_url", "themes", "content_warnings",
 ]
 
 # Valid Codex product types
@@ -51,6 +53,35 @@ PRODUCT_TYPE_MAPPING = {
     "one-shot": "adventure",
     "art/maps": "other",
 }
+
+
+def _parse_json_array(value: str | None) -> list[str] | None:
+    """
+    Parse a JSON array string or comma-separated string into a list.
+    
+    Args:
+        value: JSON array string like '["a", "b"]' or comma-separated like 'a, b'
+        
+    Returns:
+        List of strings, or None if input is None/empty
+    """
+    if not value:
+        return None
+    
+    value = value.strip()
+    
+    # Try JSON parse first
+    if value.startswith('['):
+        try:
+            parsed = json.loads(value)
+            if isinstance(parsed, list):
+                return [str(item).strip() for item in parsed if item]
+        except json.JSONDecodeError:
+            pass
+    
+    # Fall back to comma-separated
+    items = [item.strip() for item in value.split(',') if item.strip()]
+    return items if items else None
 
 
 def normalize_product_type(product_type: str | None) -> str | None:
@@ -369,20 +400,49 @@ def build_contribution_data(product: Product, include_cover: bool = True) -> dic
     from grimoire.services.contribution_service import get_cover_image_base64
     
     contribution_data = {
+        # Basic info
         "title": product.title,
-        "publisher": product.publisher,
+        "description": product.description,
         "author": product.author,
+        "publisher": product.publisher,
+        "publication_year": product.publication_year,
+        "publication_date": f"{product.publication_year}-01-01" if product.publication_year else None,
+        "page_count": product.page_count,
+        
+        # Classification
         "game_system": product.game_system,
         "genre": product.genre,
         "product_type": normalize_product_type(product.product_type),
-        "publication_year": product.publication_year,
-        "page_count": product.page_count,
+        "setting": product.setting,
+        
+        # Adventure details
         "level_range_min": product.level_range_min,
         "level_range_max": product.level_range_max,
         "party_size_min": product.party_size_min,
         "party_size_max": product.party_size_max,
         "estimated_runtime": product.estimated_runtime,
+        
+        # Series info
+        "series": product.series,
+        "series_order": product.series_order,
+        
+        # Publication details
+        "format": product.format,
+        "isbn": product.isbn,
+        "msrp": product.msrp,
+        
+        # Marketplace links
+        "dtrpg_url": product.dtrpg_url,
+        "itch_url": product.itch_url,
+        
+        # Metadata (JSON arrays stored as strings, convert to arrays)
+        "themes": _parse_json_array(product.themes),
+        "content_warnings": _parse_json_array(product.content_warnings),
     }
+    
+    # Serialize tags to JSON array
+    if hasattr(product, 'product_tags') and product.product_tags:
+        contribution_data["tags"] = [pt.tag.name for pt in product.product_tags]
     
     # Add cover image if available and requested
     if include_cover:
@@ -390,8 +450,8 @@ def build_contribution_data(product: Product, include_cover: bool = True) -> dic
         if cover_b64:
             contribution_data["cover_image_base64"] = cover_b64
     
-    # Remove None values
-    return {k: v for k, v in contribution_data.items() if v is not None}
+    # Remove None values and empty lists
+    return {k: v for k, v in contribution_data.items() if v is not None and v != []}
 
 
 async def queue_product_for_contribution(

@@ -67,12 +67,28 @@ export function ProductDetail({ product, onClose }: ProductDetailProps) {
   });
   const [editForm, setEditForm] = useState({
     title: product.title || '',
+    author: product.author || '',
     publisher: product.publisher || '',
+    description: product.description || '',
     game_system: product.game_system || '',
     product_type: product.product_type || '',
+    genre: product.genre || '',
+    setting: product.setting || '',
     publication_year: product.publication_year?.toString() || '',
+    page_count: product.page_count?.toString() || '',
     level_range_min: product.level_range_min?.toString() || '',
     level_range_max: product.level_range_max?.toString() || '',
+    party_size_min: product.party_size_min?.toString() || '',
+    party_size_max: product.party_size_max?.toString() || '',
+    estimated_runtime: product.estimated_runtime || '',
+    series: product.series || '',
+    series_order: product.series_order || '',
+    format: product.format || '',
+    isbn: product.isbn || '',
+    dtrpg_url: product.dtrpg_url || '',
+    itch_url: product.itch_url || '',
+    themes: product.themes || '',
+    content_warnings: product.content_warnings || '',
   });
 
   const extractTextMutation = useMutation({
@@ -441,12 +457,28 @@ export function ProductDetail({ product, onClose }: ProductDetailProps) {
   const buildEditData = () => {
     const data: Record<string, unknown> = {};
     if (editForm.title) data.title = editForm.title;
+    if (editForm.author) data.author = editForm.author;
     if (editForm.publisher) data.publisher = editForm.publisher;
+    if (editForm.description) data.description = editForm.description;
     if (editForm.game_system) data.game_system = editForm.game_system;
     if (editForm.product_type) data.product_type = editForm.product_type;
+    if (editForm.genre) data.genre = editForm.genre;
+    if (editForm.setting) data.setting = editForm.setting;
     if (editForm.publication_year) data.publication_year = parseInt(editForm.publication_year);
+    if (editForm.page_count) data.page_count = parseInt(editForm.page_count);
     if (editForm.level_range_min) data.level_range_min = parseInt(editForm.level_range_min);
     if (editForm.level_range_max) data.level_range_max = parseInt(editForm.level_range_max);
+    if (editForm.party_size_min) data.party_size_min = parseInt(editForm.party_size_min);
+    if (editForm.party_size_max) data.party_size_max = parseInt(editForm.party_size_max);
+    if (editForm.estimated_runtime) data.estimated_runtime = editForm.estimated_runtime;
+    if (editForm.series) data.series = editForm.series;
+    if (editForm.series_order) data.series_order = editForm.series_order;
+    if (editForm.format) data.format = editForm.format;
+    if (editForm.isbn) data.isbn = editForm.isbn;
+    if (editForm.dtrpg_url) data.dtrpg_url = editForm.dtrpg_url;
+    if (editForm.itch_url) data.itch_url = editForm.itch_url;
+    if (editForm.themes) data.themes = editForm.themes;
+    if (editForm.content_warnings) data.content_warnings = editForm.content_warnings;
     return data;
   };
 
@@ -461,12 +493,28 @@ export function ProductDetail({ product, onClose }: ProductDetailProps) {
   const handleCancelEdit = () => {
     setEditForm({
       title: localProduct.title || '',
+      author: localProduct.author || '',
       publisher: localProduct.publisher || '',
+      description: localProduct.description || '',
       game_system: localProduct.game_system || '',
       product_type: localProduct.product_type || '',
+      genre: localProduct.genre || '',
+      setting: localProduct.setting || '',
       publication_year: localProduct.publication_year?.toString() || '',
+      page_count: localProduct.page_count?.toString() || '',
       level_range_min: localProduct.level_range_min?.toString() || '',
       level_range_max: localProduct.level_range_max?.toString() || '',
+      party_size_min: localProduct.party_size_min?.toString() || '',
+      party_size_max: localProduct.party_size_max?.toString() || '',
+      estimated_runtime: localProduct.estimated_runtime || '',
+      series: localProduct.series || '',
+      series_order: localProduct.series_order || '',
+      format: localProduct.format || '',
+      isbn: localProduct.isbn || '',
+      dtrpg_url: localProduct.dtrpg_url || '',
+      itch_url: localProduct.itch_url || '',
+      themes: localProduct.themes || '',
+      content_warnings: localProduct.content_warnings || '',
     });
     setIsEditing(false);
   };
@@ -618,77 +666,285 @@ export function ProductDetail({ product, onClose }: ProductDetailProps) {
 
               <div className="flex-1 space-y-4">
                 {isEditing ? (
-                  <div className="space-y-4">
-                    <div>
-                      <label className="block text-sm font-medium text-primary-700">Title</label>
-                      <input
-                        type="text"
-                        value={editForm.title}
-                        onChange={(e) => setEditForm({ ...editForm, title: e.target.value })}
-                        className="mt-1 w-full rounded-sm border border-codex-tan px-3 py-2 text-sm focus:border-codex-olive focus:outline-none focus:ring-1 focus:ring-codex-olive"
-                      />
-                    </div>
-                    <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-2">
+                    {/* Basic Info */}
+                    <div className="space-y-3">
+                      <h4 className="text-xs font-semibold uppercase tracking-wide text-primary-500">Basic Info</h4>
                       <div>
-                        <label className="block text-sm font-medium text-primary-700">Game System</label>
+                        <label className="block text-sm font-medium text-primary-700">Title</label>
                         <input
                           type="text"
-                          value={editForm.game_system}
-                          onChange={(e) => setEditForm({ ...editForm, game_system: e.target.value })}
+                          value={editForm.title}
+                          onChange={(e) => setEditForm({ ...editForm, title: e.target.value })}
                           className="mt-1 w-full rounded-sm border border-codex-tan px-3 py-2 text-sm focus:border-codex-olive focus:outline-none focus:ring-1 focus:ring-codex-olive"
                         />
                       </div>
                       <div>
-                        <label className="block text-sm font-medium text-primary-700">Product Type</label>
+                        <label className="block text-sm font-medium text-primary-700">Description</label>
+                        <textarea
+                          value={editForm.description}
+                          onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
+                          rows={3}
+                          className="mt-1 w-full rounded-sm border border-codex-tan px-3 py-2 text-sm focus:border-codex-olive focus:outline-none focus:ring-1 focus:ring-codex-olive"
+                          placeholder="Brief description of this product..."
+                        />
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-sm font-medium text-primary-700">Author</label>
+                          <input
+                            type="text"
+                            value={editForm.author}
+                            onChange={(e) => setEditForm({ ...editForm, author: e.target.value })}
+                            className="mt-1 w-full rounded-sm border border-codex-tan px-3 py-2 text-sm focus:border-codex-olive focus:outline-none focus:ring-1 focus:ring-codex-olive"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-primary-700">Publisher</label>
+                          <input
+                            type="text"
+                            value={editForm.publisher}
+                            onChange={(e) => setEditForm({ ...editForm, publisher: e.target.value })}
+                            className="mt-1 w-full rounded-sm border border-codex-tan px-3 py-2 text-sm focus:border-codex-olive focus:outline-none focus:ring-1 focus:ring-codex-olive"
+                          />
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-3 gap-4">
+                        <div>
+                          <label className="block text-sm font-medium text-primary-700">Year</label>
+                          <input
+                            type="number"
+                            value={editForm.publication_year}
+                            onChange={(e) => setEditForm({ ...editForm, publication_year: e.target.value })}
+                            className="mt-1 w-full rounded-sm border border-codex-tan px-3 py-2 text-sm focus:border-codex-olive focus:outline-none focus:ring-1 focus:ring-codex-olive"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-primary-700">Page Count</label>
+                          <input
+                            type="number"
+                            value={editForm.page_count}
+                            onChange={(e) => setEditForm({ ...editForm, page_count: e.target.value })}
+                            className="mt-1 w-full rounded-sm border border-codex-tan px-3 py-2 text-sm focus:border-codex-olive focus:outline-none focus:ring-1 focus:ring-codex-olive"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-primary-700">Format</label>
+                          <select
+                            value={editForm.format}
+                            onChange={(e) => setEditForm({ ...editForm, format: e.target.value })}
+                            className="mt-1 w-full rounded-sm border border-codex-tan px-3 py-2 text-sm focus:border-codex-olive focus:outline-none focus:ring-1 focus:ring-codex-olive"
+                          >
+                            <option value="">Select...</option>
+                            <option value="pdf">PDF</option>
+                            <option value="print">Print</option>
+                            <option value="both">Both</option>
+                          </select>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Classification */}
+                    <div className="space-y-3 border-t border-codex-tan pt-4">
+                      <h4 className="text-xs font-semibold uppercase tracking-wide text-primary-500">Classification</h4>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-sm font-medium text-primary-700">Game System</label>
+                          <input
+                            type="text"
+                            value={editForm.game_system}
+                            onChange={(e) => setEditForm({ ...editForm, game_system: e.target.value })}
+                            className="mt-1 w-full rounded-sm border border-codex-tan px-3 py-2 text-sm focus:border-codex-olive focus:outline-none focus:ring-1 focus:ring-codex-olive"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-primary-700">Product Type</label>
+                          <select
+                            value={editForm.product_type}
+                            onChange={(e) => setEditForm({ ...editForm, product_type: e.target.value })}
+                            className="mt-1 w-full rounded-sm border border-codex-tan px-3 py-2 text-sm focus:border-codex-olive focus:outline-none focus:ring-1 focus:ring-codex-olive"
+                          >
+                            <option value="">Select...</option>
+                            <option value="adventure">Adventure</option>
+                            <option value="sourcebook">Sourcebook</option>
+                            <option value="supplement">Supplement</option>
+                            <option value="bestiary">Bestiary</option>
+                            <option value="core_rules">Core Rules</option>
+                            <option value="tools">Tools</option>
+                            <option value="magazine">Magazine</option>
+                            <option value="screen">Screen</option>
+                            <option value="other">Other</option>
+                          </select>
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-sm font-medium text-primary-700">Genre</label>
+                          <input
+                            type="text"
+                            value={editForm.genre}
+                            onChange={(e) => setEditForm({ ...editForm, genre: e.target.value })}
+                            className="mt-1 w-full rounded-sm border border-codex-tan px-3 py-2 text-sm focus:border-codex-olive focus:outline-none focus:ring-1 focus:ring-codex-olive"
+                            placeholder="e.g., Fantasy, Sci-Fi, Horror"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-primary-700">Setting</label>
+                          <input
+                            type="text"
+                            value={editForm.setting}
+                            onChange={(e) => setEditForm({ ...editForm, setting: e.target.value })}
+                            className="mt-1 w-full rounded-sm border border-codex-tan px-3 py-2 text-sm focus:border-codex-olive focus:outline-none focus:ring-1 focus:ring-codex-olive"
+                            placeholder="e.g., Forgotten Realms, Eberron"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Adventure Details */}
+                    <div className="space-y-3 border-t border-codex-tan pt-4">
+                      <h4 className="text-xs font-semibold uppercase tracking-wide text-primary-500">Adventure Details</h4>
+                      <div className="grid grid-cols-4 gap-4">
+                        <div>
+                          <label className="block text-sm font-medium text-primary-700">Min Level</label>
+                          <input
+                            type="number"
+                            value={editForm.level_range_min}
+                            onChange={(e) => setEditForm({ ...editForm, level_range_min: e.target.value })}
+                            className="mt-1 w-full rounded-sm border border-codex-tan px-3 py-2 text-sm focus:border-codex-olive focus:outline-none focus:ring-1 focus:ring-codex-olive"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-primary-700">Max Level</label>
+                          <input
+                            type="number"
+                            value={editForm.level_range_max}
+                            onChange={(e) => setEditForm({ ...editForm, level_range_max: e.target.value })}
+                            className="mt-1 w-full rounded-sm border border-codex-tan px-3 py-2 text-sm focus:border-codex-olive focus:outline-none focus:ring-1 focus:ring-codex-olive"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-primary-700">Min Party</label>
+                          <input
+                            type="number"
+                            value={editForm.party_size_min}
+                            onChange={(e) => setEditForm({ ...editForm, party_size_min: e.target.value })}
+                            className="mt-1 w-full rounded-sm border border-codex-tan px-3 py-2 text-sm focus:border-codex-olive focus:outline-none focus:ring-1 focus:ring-codex-olive"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-primary-700">Max Party</label>
+                          <input
+                            type="number"
+                            value={editForm.party_size_max}
+                            onChange={(e) => setEditForm({ ...editForm, party_size_max: e.target.value })}
+                            className="mt-1 w-full rounded-sm border border-codex-tan px-3 py-2 text-sm focus:border-codex-olive focus:outline-none focus:ring-1 focus:ring-codex-olive"
+                          />
+                        </div>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-primary-700">Estimated Runtime</label>
+                        <select
+                          value={editForm.estimated_runtime}
+                          onChange={(e) => setEditForm({ ...editForm, estimated_runtime: e.target.value })}
+                          className="mt-1 w-full rounded-sm border border-codex-tan px-3 py-2 text-sm focus:border-codex-olive focus:outline-none focus:ring-1 focus:ring-codex-olive"
+                        >
+                          <option value="">Select...</option>
+                          <option value="one-shot">One-shot (1 session)</option>
+                          <option value="2-3 sessions">Short (2-3 sessions)</option>
+                          <option value="4-6 sessions">Medium (4-6 sessions)</option>
+                          <option value="campaign">Campaign (7+ sessions)</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    {/* Series Info */}
+                    <div className="space-y-3 border-t border-codex-tan pt-4">
+                      <h4 className="text-xs font-semibold uppercase tracking-wide text-primary-500">Series</h4>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-sm font-medium text-primary-700">Series Name</label>
+                          <input
+                            type="text"
+                            value={editForm.series}
+                            onChange={(e) => setEditForm({ ...editForm, series: e.target.value })}
+                            className="mt-1 w-full rounded-sm border border-codex-tan px-3 py-2 text-sm focus:border-codex-olive focus:outline-none focus:ring-1 focus:ring-codex-olive"
+                            placeholder="e.g., Slavers Series"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-primary-700">Series Code/Order</label>
+                          <input
+                            type="text"
+                            value={editForm.series_order}
+                            onChange={(e) => setEditForm({ ...editForm, series_order: e.target.value })}
+                            className="mt-1 w-full rounded-sm border border-codex-tan px-3 py-2 text-sm focus:border-codex-olive focus:outline-none focus:ring-1 focus:ring-codex-olive"
+                            placeholder="e.g., A1, REF4, 1"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Marketplace Links */}
+                    <div className="space-y-3 border-t border-codex-tan pt-4">
+                      <h4 className="text-xs font-semibold uppercase tracking-wide text-primary-500">Marketplace Links</h4>
+                      <div>
+                        <label className="block text-sm font-medium text-primary-700">DriveThruRPG URL</label>
+                        <input
+                          type="url"
+                          value={editForm.dtrpg_url}
+                          onChange={(e) => setEditForm({ ...editForm, dtrpg_url: e.target.value })}
+                          className="mt-1 w-full rounded-sm border border-codex-tan px-3 py-2 text-sm focus:border-codex-olive focus:outline-none focus:ring-1 focus:ring-codex-olive"
+                          placeholder="https://www.drivethrurpg.com/product/..."
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-primary-700">Itch.io URL</label>
+                        <input
+                          type="url"
+                          value={editForm.itch_url}
+                          onChange={(e) => setEditForm({ ...editForm, itch_url: e.target.value })}
+                          className="mt-1 w-full rounded-sm border border-codex-tan px-3 py-2 text-sm focus:border-codex-olive focus:outline-none focus:ring-1 focus:ring-codex-olive"
+                          placeholder="https://example.itch.io/product"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-primary-700">ISBN</label>
                         <input
                           type="text"
-                          value={editForm.product_type}
-                          onChange={(e) => setEditForm({ ...editForm, product_type: e.target.value })}
+                          value={editForm.isbn}
+                          onChange={(e) => setEditForm({ ...editForm, isbn: e.target.value })}
                           className="mt-1 w-full rounded-sm border border-codex-tan px-3 py-2 text-sm focus:border-codex-olive focus:outline-none focus:ring-1 focus:ring-codex-olive"
                         />
                       </div>
                     </div>
-                    <div className="grid grid-cols-2 gap-4">
+
+                    {/* Metadata */}
+                    <div className="space-y-3 border-t border-codex-tan pt-4">
+                      <h4 className="text-xs font-semibold uppercase tracking-wide text-primary-500">Metadata</h4>
                       <div>
-                        <label className="block text-sm font-medium text-primary-700">Publisher</label>
+                        <label className="block text-sm font-medium text-primary-700">Themes</label>
                         <input
                           type="text"
-                          value={editForm.publisher}
-                          onChange={(e) => setEditForm({ ...editForm, publisher: e.target.value })}
+                          value={editForm.themes}
+                          onChange={(e) => setEditForm({ ...editForm, themes: e.target.value })}
                           className="mt-1 w-full rounded-sm border border-codex-tan px-3 py-2 text-sm focus:border-codex-olive focus:outline-none focus:ring-1 focus:ring-codex-olive"
+                          placeholder="horror, exploration, mystery (comma separated)"
                         />
                       </div>
                       <div>
-                        <label className="block text-sm font-medium text-primary-700">Year</label>
+                        <label className="block text-sm font-medium text-primary-700">Content Warnings</label>
                         <input
-                          type="number"
-                          value={editForm.publication_year}
-                          onChange={(e) => setEditForm({ ...editForm, publication_year: e.target.value })}
+                          type="text"
+                          value={editForm.content_warnings}
+                          onChange={(e) => setEditForm({ ...editForm, content_warnings: e.target.value })}
                           className="mt-1 w-full rounded-sm border border-codex-tan px-3 py-2 text-sm focus:border-codex-olive focus:outline-none focus:ring-1 focus:ring-codex-olive"
+                          placeholder="violence, body horror (comma separated)"
                         />
                       </div>
                     </div>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-sm font-medium text-primary-700">Min Level</label>
-                        <input
-                          type="number"
-                          value={editForm.level_range_min}
-                          onChange={(e) => setEditForm({ ...editForm, level_range_min: e.target.value })}
-                          className="mt-1 w-full rounded-sm border border-codex-tan px-3 py-2 text-sm focus:border-codex-olive focus:outline-none focus:ring-1 focus:ring-codex-olive"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-primary-700">Max Level</label>
-                        <input
-                          type="number"
-                          value={editForm.level_range_max}
-                          onChange={(e) => setEditForm({ ...editForm, level_range_max: e.target.value })}
-                          className="mt-1 w-full rounded-sm border border-codex-tan px-3 py-2 text-sm focus:border-codex-olive focus:outline-none focus:ring-1 focus:ring-codex-olive"
-                        />
-                      </div>
-                    </div>
-                    <div className="flex flex-wrap gap-3 pt-4">
+
+                    <div className="flex flex-wrap gap-3 pt-4 border-t border-codex-tan">
                       <button
                         onClick={handleSaveEdit}
                         disabled={updateMutation.isPending || updateAndContributeMutation.isPending}
@@ -1301,7 +1557,7 @@ export function ProductDetail({ product, onClose }: ProductDetailProps) {
                 </p>
                 <button
                   onClick={() => extractMutation.mutate({ monsters: true, spells: true, items: true, npcs: true })}
-                  disabled={extractMutation.isPending || !product.processing_status?.text_extracted}
+                  disabled={extractMutation.isPending || !localProduct.processing_status?.text_extracted}
                   className="inline-flex items-center gap-2 rounded-sm bg-codex-dark px-4 py-2 text-sm font-medium text-codex-cream hover:bg-codex-ink disabled:opacity-50"
                 >
                   {extractMutation.isPending ? (
@@ -1311,7 +1567,7 @@ export function ProductDetail({ product, onClose }: ProductDetailProps) {
                   )}
                   Extract All Content
                 </button>
-                {!product.processing_status?.text_extracted && (
+                {!localProduct.processing_status?.text_extracted && (
                   <p className="mt-2 text-sm text-amber-600">
                     Text must be extracted first. Add this product to the processing queue.
                   </p>

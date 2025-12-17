@@ -2,6 +2,7 @@
 
 from collections.abc import AsyncGenerator
 
+from sqlalchemy import event
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase
 
@@ -14,11 +15,25 @@ class Base(DeclarativeBase):
     pass
 
 
+# SQLite connection settings for better concurrency
+def set_sqlite_pragma(dbapi_connection, connection_record):
+    """Set SQLite pragmas for better concurrent access."""
+    cursor = dbapi_connection.cursor()
+    cursor.execute("PRAGMA journal_mode=WAL")  # Write-Ahead Logging for better concurrency
+    cursor.execute("PRAGMA busy_timeout=30000")  # Wait up to 30 seconds if locked
+    cursor.execute("PRAGMA synchronous=NORMAL")  # Balance between safety and speed
+    cursor.close()
+
+
 engine = create_async_engine(
     settings.database_url,
     echo=settings.debug,
     future=True,
+    pool_pre_ping=True,  # Check connections before use
 )
+
+# Register the pragma setter for SQLite connections
+event.listen(engine.sync_engine, "connect", set_sqlite_pragma)
 
 async_session_maker = async_sessionmaker(
     engine,

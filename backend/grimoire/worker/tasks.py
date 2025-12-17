@@ -138,6 +138,9 @@ def scan_folder_task(folder_id: int, force: bool = False) -> int:
 def process_queue_task(batch_size: int = 50) -> int:
     """Process pending items from the ProcessingQueue.
     
+    Uses the registered task handlers from queue_processor to handle
+    all task types (text, ocr_text, embed, fts_index, cover, identify).
+    
     Args:
         batch_size: Number of items to process per run
         
@@ -147,8 +150,8 @@ def process_queue_task(batch_size: int = 50) -> int:
     from sqlalchemy import select
     
     from grimoire.database import async_session_maker
-    from grimoire.models import ProcessingQueue, Product
-    from grimoire.services.processor import process_cover_sync
+    from grimoire.models import ProcessingQueue
+    from grimoire.services.queue_processor import process_queue_item
     
     async def _process():
         async with async_session_maker() as db:
@@ -164,46 +167,13 @@ def process_queue_task(batch_size: int = 50) -> int:
             
             if not items:
                 return 0
-                
+            
             processed = 0
             for item in items:
-                # Mark as processing
-                item.status = "processing"
-                item.started_at = datetime.now(UTC)
-                await db.commit()
-                
-                # Get the product
-                prod_result = await db.execute(
-                    select(Product).where(Product.id == item.product_id)
-                )
-                product = prod_result.scalar_one_or_none()
-                
-                if not product:
-                    item.status = "failed"
-                    item.error_message = "Product not found"
-                    item.completed_at = datetime.now(UTC)
-                    await db.commit()
-                    continue
-                
-                # Process based on task type
-                success = False
-                if item.task_type == "cover":
-                    success = process_cover_sync(product)
-                
-                # Update queue item status
+                # Use the queue processor which has all task handlers
+                success = await process_queue_item(item.id)
                 if success:
-                    item.status = "completed"
                     processed += 1
-                else:
-                    item.attempts += 1
-                    if item.attempts >= item.max_attempts:
-                        item.status = "failed"
-                        item.error_message = "Max attempts reached"
-                    else:
-                        item.status = "pending"  # Retry later
-                
-                item.completed_at = datetime.now(UTC)
-                await db.commit()
             
             # If there are more pending items, queue another batch
             remaining = await db.execute(

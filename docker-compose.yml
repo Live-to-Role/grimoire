@@ -10,6 +10,7 @@ services:
       - ${PDF_LIBRARY_PATH:-./pdfs}:/library:ro
       - ${PDF_LIBRARY_PATH_2:-./pdfs}:/library2:ro
       - ${PDF_LIBRARY_PATH_3:-./pdfs}:/library3:ro
+      - ./backend/grimoire:/app/grimoire:ro
     environment:
       - DATABASE_URL=sqlite+aiosqlite:///./data/grimoire.db
       - LIBRARY_PATH=/library
@@ -21,6 +22,7 @@ services:
       - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - CODEX_API_URL=${CODEX_API_URL:-https://codex-api.livetorole.com/api/v1}
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
@@ -47,6 +49,7 @@ services:
       - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - CODEX_API_URL=${CODEX_API_URL:-https://codex-api.livetorole.com/api/v1}
     command: ["python", "-m", "huey.bin.huey_consumer", "grimoire.worker.tasks.huey", "-w", "2", "-k", "thread"]
     restart: unless-stopped
     depends_on:
