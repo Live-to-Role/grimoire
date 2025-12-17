@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { Sparkles } from 'lucide-react';
 import { Library } from './pages/Library';
 import { Settings } from './pages/Settings';
 import { Campaigns } from './pages/Campaigns';
@@ -44,7 +45,19 @@ function App() {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <div className="flex h-screen bg-neutral-50">
+      <div className="flex h-screen flex-col bg-primary-100">
+        {/* Top Header Bar - Codex style */}
+        <header className="flex items-center justify-between bg-codex-olive px-6 py-3 shadow-md">
+          <div className="flex items-center gap-3">
+            <div className="flex h-8 w-8 items-center justify-center rounded bg-codex-dark">
+              <Sparkles className="h-5 w-5 text-codex-cream" />
+            </div>
+            <h1 className="font-display text-xl font-semibold tracking-wide text-codex-cream">Grimoire</h1>
+          </div>
+          <div className="text-sm text-codex-tan">Your Personal TTRPG Library</div>
+        </header>
+        
+        <div className="flex flex-1 overflow-hidden">
         <Sidebar
           activeView={activeView}
           onViewChange={setActiveView}
@@ -75,6 +88,7 @@ function App() {
             />
           )}
         </main>
+        </div>
       </div>
     </QueryClientProvider>
   );

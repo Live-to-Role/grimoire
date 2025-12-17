@@ -22,6 +22,65 @@ CONTRIBUTION_FIELDS = [
     "party_size_min", "party_size_max", "estimated_runtime",
 ]
 
+# Valid Codex product types
+CODEX_PRODUCT_TYPES = {
+    "adventure", "sourcebook", "supplement", "bestiary",
+    "tools", "magazine", "core_rules", "screen", "other",
+}
+
+# Mapping from Grimoire product types to Codex product types
+PRODUCT_TYPE_MAPPING = {
+    # Direct matches (case-insensitive)
+    "adventure": "adventure",
+    "sourcebook": "sourcebook",
+    "supplement": "supplement",
+    "bestiary": "bestiary",
+    "screen": "screen",
+    "other": "other",
+    # Grimoire-specific mappings
+    "core rulebook": "core_rules",
+    "setting": "sourcebook",
+    "character options": "supplement",
+    "gm tools": "tools",
+    "map": "other",
+    "zine": "magazine",
+    "magazine": "magazine",
+    # Additional common variations
+    "module": "adventure",
+    "campaign": "adventure",
+    "one-shot": "adventure",
+    "art/maps": "other",
+}
+
+
+def normalize_product_type(product_type: str | None) -> str | None:
+    """
+    Normalize a Grimoire product type to a Codex-accepted value.
+    
+    Args:
+        product_type: The product type from Grimoire
+        
+    Returns:
+        Codex-compatible product type, or None if input is None
+    """
+    if not product_type:
+        return None
+    
+    # Check direct match first (case-insensitive)
+    normalized = product_type.lower().strip()
+    
+    # Check mapping
+    if normalized in PRODUCT_TYPE_MAPPING:
+        return PRODUCT_TYPE_MAPPING[normalized]
+    
+    # Check if already a valid Codex type
+    if normalized in CODEX_PRODUCT_TYPES:
+        return normalized
+    
+    # Default to "other" for unknown types
+    logger.debug(f"Unknown product_type '{product_type}' mapped to 'other'")
+    return "other"
+
 
 async def should_contribute(
     product: Product,
@@ -315,7 +374,7 @@ def build_contribution_data(product: Product, include_cover: bool = True) -> dic
         "author": product.author,
         "game_system": product.game_system,
         "genre": product.genre,
-        "product_type": product.product_type,
+        "product_type": normalize_product_type(product.product_type),
         "publication_year": product.publication_year,
         "page_count": product.page_count,
         "level_range_min": product.level_range_min,

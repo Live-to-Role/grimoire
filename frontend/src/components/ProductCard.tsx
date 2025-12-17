@@ -48,13 +48,13 @@ export function ProductCard({ product, onClick, viewMode = 'grid' }: ProductCard
   if (viewMode === 'list') {
     return (
       <article
-        className="group flex items-center gap-4 rounded-lg border border-neutral-200 bg-white p-3 shadow-sm transition-all hover:shadow-md hover:border-purple-300 cursor-pointer"
+        className="group flex items-center gap-4 rounded-sm border-l-4 border-l-codex-olive border border-codex-tan bg-codex-cream p-3 shadow-tome transition-all duration-200 hover:shadow-tome-lg hover:border-codex-olive hover:bg-primary-50 hover:-translate-y-0.5 cursor-pointer"
         onClick={handleClick}
         role="button"
         tabIndex={0}
         onKeyDown={(e) => e.key === 'Enter' && handleClick()}
       >
-        <div className="h-16 w-12 flex-shrink-0 overflow-hidden rounded bg-neutral-100 relative">
+        <div className="h-16 w-12 flex-shrink-0 overflow-hidden rounded-sm bg-primary-200 relative">
           {product.cover_url && !coverError ? (
             <img
               src={getCoverUrl(product.id)}
@@ -64,30 +64,30 @@ export function ProductCard({ product, onClick, viewMode = 'grid' }: ProductCard
               onError={handleCoverError}
             />
           ) : (
-            <div className="flex h-full w-full items-center justify-center bg-neutral-200">
-              <Book className="h-6 w-6 text-neutral-400" />
+            <div className="flex h-full w-full items-center justify-center bg-primary-200">
+              <Book className="h-6 w-6 text-primary-400" />
             </div>
           )}
         </div>
 
         <div className="flex-1 min-w-0">
-          <h3 className="truncate text-sm font-medium text-neutral-900">
+          <h3 className="truncate text-sm font-medium text-primary-800">
             {product.title || product.file_name}
           </h3>
-          <div className="mt-1 flex items-center gap-2 text-xs text-neutral-500">
-            {product.publisher && <span>{product.publisher}</span>}
+          <div className="mt-1 flex items-center gap-2 text-xs text-primary-600">
+            {product.publisher && <span className="text-codex-brown">{product.publisher}</span>}
             {product.page_count && <span>• {product.page_count} pages</span>}
           </div>
         </div>
 
         <div className="flex items-center gap-2">
           {product.game_system && (
-            <span className="inline-flex items-center rounded-full bg-purple-100 px-2 py-0.5 text-xs font-medium text-purple-700">
+            <span className="inline-flex items-center rounded-sm bg-codex-olive px-2 py-0.5 text-xs font-medium text-codex-cream">
               {product.game_system}
             </span>
           )}
           {product.product_type && (
-            <span className="inline-flex items-center rounded-full bg-neutral-100 px-2 py-0.5 text-xs font-medium text-neutral-600">
+            <span className="inline-flex items-center rounded-sm bg-codex-dark px-2 py-0.5 text-xs font-medium text-codex-cream">
               {product.product_type}
             </span>
           )}
@@ -130,13 +130,13 @@ export function ProductCard({ product, onClick, viewMode = 'grid' }: ProductCard
 
   return (
     <article
-      className="group relative flex flex-col overflow-hidden rounded-lg border border-neutral-200 bg-white shadow-sm transition-all hover:shadow-md hover:border-purple-300 cursor-pointer"
+      className="group relative flex flex-col overflow-hidden rounded-sm border-l-4 border-l-codex-olive border border-codex-tan bg-codex-cream shadow-tome transition-all duration-200 hover:shadow-tome-lg hover:border-codex-olive hover:-translate-y-1 cursor-pointer"
       onClick={handleClick}
       role="button"
       tabIndex={0}
       onKeyDown={(e) => e.key === 'Enter' && handleClick()}
     >
-      <div className="aspect-[3/4] w-full overflow-hidden bg-neutral-100 relative">
+      <div className="aspect-[3/4] w-full overflow-hidden bg-primary-200 relative">
         {product.cover_url && !coverError ? (
           <img
             src={getCoverUrl(product.id)}
@@ -146,8 +146,8 @@ export function ProductCard({ product, onClick, viewMode = 'grid' }: ProductCard
             onError={handleCoverError}
           />
         ) : (
-          <div className="flex h-full w-full items-center justify-center bg-neutral-200">
-            <Book className="h-12 w-12 text-neutral-400" />
+          <div className="flex h-full w-full items-center justify-center bg-primary-200">
+            <Book className="h-12 w-12 text-primary-400" />
           </div>
         )}
         
@@ -193,29 +193,29 @@ export function ProductCard({ product, onClick, viewMode = 'grid' }: ProductCard
       </div>
 
       <div className="flex flex-1 flex-col p-3">
-        <h3 className="line-clamp-2 text-sm font-medium text-neutral-900">
+        <h3 className="line-clamp-2 text-sm font-medium text-primary-800">
           {product.title || product.file_name}
         </h3>
 
         {product.publisher && (
-          <p className="mt-1 text-xs text-neutral-500">{product.publisher}</p>
+          <p className="mt-1 text-xs text-codex-brown font-medium">{product.publisher}</p>
         )}
 
         <div className="mt-2 flex flex-wrap gap-1">
           {product.game_system && (
-            <span className="inline-flex items-center rounded-full bg-purple-100 px-2 py-0.5 text-xs font-medium text-purple-700">
+            <span className="inline-flex items-center rounded-sm bg-codex-olive px-2 py-0.5 text-xs font-medium text-codex-cream">
               {product.game_system}
             </span>
           )}
           {product.product_type && (
-            <span className="inline-flex items-center rounded-full bg-neutral-100 px-2 py-0.5 text-xs font-medium text-neutral-600">
+            <span className="inline-flex items-center rounded-sm bg-codex-dark px-2 py-0.5 text-xs font-medium text-codex-cream">
               {product.product_type}
             </span>
           )}
         </div>
 
         {product.page_count && (
-          <p className="mt-auto pt-2 text-xs text-neutral-500">
+          <p className="mt-auto pt-2 text-xs text-primary-600">
             {product.page_count} pages
           </p>
         )}

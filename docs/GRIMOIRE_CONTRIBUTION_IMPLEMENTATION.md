@@ -437,9 +437,25 @@ These need to be communicated back to the Codex project:
 3. **Rate-Limited Queue** - Background processor at 10/min with exponential backoff
 4. **Queue Status API** - `/api/v1/contributions/queue/status` endpoint
 
-### Codex Requirements
+### Codex API Contract (Confirmed)
 
-For this implementation to work, Codex must:
-- Accept `cover_image` field as base64-encoded JPEG
-- Accept `author` and `genre` fields in contribution data
-- Return product data with `author`, `genre`, `cover_url` for no-change detection
+Grimoire sends:
+```json
+{
+  "title": "Adventure Name",
+  "author": "John Doe",
+  "genre": "horror",
+  "cover_image_base64": "...",
+  "publisher": "Publisher Name",
+  "game_system": "DCC",
+  "product_type": "Adventure",
+  "publication_year": 2024,
+  "page_count": 48,
+  ...
+}
+```
+
+Notes:
+- `cover_image_base64`: max 500KB, with or without data URL prefix
+- Codex also supports `authors` (array) and `genres` (array) - Grimoire currently sends single values
+- Codex stores `cover_image_base64` in contribution data for moderation review

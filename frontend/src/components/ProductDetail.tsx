@@ -506,20 +506,20 @@ export function ProductDetail({ product, onClose }: ProductDetailProps) {
     >
       <div 
         ref={focusTrapRef}
-        className="flex h-[90vh] w-full max-w-4xl flex-col overflow-hidden rounded-xl bg-white shadow-2xl"
+        className="flex h-[90vh] w-full max-w-4xl flex-col overflow-hidden rounded-sm bg-codex-cream shadow-tome-lg"
       >
-        <header className="flex items-center justify-between border-b border-neutral-200 px-6 py-4">
-          <h2 id="product-detail-title" className="text-xl font-semibold text-neutral-900 truncate">{product.title}</h2>
+        <header className="flex items-center justify-between border-b border-codex-tan px-6 py-4">
+          <h2 id="product-detail-title" className="text-xl font-semibold font-display text-primary-800 truncate">{product.title}</h2>
           <button
             onClick={onClose}
             aria-label="Close product details"
-            className="rounded-lg p-2 text-neutral-500 hover:bg-neutral-100"
+            className="rounded-sm p-2 text-primary-600 hover:bg-primary-200"
           >
             <X className="h-5 w-5" aria-hidden="true" />
           </button>
         </header>
 
-        <div className="flex border-b border-neutral-200" role="tablist" aria-label="Product information tabs">
+        <div className="flex border-b border-codex-tan" role="tablist" aria-label="Product information tabs">
           <button
             onClick={() => handleTabChange('info')}
             role="tab"
@@ -528,8 +528,8 @@ export function ProductDetail({ product, onClose }: ProductDetailProps) {
             id="tab-info"
             className={`px-6 py-3 text-sm font-medium ${
               activeTab === 'info'
-                ? 'border-b-2 border-purple-600 text-purple-600'
-                : 'text-neutral-600 hover:text-neutral-900'
+                ? 'border-b-2 border-codex-olive text-codex-dark'
+                : 'text-primary-600 hover:text-primary-800'
             }`}
           >
             Details
@@ -542,8 +542,8 @@ export function ProductDetail({ product, onClose }: ProductDetailProps) {
             id="tab-text"
             className={`px-6 py-3 text-sm font-medium ${
               activeTab === 'text'
-                ? 'border-b-2 border-purple-600 text-purple-600'
-                : 'text-neutral-600 hover:text-neutral-900'
+                ? 'border-b-2 border-codex-olive text-codex-dark'
+                : 'text-primary-600 hover:text-primary-800'
             }`}
           >
             Extracted Text
@@ -556,8 +556,8 @@ export function ProductDetail({ product, onClose }: ProductDetailProps) {
             id="tab-extract"
             className={`px-6 py-3 text-sm font-medium ${
               activeTab === 'extract'
-                ? 'border-b-2 border-purple-600 text-purple-600'
-                : 'text-neutral-600 hover:text-neutral-900'
+                ? 'border-b-2 border-codex-olive text-codex-dark'
+                : 'text-primary-600 hover:text-primary-800'
             }`}
           >
             Extract Content
@@ -570,8 +570,8 @@ export function ProductDetail({ product, onClose }: ProductDetailProps) {
             id="tab-export"
             className={`px-6 py-3 text-sm font-medium ${
               activeTab === 'export'
-                ? 'border-b-2 border-purple-600 text-purple-600'
-                : 'text-neutral-600 hover:text-neutral-900'
+                ? 'border-b-2 border-codex-olive text-codex-dark'
+                : 'text-primary-600 hover:text-primary-800'
             }`}
           >
             Export
@@ -584,13 +584,13 @@ export function ProductDetail({ product, onClose }: ProductDetailProps) {
             id="tab-notes"
             className={`px-6 py-3 text-sm font-medium ${
               activeTab === 'notes'
-                ? 'border-b-2 border-purple-600 text-purple-600'
-                : 'text-neutral-600 hover:text-neutral-900'
+                ? 'border-b-2 border-codex-olive text-codex-dark'
+                : 'text-primary-600 hover:text-primary-800'
             }`}
           >
             GM Notes
             {runNotes && runNotes.length > 0 && (
-              <span className="ml-1.5 rounded-full bg-purple-100 px-2 py-0.5 text-xs text-purple-700">
+              <span className="ml-1.5 rounded-sm bg-codex-olive/20 px-2 py-0.5 text-xs text-codex-dark">
                 {runNotes.length}
               </span>
             )}
@@ -620,71 +620,71 @@ export function ProductDetail({ product, onClose }: ProductDetailProps) {
                 {isEditing ? (
                   <div className="space-y-4">
                     <div>
-                      <label className="block text-sm font-medium text-neutral-700">Title</label>
+                      <label className="block text-sm font-medium text-primary-700">Title</label>
                       <input
                         type="text"
                         value={editForm.title}
                         onChange={(e) => setEditForm({ ...editForm, title: e.target.value })}
-                        className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500"
+                        className="mt-1 w-full rounded-sm border border-codex-tan px-3 py-2 text-sm focus:border-codex-olive focus:outline-none focus:ring-1 focus:ring-codex-olive"
                       />
                     </div>
                     <div className="grid grid-cols-2 gap-4">
                       <div>
-                        <label className="block text-sm font-medium text-neutral-700">Game System</label>
+                        <label className="block text-sm font-medium text-primary-700">Game System</label>
                         <input
                           type="text"
                           value={editForm.game_system}
                           onChange={(e) => setEditForm({ ...editForm, game_system: e.target.value })}
-                          className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500"
+                          className="mt-1 w-full rounded-sm border border-codex-tan px-3 py-2 text-sm focus:border-codex-olive focus:outline-none focus:ring-1 focus:ring-codex-olive"
                         />
                       </div>
                       <div>
-                        <label className="block text-sm font-medium text-neutral-700">Product Type</label>
+                        <label className="block text-sm font-medium text-primary-700">Product Type</label>
                         <input
                           type="text"
                           value={editForm.product_type}
                           onChange={(e) => setEditForm({ ...editForm, product_type: e.target.value })}
-                          className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500"
+                          className="mt-1 w-full rounded-sm border border-codex-tan px-3 py-2 text-sm focus:border-codex-olive focus:outline-none focus:ring-1 focus:ring-codex-olive"
                         />
                       </div>
                     </div>
                     <div className="grid grid-cols-2 gap-4">
                       <div>
-                        <label className="block text-sm font-medium text-neutral-700">Publisher</label>
+                        <label className="block text-sm font-medium text-primary-700">Publisher</label>
                         <input
                           type="text"
                           value={editForm.publisher}
                           onChange={(e) => setEditForm({ ...editForm, publisher: e.target.value })}
-                          className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500"
+                          className="mt-1 w-full rounded-sm border border-codex-tan px-3 py-2 text-sm focus:border-codex-olive focus:outline-none focus:ring-1 focus:ring-codex-olive"
                         />
                       </div>
                       <div>
-                        <label className="block text-sm font-medium text-neutral-700">Year</label>
+                        <label className="block text-sm font-medium text-primary-700">Year</label>
                         <input
                           type="number"
                           value={editForm.publication_year}
                           onChange={(e) => setEditForm({ ...editForm, publication_year: e.target.value })}
-                          className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500"
+                          className="mt-1 w-full rounded-sm border border-codex-tan px-3 py-2 text-sm focus:border-codex-olive focus:outline-none focus:ring-1 focus:ring-codex-olive"
                         />
                       </div>
                     </div>
                     <div className="grid grid-cols-2 gap-4">
                       <div>
-                        <label className="block text-sm font-medium text-neutral-700">Min Level</label>
+                        <label className="block text-sm font-medium text-primary-700">Min Level</label>
                         <input
                           type="number"
                           value={editForm.level_range_min}
                           onChange={(e) => setEditForm({ ...editForm, level_range_min: e.target.value })}
-                          className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500"
+                          className="mt-1 w-full rounded-sm border border-codex-tan px-3 py-2 text-sm focus:border-codex-olive focus:outline-none focus:ring-1 focus:ring-codex-olive"
                         />
                       </div>
                       <div>
-                        <label className="block text-sm font-medium text-neutral-700">Max Level</label>
+                        <label className="block text-sm font-medium text-primary-700">Max Level</label>
                         <input
                           type="number"
                           value={editForm.level_range_max}
                           onChange={(e) => setEditForm({ ...editForm, level_range_max: e.target.value })}
-                          className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500"
+                          className="mt-1 w-full rounded-sm border border-codex-tan px-3 py-2 text-sm focus:border-codex-olive focus:outline-none focus:ring-1 focus:ring-codex-olive"
                         />
                       </div>
                     </div>
@@ -692,7 +692,7 @@ export function ProductDetail({ product, onClose }: ProductDetailProps) {
                       <button
                         onClick={handleSaveEdit}
                         disabled={updateMutation.isPending || updateAndContributeMutation.isPending}
-                        className="inline-flex items-center gap-2 rounded-lg bg-purple-600 px-4 py-2 text-sm font-medium text-white hover:bg-purple-700 disabled:opacity-50"
+                        className="inline-flex items-center gap-2 rounded-sm bg-codex-dark px-4 py-2 text-sm font-medium text-codex-cream hover:bg-codex-ink disabled:opacity-50"
                       >
                         {updateMutation.isPending ? (
                           <Loader2 className="h-4 w-4 animate-spin" />
@@ -717,7 +717,7 @@ export function ProductDetail({ product, onClose }: ProductDetailProps) {
                       <button
                         onClick={handleCancelEdit}
                         disabled={updateMutation.isPending || updateAndContributeMutation.isPending}
-                        className="inline-flex items-center gap-2 rounded-lg border border-neutral-300 bg-white px-4 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-50 disabled:opacity-50"
+                        className="inline-flex items-center gap-2 rounded-sm border border-codex-tan bg-codex-cream px-4 py-2 text-sm font-medium text-primary-700 hover:bg-primary-100 disabled:opacity-50"
                       >
                         Cancel
                       </button>
@@ -728,9 +728,9 @@ export function ProductDetail({ product, onClose }: ProductDetailProps) {
                     <div className="grid grid-cols-2 gap-4">
                       {localProduct.game_system && (
                         <div className="flex items-center gap-2">
-                          <Book className="h-4 w-4 text-neutral-400" />
+                          <Book className="h-4 w-4 text-primary-400" />
                           <div>
-                            <p className="text-xs text-neutral-500">Game System</p>
+                            <p className="text-xs text-primary-600">Game System</p>
                             <p className="font-medium">{localProduct.game_system}</p>
                           </div>
                         </div>
@@ -738,9 +738,9 @@ export function ProductDetail({ product, onClose }: ProductDetailProps) {
 
                       {localProduct.product_type && (
                         <div className="flex items-center gap-2">
-                          <FileText className="h-4 w-4 text-neutral-400" />
+                          <FileText className="h-4 w-4 text-primary-400" />
                           <div>
-                            <p className="text-xs text-neutral-500">Type</p>
+                            <p className="text-xs text-primary-600">Type</p>
                             <p className="font-medium">{localProduct.product_type}</p>
                           </div>
                         </div>
@@ -748,9 +748,9 @@ export function ProductDetail({ product, onClose }: ProductDetailProps) {
 
                       {localProduct.publisher && (
                         <div className="flex items-center gap-2">
-                          <Users className="h-4 w-4 text-neutral-400" />
+                          <Users className="h-4 w-4 text-primary-400" />
                           <div>
-                            <p className="text-xs text-neutral-500">Publisher</p>
+                            <p className="text-xs text-primary-600">Publisher</p>
                             <p className="font-medium">{localProduct.publisher}</p>
                           </div>
                         </div>
@@ -758,9 +758,9 @@ export function ProductDetail({ product, onClose }: ProductDetailProps) {
 
                       {localProduct.publication_year && (
                         <div className="flex items-center gap-2">
-                          <Calendar className="h-4 w-4 text-neutral-400" />
+                          <Calendar className="h-4 w-4 text-primary-400" />
                           <div>
-                            <p className="text-xs text-neutral-500">Year</p>
+                            <p className="text-xs text-primary-600">Year</p>
                             <p className="font-medium">{localProduct.publication_year}</p>
                           </div>
                         </div>
@@ -768,9 +768,9 @@ export function ProductDetail({ product, onClose }: ProductDetailProps) {
 
                       {localProduct.page_count && (
                         <div className="flex items-center gap-2">
-                          <FileText className="h-4 w-4 text-neutral-400" />
+                          <FileText className="h-4 w-4 text-primary-400" />
                           <div>
-                            <p className="text-xs text-neutral-500">Pages</p>
+                            <p className="text-xs text-primary-600">Pages</p>
                             <p className="font-medium">{localProduct.page_count}</p>
                           </div>
                         </div>
@@ -778,9 +778,9 @@ export function ProductDetail({ product, onClose }: ProductDetailProps) {
 
                       {(localProduct.level_range_min || localProduct.level_range_max) && (
                         <div className="flex items-center gap-2">
-                          <Clock className="h-4 w-4 text-neutral-400" />
+                          <Clock className="h-4 w-4 text-primary-400" />
                           <div>
-                            <p className="text-xs text-neutral-500">Level Range</p>
+                            <p className="text-xs text-primary-600">Level Range</p>
                             <p className="font-medium">
                               {localProduct.level_range_min || '?'} - {localProduct.level_range_max || '?'}
                             </p>
@@ -812,21 +812,21 @@ export function ProductDetail({ product, onClose }: ProductDetailProps) {
                     <div className="flex flex-wrap gap-3 pt-4">
                       <button
                         onClick={() => setShowPdfViewer(true)}
-                        className="inline-flex items-center gap-2 rounded-lg bg-purple-600 px-4 py-2 text-sm font-medium text-white hover:bg-purple-700"
+                        className="inline-flex items-center gap-2 rounded-sm bg-codex-dark px-4 py-2 text-sm font-medium text-codex-cream hover:bg-codex-ink"
                       >
                         <Eye className="h-4 w-4" />
                         View PDF
                       </button>
                       <button
                         onClick={openPdf}
-                        className="inline-flex items-center gap-2 rounded-lg border border-neutral-300 bg-white px-4 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-50"
+                        className="inline-flex items-center gap-2 rounded-sm border border-codex-tan bg-codex-cream px-4 py-2 text-sm font-medium text-primary-700 hover:bg-primary-100"
                       >
                         <ExternalLink className="h-4 w-4" />
                         Open in New Tab
                       </button>
                       <button
                         onClick={() => setIsEditing(true)}
-                        className="inline-flex items-center gap-2 rounded-lg border border-neutral-300 bg-white px-4 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-50"
+                        className="inline-flex items-center gap-2 rounded-sm border border-codex-tan bg-codex-cream px-4 py-2 text-sm font-medium text-primary-700 hover:bg-primary-100"
                       >
                         <Edit3 className="h-4 w-4" />
                         Edit
@@ -877,7 +877,7 @@ export function ProductDetail({ product, onClose }: ProductDetailProps) {
                       <div className="relative">
                         <button
                           onClick={() => setShowCampaignMenu(!showCampaignMenu)}
-                          className="inline-flex items-center gap-2 rounded-lg border border-neutral-300 bg-white px-4 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-50"
+                          className="inline-flex items-center gap-2 rounded-sm border border-codex-tan bg-codex-cream px-4 py-2 text-sm font-medium text-primary-700 hover:bg-primary-100"
                         >
                           <FolderPlus className="h-4 w-4" />
                           Add to Campaign
@@ -885,7 +885,7 @@ export function ProductDetail({ product, onClose }: ProductDetailProps) {
                         </button>
                         
                         {showCampaignMenu && (
-                          <div className="absolute right-0 top-full mt-1 w-64 rounded-lg border border-neutral-200 bg-white shadow-lg z-10">
+                          <div className="absolute right-0 top-full mt-1 w-64 rounded-sm border border-codex-tan bg-codex-cream shadow-tome z-10">
                             <div className="p-2">
                               <button
                                 onClick={() => createCampaignWithProductMutation.mutate()}
@@ -907,16 +907,16 @@ export function ProductDetail({ product, onClose }: ProductDetailProps) {
                                       key={campaign.id}
                                       onClick={() => addToCampaignMutation.mutate(campaign.id)}
                                       disabled={addToCampaignMutation.isPending}
-                                      className="w-full flex items-center justify-between rounded-lg px-3 py-2 text-sm text-left hover:bg-neutral-50"
+                                      className="w-full flex items-center justify-between rounded-sm px-3 py-2 text-sm text-left hover:bg-primary-100"
                                     >
                                       <div>
-                                        <p className="font-medium text-neutral-900">{campaign.name}</p>
+                                        <p className="font-medium text-primary-800">{campaign.name}</p>
                                         {campaign.game_system && (
-                                          <p className="text-xs text-neutral-500">{campaign.game_system}</p>
+                                          <p className="text-xs text-primary-600">{campaign.game_system}</p>
                                         )}
                                       </div>
                                       {addToCampaignMutation.isPending && addToCampaignMutation.variables === campaign.id && (
-                                        <Loader2 className="h-4 w-4 animate-spin text-purple-600" />
+                                        <Loader2 className="h-4 w-4 animate-spin text-codex-olive" />
                                       )}
                                     </button>
                                   ))}
@@ -936,7 +936,7 @@ export function ProductDetail({ product, onClose }: ProductDetailProps) {
                       <div className="relative">
                         <button
                           onClick={() => setShowCollectionMenu(!showCollectionMenu)}
-                          className="inline-flex items-center gap-2 rounded-lg border border-neutral-300 bg-white px-4 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-50"
+                          className="inline-flex items-center gap-2 rounded-sm border border-codex-tan bg-codex-cream px-4 py-2 text-sm font-medium text-primary-700 hover:bg-primary-100"
                         >
                           <FolderPlus className="h-4 w-4" />
                           Collections
@@ -944,7 +944,7 @@ export function ProductDetail({ product, onClose }: ProductDetailProps) {
                         </button>
                         
                         {showCollectionMenu && (
-                          <div className="absolute right-0 top-full mt-1 w-64 rounded-lg border border-neutral-200 bg-white shadow-lg z-10">
+                          <div className="absolute right-0 top-full mt-1 w-64 rounded-sm border border-codex-tan bg-codex-cream shadow-tome z-10">
                             {collectionsData && collectionsData.length > 0 ? (
                               <div className="max-h-64 overflow-y-auto p-2">
                                 {collectionsData.map((collection) => {
@@ -954,7 +954,7 @@ export function ProductDetail({ product, onClose }: ProductDetailProps) {
                                       key={collection.id}
                                       onClick={() => handleToggleCollection(collection)}
                                       disabled={addToCollectionMutation.isPending || removeFromCollectionMutation.isPending}
-                                      className="w-full flex items-center justify-between rounded-lg px-3 py-2 text-sm text-left hover:bg-neutral-50"
+                                      className="w-full flex items-center justify-between rounded-sm px-3 py-2 text-sm text-left hover:bg-primary-100"
                                     >
                                       <div className="flex items-center gap-2">
                                         <FolderPlus
@@ -983,7 +983,7 @@ export function ProductDetail({ product, onClose }: ProductDetailProps) {
                       <div className="relative">
                         <button
                           onClick={() => setShowTagMenu(!showTagMenu)}
-                          className="inline-flex items-center gap-2 rounded-lg border border-neutral-300 bg-white px-4 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-50"
+                          className="inline-flex items-center gap-2 rounded-sm border border-codex-tan bg-codex-cream px-4 py-2 text-sm font-medium text-primary-700 hover:bg-primary-100"
                         >
                           <Tag className="h-4 w-4" />
                           Tags
@@ -991,7 +991,7 @@ export function ProductDetail({ product, onClose }: ProductDetailProps) {
                         </button>
                         
                         {showTagMenu && (
-                          <div className="absolute right-0 top-full mt-1 w-72 rounded-lg border border-neutral-200 bg-white shadow-lg z-10">
+                          <div className="absolute right-0 top-full mt-1 w-72 rounded-sm border border-codex-tan bg-codex-cream shadow-tome z-10">
                             {/* Current tags */}
                             {localProduct.tags && localProduct.tags.length > 0 && (
                               <div className="p-3 border-b border-neutral-100">
@@ -1095,7 +1095,7 @@ export function ProductDetail({ product, onClose }: ProductDetailProps) {
                         </button>
 
                         {showRunStatusMenu && (
-                          <div className="absolute right-0 top-full mt-1 w-72 rounded-lg border border-neutral-200 bg-white shadow-lg z-10">
+                          <div className="absolute right-0 top-full mt-1 w-72 rounded-sm border border-codex-tan bg-codex-cream shadow-tome z-10">
                             <div className="p-2 space-y-1">
                               <p className="px-2 py-1 text-xs text-neutral-500 uppercase tracking-wide">Status</p>
                               <button
@@ -1295,14 +1295,14 @@ export function ProductDetail({ product, onClose }: ProductDetailProps) {
               className="p-6"
             >
               <div className="mb-6">
-                <h3 className="text-lg font-semibold text-neutral-900 mb-2">Extract Structured Content</h3>
-                <p className="text-sm text-neutral-500 mb-4">
+                <h3 className="text-lg font-semibold text-primary-800 mb-2">Extract Structured Content</h3>
+                <p className="text-sm text-primary-600 mb-4">
                   Use AI to extract monsters, spells, magic items, and NPCs from this product.
                 </p>
                 <button
                   onClick={() => extractMutation.mutate({ monsters: true, spells: true, items: true, npcs: true })}
                   disabled={extractMutation.isPending || !product.processing_status?.text_extracted}
-                  className="inline-flex items-center gap-2 rounded-lg bg-purple-600 px-4 py-2 text-sm font-medium text-white hover:bg-purple-700 disabled:opacity-50"
+                  className="inline-flex items-center gap-2 rounded-sm bg-codex-dark px-4 py-2 text-sm font-medium text-codex-cream hover:bg-codex-ink disabled:opacity-50"
                 >
                   {extractMutation.isPending ? (
                     <Loader2 className="h-4 w-4 animate-spin" />
@@ -1327,7 +1327,7 @@ export function ProductDetail({ product, onClose }: ProductDetailProps) {
               {extractedContent && (
                 <div className="space-y-4">
                   {extractedContent.monsters && (extractedContent.monsters as unknown[]).length > 0 && (
-                    <div className="rounded-lg border border-neutral-200 p-4">
+                    <div className="rounded-sm border border-codex-tan p-4">
                       <h4 className="font-medium text-neutral-900 mb-2">
                         Monsters ({(extractedContent.monsters as unknown[]).length})
                       </h4>
@@ -1345,7 +1345,7 @@ export function ProductDetail({ product, onClose }: ProductDetailProps) {
                   )}
 
                   {extractedContent.spells && (extractedContent.spells as unknown[]).length > 0 && (
-                    <div className="rounded-lg border border-neutral-200 p-4">
+                    <div className="rounded-sm border border-codex-tan p-4">
                       <h4 className="font-medium text-neutral-900 mb-2">
                         Spells ({(extractedContent.spells as unknown[]).length})
                       </h4>
@@ -1363,7 +1363,7 @@ export function ProductDetail({ product, onClose }: ProductDetailProps) {
                   )}
 
                   {extractedContent.magic_items && (extractedContent.magic_items as unknown[]).length > 0 && (
-                    <div className="rounded-lg border border-neutral-200 p-4">
+                    <div className="rounded-sm border border-codex-tan p-4">
                       <h4 className="font-medium text-neutral-900 mb-2">
                         Magic Items ({(extractedContent.magic_items as unknown[]).length})
                       </h4>
@@ -1381,7 +1381,7 @@ export function ProductDetail({ product, onClose }: ProductDetailProps) {
                   )}
 
                   {extractedContent.npcs && (extractedContent.npcs as unknown[]).length > 0 && (
-                    <div className="rounded-lg border border-neutral-200 p-4">
+                    <div className="rounded-sm border border-codex-tan p-4">
                       <h4 className="font-medium text-neutral-900 mb-2">
                         NPCs ({(extractedContent.npcs as unknown[]).length})
                       </h4>
@@ -1407,15 +1407,15 @@ export function ProductDetail({ product, onClose }: ProductDetailProps) {
               aria-labelledby="tab-export"
               className="p-6"
             >
-              <h3 className="text-lg font-semibold text-neutral-900 mb-2">Export Content</h3>
-              <p className="text-sm text-neutral-500 mb-6">
+              <h3 className="text-lg font-semibold text-primary-800 mb-2">Export Content</h3>
+              <p className="text-sm text-primary-600 mb-6">
                 Export extracted content to various formats for use in other tools.
               </p>
 
               <div className="grid gap-4 md:grid-cols-2">
-                <div className="rounded-lg border border-neutral-200 p-4">
-                  <h4 className="font-medium text-neutral-900 mb-1">Foundry VTT</h4>
-                  <p className="text-sm text-neutral-500 mb-3">
+                <div className="rounded-sm border border-codex-tan p-4">
+                  <h4 className="font-medium text-primary-800 mb-1">Foundry VTT</h4>
+                  <p className="text-sm text-primary-600 mb-3">
                     Export monsters, spells, and items to Foundry VTT compendium format.
                   </p>
                   <button
@@ -1432,15 +1432,15 @@ export function ProductDetail({ product, onClose }: ProductDetailProps) {
                   </button>
                 </div>
 
-                <div className="rounded-lg border border-neutral-200 p-4">
-                  <h4 className="font-medium text-neutral-900 mb-1">Obsidian Markdown</h4>
-                  <p className="text-sm text-neutral-500 mb-3">
+                <div className="rounded-sm border border-codex-tan p-4">
+                  <h4 className="font-medium text-primary-800 mb-1">Obsidian Markdown</h4>
+                  <p className="text-sm text-primary-600 mb-3">
                     Export content as Obsidian-compatible markdown with YAML frontmatter.
                   </p>
                   <button
                     onClick={() => exportObsidianMutation.mutate()}
                     disabled={exportObsidianMutation.isPending || !product.processing_status?.text_extracted}
-                    className="inline-flex items-center gap-2 rounded-lg bg-purple-600 px-4 py-2 text-sm font-medium text-white hover:bg-purple-700 disabled:opacity-50"
+                    className="inline-flex items-center gap-2 rounded-sm bg-codex-dark px-4 py-2 text-sm font-medium text-codex-cream hover:bg-codex-ink disabled:opacity-50"
                   >
                     {exportObsidianMutation.isPending ? (
                       <Loader2 className="h-4 w-4 animate-spin" />
@@ -1472,17 +1472,17 @@ export function ProductDetail({ product, onClose }: ProductDetailProps) {
               className="p-6"
             >
               <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-semibold text-neutral-900">GM Notes</h3>
+                <h3 className="text-lg font-semibold text-primary-800">GM Notes</h3>
                 <button
                   onClick={() => openNoteEditor()}
-                  className="inline-flex items-center gap-2 rounded-lg bg-purple-600 px-4 py-2 text-sm font-medium text-white hover:bg-purple-700"
+                  className="inline-flex items-center gap-2 rounded-sm bg-codex-dark px-4 py-2 text-sm font-medium text-codex-cream hover:bg-codex-ink"
                 >
                   <Plus className="h-4 w-4" />
                   Add Note
                 </button>
               </div>
 
-              <p className="text-sm text-neutral-500 mb-6">
+              <p className="text-sm text-primary-600 mb-6">
                 Record your prep tips, modifications, warnings, and reviews for this adventure.
               </p>
 
@@ -1534,7 +1534,7 @@ export function ProductDetail({ product, onClose }: ProductDetailProps) {
                           </button>
                         </div>
                       </div>
-                      <h4 className="font-medium text-neutral-900 mb-1">{note.title}</h4>
+                      <h4 className="font-medium text-primary-800 mb-1">{note.title}</h4>
                       <p className="text-sm text-neutral-600 whitespace-pre-wrap">{note.content}</p>
                       <p className="text-xs text-neutral-400 mt-2">
                         {new Date(note.created_at).toLocaleDateString()}
@@ -1555,7 +1555,7 @@ export function ProductDetail({ product, onClose }: ProductDetailProps) {
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
                   <div className="w-full max-w-lg rounded-xl bg-white p-6 shadow-xl max-h-[90vh] overflow-y-auto">
                     <div className="flex items-center justify-between mb-4">
-                      <h3 className="text-lg font-semibold text-neutral-900">
+                      <h3 className="text-lg font-semibold text-primary-800">
                         {editingNote ? 'Edit Note' : 'Add Note'}
                       </h3>
                       <button

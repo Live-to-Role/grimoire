@@ -6,7 +6,6 @@ import {
   Tag,
   ChevronDown,
   ChevronRight,
-  Sparkles,
   Settings,
   ListTodo,
   BookOpen,
@@ -134,12 +133,7 @@ export function Sidebar({
   };
 
   return (
-    <aside className="flex h-full w-64 flex-col border-r border-neutral-200 bg-white">
-      <div className="flex items-center gap-2 border-b border-neutral-200 px-4 py-4">
-        <Sparkles className="h-6 w-6 text-purple-600" />
-        <h1 className="text-xl font-bold text-purple-700">Grimoire</h1>
-      </div>
-
+    <aside className="flex h-full w-64 flex-col border-r border-codex-brown/30 bg-codex-tan">
       <nav className="flex-1 overflow-y-auto p-2">
         <button
           onClick={() => {
@@ -150,14 +144,14 @@ export function Sidebar({
           aria-current={activeView === 'library' && !selectedCollection && !selectedTag ? 'page' : undefined}
           className={`flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm font-medium ${
             activeView === 'library' && !selectedCollection && !selectedTag
-              ? 'bg-purple-100 text-purple-700'
-              : 'text-neutral-700 hover:bg-neutral-100'
+              ? 'bg-codex-olive/20 text-codex-dark'
+              : 'text-codex-brown hover:bg-primary-200'
           }`}
         >
           <Library className="h-4 w-4" />
           All Products
           {stats && (
-            <span className="ml-auto text-xs text-neutral-500">{stats.total_products}</span>
+            <span className="ml-auto text-xs text-primary-600">{stats.total_products}</span>
           )}
         </button>
 
@@ -167,7 +161,7 @@ export function Sidebar({
               onClick={() => setCollectionsExpanded(!collectionsExpanded)}
               aria-expanded={collectionsExpanded}
               aria-controls="collections-list"
-              className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-neutral-500"
+              className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-primary-600"
             >
               {collectionsExpanded ? (
                 <ChevronDown className="h-3 w-3" />
@@ -181,7 +175,7 @@ export function Sidebar({
                 setEditingCollection(null);
                 setShowCollectionManager(true);
               }}
-              className="rounded p-1 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-600"
+              className="rounded p-1 text-primary-400 hover:bg-primary-200 hover:text-primary-700"
               aria-label="Create collection"
               title="Create collection"
             >
@@ -203,8 +197,8 @@ export function Sidebar({
                     }}
                     className={`flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm ${
                       selectedCollection === collection.id
-                        ? 'bg-purple-100 text-purple-700'
-                        : 'text-neutral-700 hover:bg-neutral-100'
+                        ? 'bg-codex-olive/20 text-codex-dark'
+                        : 'text-codex-brown hover:bg-primary-200'
                     }`}
                   >
                     <FolderOpen
@@ -212,12 +206,12 @@ export function Sidebar({
                       style={{ color: collection.color || undefined }}
                     />
                     <span className="truncate flex-1">{collection.name}</span>
-                    <span className="text-xs text-neutral-500 group-hover:hidden">
+                    <span className="text-xs text-primary-600 group-hover:hidden">
                       {collection.product_count}
                     </span>
                     <button
                       onClick={(e) => handleEditCollection(collection, e)}
-                      className="hidden rounded p-1 text-neutral-400 hover:bg-neutral-200 hover:text-neutral-600 group-hover:block"
+                      className="hidden rounded p-1 text-primary-400 hover:bg-primary-300 hover:text-primary-700 group-hover:block"
                       aria-label={`Edit ${collection.name}`}
                       title="Edit collection"
                     >
@@ -227,7 +221,7 @@ export function Sidebar({
                 </div>
               ))}
               {(!collections || collections.length === 0) && (
-                <p className="px-3 py-2 text-xs text-neutral-500">No collections yet</p>
+                <p className="px-3 py-2 text-xs text-primary-600">No collections yet</p>
               )}
             </div>
           )}
@@ -239,7 +233,7 @@ export function Sidebar({
               onClick={() => setTagsExpanded(!tagsExpanded)}
               aria-expanded={tagsExpanded}
               aria-controls="tags-list"
-              className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-neutral-500"
+              className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-primary-600"
             >
               {tagsExpanded ? (
                 <ChevronDown className="h-3 w-3" />
@@ -253,7 +247,7 @@ export function Sidebar({
                 setEditingTag(null);
                 setShowTagManager(true);
               }}
-              className="rounded p-1 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-600"
+              className="rounded p-1 text-primary-400 hover:bg-primary-200 hover:text-primary-700"
               aria-label="Create tag"
               title="Create tag"
             >
@@ -275,16 +269,16 @@ export function Sidebar({
                     }}
                     className={`flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm ${
                       selectedTag === tag.id
-                        ? 'bg-purple-100 text-purple-700'
-                        : 'text-neutral-700 hover:bg-neutral-100'
+                        ? 'bg-codex-olive/20 text-codex-dark'
+                        : 'text-codex-brown hover:bg-primary-200'
                     }`}
                   >
                     <Tag className="h-4 w-4 shrink-0" style={{ color: tag.color || undefined }} />
                     <span className="truncate flex-1">{tag.name}</span>
-                    <span className="text-xs text-neutral-500 group-hover:hidden">{tag.product_count}</span>
+                    <span className="text-xs text-primary-600 group-hover:hidden">{tag.product_count}</span>
                     <button
                       onClick={(e) => handleEditTag(tag, e)}
-                      className="hidden rounded p-1 text-neutral-400 hover:bg-neutral-200 hover:text-neutral-600 group-hover:block"
+                      className="hidden rounded p-1 text-primary-400 hover:bg-primary-300 hover:text-primary-700 group-hover:block"
                       aria-label={`Edit ${tag.name}`}
                       title="Edit tag"
                     >
@@ -294,7 +288,7 @@ export function Sidebar({
                 </div>
               ))}
               {(!tags || tags.length === 0) && (
-                <p className="px-3 py-2 text-xs text-neutral-500">No tags yet</p>
+                <p className="px-3 py-2 text-xs text-primary-600">No tags yet</p>
               )}
             </div>
           )}
@@ -302,14 +296,14 @@ export function Sidebar({
 
         {/* Active Filters Indicator */}
         {activeFilterCount > 0 && (
-          <div className="mt-4 mx-2 p-2 bg-purple-50 rounded-lg">
+          <div className="mt-4 mx-2 p-2 bg-codex-olive/10 rounded-lg">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-medium text-purple-700">
+              <span className="text-xs font-medium text-codex-dark">
                 {activeFilterCount} filter{activeFilterCount > 1 ? 's' : ''} active
               </span>
               <button
                 onClick={onClearFilters}
-                className="text-xs text-purple-600 hover:text-purple-800 flex items-center gap-1"
+                className="text-xs text-codex-olive hover:text-codex-dark flex items-center gap-1"
               >
                 <X className="h-3 w-3" />
                 Clear
@@ -324,7 +318,7 @@ export function Sidebar({
             onClick={() => setSystemsExpanded(!systemsExpanded)}
             aria-expanded={systemsExpanded}
             aria-controls="systems-list"
-            className="flex w-full items-center gap-2 px-3 py-1.5 text-xs font-semibold uppercase tracking-wider text-neutral-500"
+            className="flex w-full items-center gap-2 px-3 py-1.5 text-xs font-semibold uppercase tracking-wider text-primary-600"
           >
             {systemsExpanded ? (
               <ChevronDown className="h-3 w-3" />
@@ -339,13 +333,13 @@ export function Sidebar({
             <div id="systems-list" className="mt-1" role="list">
               <div className="px-2 pb-2">
                 <div className="relative">
-                  <Search className="absolute left-2 top-1/2 h-3 w-3 -translate-y-1/2 text-neutral-400" />
+                  <Search className="absolute left-2 top-1/2 h-3 w-3 -translate-y-1/2 text-primary-400" />
                   <input
                     type="text"
                     placeholder="Search..."
                     value={systemSearch}
                     onChange={(e) => setSystemSearch(e.target.value)}
-                    className="w-full rounded border border-neutral-200 bg-neutral-50 py-1 pl-7 pr-2 text-xs focus:border-purple-400 focus:outline-none"
+                    className="w-full rounded border border-codex-tan bg-primary-50 py-1 pl-7 pr-2 text-xs focus:border-codex-olive focus:outline-none"
                   />
                 </div>
               </div>
@@ -359,12 +353,12 @@ export function Sidebar({
                       onClick={() => onFilterChange('game_system', activeFilters.game_system === system ? null : system)}
                       className={`flex w-full items-center justify-between px-3 py-1.5 text-sm rounded-md ${
                         activeFilters.game_system === system
-                          ? 'bg-purple-100 text-purple-700'
-                          : 'text-neutral-600 hover:bg-neutral-100'
+                          ? 'bg-codex-olive text-codex-cream font-medium'
+                          : 'text-primary-600 hover:bg-primary-200'
                       }`}
                     >
                       <span className="truncate">{system}</span>
-                      <span className="text-xs text-neutral-500">{count}</span>
+                      <span className="text-xs text-primary-600">{count}</span>
                     </button>
                   ))}
               </div>
@@ -378,7 +372,7 @@ export function Sidebar({
             onClick={() => setTypesExpanded(!typesExpanded)}
             aria-expanded={typesExpanded}
             aria-controls="types-list"
-            className="flex w-full items-center gap-2 px-3 py-1.5 text-xs font-semibold uppercase tracking-wider text-neutral-500"
+            className="flex w-full items-center gap-2 px-3 py-1.5 text-xs font-semibold uppercase tracking-wider text-primary-600"
           >
             {typesExpanded ? (
               <ChevronDown className="h-3 w-3" />
@@ -399,12 +393,12 @@ export function Sidebar({
                     onClick={() => onFilterChange('product_type', activeFilters.product_type === type ? null : type)}
                     className={`flex w-full items-center justify-between px-3 py-1.5 text-sm rounded-md ${
                       activeFilters.product_type === type
-                        ? 'bg-purple-100 text-purple-700'
-                        : 'text-neutral-600 hover:bg-neutral-100'
+                        ? 'bg-codex-olive text-codex-cream font-medium'
+                        : 'text-primary-600 hover:bg-primary-200'
                     }`}
                   >
                     <span className="truncate">{type}</span>
-                    <span className="text-xs text-neutral-500">{count}</span>
+                    <span className="text-xs text-primary-600">{count}</span>
                   </button>
                 ))}
             </div>
@@ -417,7 +411,7 @@ export function Sidebar({
             onClick={() => setGenresExpanded(!genresExpanded)}
             aria-expanded={genresExpanded}
             aria-controls="genres-list"
-            className="flex w-full items-center gap-2 px-3 py-1.5 text-xs font-semibold uppercase tracking-wider text-neutral-500"
+            className="flex w-full items-center gap-2 px-3 py-1.5 text-xs font-semibold uppercase tracking-wider text-primary-600"
           >
             {genresExpanded ? (
               <ChevronDown className="h-3 w-3" />
@@ -438,12 +432,12 @@ export function Sidebar({
                     onClick={() => onFilterChange('genre', activeFilters.genre === genre ? null : genre)}
                     className={`flex w-full items-center justify-between px-3 py-1.5 text-sm rounded-md ${
                       activeFilters.genre === genre
-                        ? 'bg-purple-100 text-purple-700'
-                        : 'text-neutral-600 hover:bg-neutral-100'
+                        ? 'bg-codex-olive text-codex-cream font-medium'
+                        : 'text-primary-600 hover:bg-primary-200'
                     }`}
                   >
                     <span className="truncate">{genre}</span>
-                    <span className="text-xs text-neutral-500">{count}</span>
+                    <span className="text-xs text-primary-600">{count}</span>
                   </button>
                 ))}
             </div>
@@ -456,7 +450,7 @@ export function Sidebar({
             onClick={() => setAuthorsExpanded(!authorsExpanded)}
             aria-expanded={authorsExpanded}
             aria-controls="authors-list"
-            className="flex w-full items-center gap-2 px-3 py-1.5 text-xs font-semibold uppercase tracking-wider text-neutral-500"
+            className="flex w-full items-center gap-2 px-3 py-1.5 text-xs font-semibold uppercase tracking-wider text-primary-600"
           >
             {authorsExpanded ? (
               <ChevronDown className="h-3 w-3" />
@@ -471,13 +465,13 @@ export function Sidebar({
             <div id="authors-list" className="mt-1" role="list">
               <div className="px-2 pb-2">
                 <div className="relative">
-                  <Search className="absolute left-2 top-1/2 h-3 w-3 -translate-y-1/2 text-neutral-400" />
+                  <Search className="absolute left-2 top-1/2 h-3 w-3 -translate-y-1/2 text-primary-400" />
                   <input
                     type="text"
                     placeholder="Search..."
                     value={authorSearch}
                     onChange={(e) => setAuthorSearch(e.target.value)}
-                    className="w-full rounded border border-neutral-200 bg-neutral-50 py-1 pl-7 pr-2 text-xs focus:border-purple-400 focus:outline-none"
+                    className="w-full rounded border border-codex-tan bg-primary-50 py-1 pl-7 pr-2 text-xs focus:border-codex-olive focus:outline-none"
                   />
                 </div>
               </div>
@@ -492,12 +486,12 @@ export function Sidebar({
                       onClick={() => onFilterChange('author', activeFilters.author === author ? null : author)}
                       className={`flex w-full items-center justify-between px-3 py-1.5 text-sm rounded-md ${
                         activeFilters.author === author
-                          ? 'bg-purple-100 text-purple-700'
-                          : 'text-neutral-600 hover:bg-neutral-100'
+                          ? 'bg-codex-olive text-codex-cream font-medium'
+                          : 'text-primary-600 hover:bg-primary-200'
                       }`}
                     >
                       <span className="truncate">{author}</span>
-                      <span className="text-xs text-neutral-500">{count}</span>
+                      <span className="text-xs text-primary-600">{count}</span>
                     </button>
                   ))}
               </div>
@@ -511,7 +505,7 @@ export function Sidebar({
             onClick={() => setPublishersExpanded(!publishersExpanded)}
             aria-expanded={publishersExpanded}
             aria-controls="publishers-list"
-            className="flex w-full items-center gap-2 px-3 py-1.5 text-xs font-semibold uppercase tracking-wider text-neutral-500"
+            className="flex w-full items-center gap-2 px-3 py-1.5 text-xs font-semibold uppercase tracking-wider text-primary-600"
           >
             {publishersExpanded ? (
               <ChevronDown className="h-3 w-3" />
@@ -526,13 +520,13 @@ export function Sidebar({
             <div id="publishers-list" className="mt-1" role="list">
               <div className="px-2 pb-2">
                 <div className="relative">
-                  <Search className="absolute left-2 top-1/2 h-3 w-3 -translate-y-1/2 text-neutral-400" />
+                  <Search className="absolute left-2 top-1/2 h-3 w-3 -translate-y-1/2 text-primary-400" />
                   <input
                     type="text"
                     placeholder="Search..."
                     value={publisherSearch}
                     onChange={(e) => setPublisherSearch(e.target.value)}
-                    className="w-full rounded border border-neutral-200 bg-neutral-50 py-1 pl-7 pr-2 text-xs focus:border-purple-400 focus:outline-none"
+                    className="w-full rounded border border-codex-tan bg-primary-50 py-1 pl-7 pr-2 text-xs focus:border-codex-olive focus:outline-none"
                   />
                 </div>
               </div>
@@ -547,12 +541,12 @@ export function Sidebar({
                       onClick={() => onFilterChange('publisher', activeFilters.publisher === publisher ? null : publisher)}
                       className={`flex w-full items-center justify-between px-3 py-1.5 text-sm rounded-md ${
                         activeFilters.publisher === publisher
-                          ? 'bg-purple-100 text-purple-700'
-                          : 'text-neutral-600 hover:bg-neutral-100'
+                          ? 'bg-codex-olive text-codex-cream font-medium'
+                          : 'text-primary-600 hover:bg-primary-200'
                       }`}
                     >
                       <span className="truncate">{publisher}</span>
-                      <span className="text-xs text-neutral-500">{count}</span>
+                      <span className="text-xs text-primary-600">{count}</span>
                     </button>
                   ))}
               </div>
@@ -566,7 +560,7 @@ export function Sidebar({
             onClick={() => setYearExpanded(!yearExpanded)}
             aria-expanded={yearExpanded}
             aria-controls="year-filter"
-            className="flex w-full items-center gap-2 px-3 py-1.5 text-xs font-semibold uppercase tracking-wider text-neutral-500"
+            className="flex w-full items-center gap-2 px-3 py-1.5 text-xs font-semibold uppercase tracking-wider text-primary-600"
           >
             {yearExpanded ? (
               <ChevronDown className="h-3 w-3" />
@@ -585,15 +579,15 @@ export function Sidebar({
                   placeholder="From"
                   value={activeFilters.publication_year_min || ''}
                   onChange={(e) => onFilterChange('publication_year_min', e.target.value || null)}
-                  className="w-full rounded border border-neutral-200 bg-neutral-50 px-2 py-1 text-xs focus:border-purple-400 focus:outline-none"
+                  className="w-full rounded border border-codex-tan bg-primary-50 px-2 py-1 text-xs focus:border-codex-olive focus:outline-none"
                 />
-                <span className="text-neutral-400">-</span>
+                <span className="text-primary-400">-</span>
                 <input
                   type="number"
                   placeholder="To"
                   value={activeFilters.publication_year_max || ''}
                   onChange={(e) => onFilterChange('publication_year_max', e.target.value || null)}
-                  className="w-full rounded border border-neutral-200 bg-neutral-50 px-2 py-1 text-xs focus:border-purple-400 focus:outline-none"
+                  className="w-full rounded border border-codex-tan bg-primary-50 px-2 py-1 text-xs focus:border-codex-olive focus:outline-none"
                 />
               </div>
             </div>
@@ -606,7 +600,7 @@ export function Sidebar({
             onClick={() => setAdventureExpanded(!adventureExpanded)}
             aria-expanded={adventureExpanded}
             aria-controls="adventure-filters"
-            className="flex w-full items-center gap-2 px-3 py-1.5 text-xs font-semibold uppercase tracking-wider text-neutral-500"
+            className="flex w-full items-center gap-2 px-3 py-1.5 text-xs font-semibold uppercase tracking-wider text-primary-600"
           >
             {adventureExpanded ? (
               <ChevronDown className="h-3 w-3" />
@@ -620,7 +614,7 @@ export function Sidebar({
           {adventureExpanded && (
             <div id="adventure-filters" className="mt-2 px-3 space-y-3">
               <div>
-                <label className="text-xs text-neutral-500 mb-1 block">Level Range</label>
+                <label className="text-xs text-primary-600 mb-1 block">Level Range</label>
                 <div className="flex items-center gap-2">
                   <input
                     type="number"
@@ -629,9 +623,9 @@ export function Sidebar({
                     max="20"
                     value={activeFilters.level_min || ''}
                     onChange={(e) => onFilterChange('level_min', e.target.value || null)}
-                    className="w-full rounded border border-neutral-200 bg-neutral-50 px-2 py-1 text-xs focus:border-purple-400 focus:outline-none"
+                    className="w-full rounded border border-codex-tan bg-primary-50 px-2 py-1 text-xs focus:border-codex-olive focus:outline-none"
                   />
-                  <span className="text-neutral-400">-</span>
+                  <span className="text-primary-400">-</span>
                   <input
                     type="number"
                     placeholder="Max"
@@ -639,13 +633,13 @@ export function Sidebar({
                     max="20"
                     value={activeFilters.level_max || ''}
                     onChange={(e) => onFilterChange('level_max', e.target.value || null)}
-                    className="w-full rounded border border-neutral-200 bg-neutral-50 px-2 py-1 text-xs focus:border-purple-400 focus:outline-none"
+                    className="w-full rounded border border-codex-tan bg-primary-50 px-2 py-1 text-xs focus:border-codex-olive focus:outline-none"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="text-xs text-neutral-500 mb-1 block">Party Size</label>
+                <label className="text-xs text-primary-600 mb-1 block">Party Size</label>
                 <div className="flex items-center gap-2">
                   <input
                     type="number"
@@ -654,9 +648,9 @@ export function Sidebar({
                     max="10"
                     value={activeFilters.party_size_min || ''}
                     onChange={(e) => onFilterChange('party_size_min', e.target.value || null)}
-                    className="w-full rounded border border-neutral-200 bg-neutral-50 px-2 py-1 text-xs focus:border-purple-400 focus:outline-none"
+                    className="w-full rounded border border-codex-tan bg-primary-50 px-2 py-1 text-xs focus:border-codex-olive focus:outline-none"
                   />
-                  <span className="text-neutral-400">-</span>
+                  <span className="text-primary-400">-</span>
                   <input
                     type="number"
                     placeholder="Max"
@@ -664,19 +658,19 @@ export function Sidebar({
                     max="10"
                     value={activeFilters.party_size_max || ''}
                     onChange={(e) => onFilterChange('party_size_max', e.target.value || null)}
-                    className="w-full rounded border border-neutral-200 bg-neutral-50 px-2 py-1 text-xs focus:border-purple-400 focus:outline-none"
+                    className="w-full rounded border border-codex-tan bg-primary-50 px-2 py-1 text-xs focus:border-codex-olive focus:outline-none"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="text-xs text-neutral-500 mb-1 block">Estimated Runtime</label>
+                <label className="text-xs text-primary-600 mb-1 block">Estimated Runtime</label>
                 <input
                   type="text"
                   placeholder="e.g., 4-6 hours"
                   value={activeFilters.estimated_runtime || ''}
                   onChange={(e) => onFilterChange('estimated_runtime', e.target.value || null)}
-                  className="w-full rounded border border-neutral-200 bg-neutral-50 px-2 py-1 text-xs focus:border-purple-400 focus:outline-none"
+                  className="w-full rounded border border-codex-tan bg-primary-50 px-2 py-1 text-xs focus:border-codex-olive focus:outline-none"
                 />
               </div>
             </div>
@@ -684,14 +678,14 @@ export function Sidebar({
         </div>
       </nav>
 
-      <div className="border-t border-neutral-200 p-2 space-y-1">
+      <div className="border-t border-codex-tan p-2 space-y-1">
         <button
           onClick={() => onViewChange('campaigns')}
           aria-current={activeView === 'campaigns' ? 'page' : undefined}
           className={`flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm ${
             activeView === 'campaigns'
-              ? 'bg-purple-100 text-purple-700'
-              : 'text-neutral-700 hover:bg-neutral-100'
+              ? 'bg-codex-olive/20 text-codex-dark'
+              : 'text-codex-brown hover:bg-primary-200'
           }`}
         >
           <BookOpen className="h-4 w-4" aria-hidden="true" />
@@ -702,8 +696,8 @@ export function Sidebar({
           aria-current={activeView === 'library-management' ? 'page' : undefined}
           className={`flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm ${
             activeView === 'library-management'
-              ? 'bg-purple-100 text-purple-700'
-              : 'text-neutral-700 hover:bg-neutral-100'
+              ? 'bg-codex-olive/20 text-codex-dark'
+              : 'text-codex-brown hover:bg-primary-200'
           }`}
         >
           <HardDrive className="h-4 w-4" aria-hidden="true" />
@@ -714,8 +708,8 @@ export function Sidebar({
           aria-current={activeView === 'queue' ? 'page' : undefined}
           className={`flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm ${
             activeView === 'queue'
-              ? 'bg-purple-100 text-purple-700'
-              : 'text-neutral-700 hover:bg-neutral-100'
+              ? 'bg-codex-olive/20 text-codex-dark'
+              : 'text-codex-brown hover:bg-primary-200'
           }`}
         >
           <ListTodo className="h-4 w-4" aria-hidden="true" />
@@ -726,8 +720,8 @@ export function Sidebar({
           aria-current={activeView === 'tools' ? 'page' : undefined}
           className={`flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm ${
             activeView === 'tools'
-              ? 'bg-purple-100 text-purple-700'
-              : 'text-neutral-700 hover:bg-neutral-100'
+              ? 'bg-codex-olive/20 text-codex-dark'
+              : 'text-codex-brown hover:bg-primary-200'
           }`}
         >
           <Wrench className="h-4 w-4" aria-hidden="true" />
@@ -738,8 +732,8 @@ export function Sidebar({
           aria-current={activeView === 'settings' ? 'page' : undefined}
           className={`flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm ${
             activeView === 'settings'
-              ? 'bg-purple-100 text-purple-700'
-              : 'text-neutral-700 hover:bg-neutral-100'
+              ? 'bg-codex-olive/20 text-codex-dark'
+              : 'text-codex-brown hover:bg-primary-200'
           }`}
         >
           <Settings className="h-4 w-4" aria-hidden="true" />
@@ -747,9 +741,9 @@ export function Sidebar({
         </button>
       </div>
 
-      <div className="border-t border-neutral-200 p-4">
+      <div className="border-t border-codex-tan p-4">
         {stats && (
-          <div className="space-y-1 text-xs text-neutral-500">
+          <div className="space-y-1 text-xs text-primary-600">
             <p>{stats.total_products} products</p>
             <p>{stats.total_pages.toLocaleString()} pages</p>
             <p>{formatBytes(stats.total_size_bytes)}</p>
