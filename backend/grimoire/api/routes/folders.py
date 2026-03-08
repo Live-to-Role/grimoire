@@ -26,7 +26,7 @@ router = APIRouter()
 async def browse_directories(path: str | None = Query(None, description="Directory path to browse")) -> BrowseResponse:
     """Browse server filesystem directories for folder selection."""
     if path:
-        browse_path = Path(path)
+        browse_path = Path(path).resolve()
     else:
         browse_path = Path.home()
 

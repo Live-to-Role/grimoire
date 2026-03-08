@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { FolderOpen, ChevronUp, X } from 'lucide-react';
 import apiClient from '../api/client';
@@ -23,6 +23,25 @@ interface FolderBrowserModalProps {
 export function FolderBrowserModal({ isOpen, onClose, onSelect }: FolderBrowserModalProps) {
   const [currentPath, setCurrentPath] = useState<string | undefined>(undefined);
 
+  // Reset to home directory each time modal opens
+  useEffect(() => {
+    if (isOpen) {
+      setCurrentPath(undefined);
+    }
+  }, [isOpen]);
+
+  // Close on Escape key
+  const handleKeyDown = useCallback((e: KeyboardEvent) => {
+    if (e.key === 'Escape') onClose();
+  }, [onClose]);
+
+  useEffect(() => {
+    if (isOpen) {
+      document.addEventListener('keydown', handleKeyDown);
+      return () => document.removeEventListener('keydown', handleKeyDown);
+    }
+  }, [isOpen, handleKeyDown]);
+
   const { data, isLoading, error } = useQuery({
     queryKey: ['browse-directories', currentPath],
     queryFn: async () => {
@@ -36,8 +55,8 @@ export function FolderBrowserModal({ isOpen, onClose, onSelect }: FolderBrowserM
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-      <div className="mx-4 flex max-h-[70vh] w-full max-w-lg flex-col overflow-hidden rounded-xl bg-white shadow-xl">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onClose}>
+      <div className="mx-4 flex max-h-[70vh] w-full max-w-lg flex-col overflow-hidden rounded-xl bg-white shadow-xl" onClick={(e) => e.stopPropagation()}>
         {/* Header */}
         <div className="flex items-center justify-between border-b border-neutral-200 px-4 py-3">
           <h2 className="text-lg font-semibold text-neutral-900">Select Folder</h2>
