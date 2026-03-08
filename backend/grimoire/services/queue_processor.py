@@ -68,15 +68,32 @@ async def get_setting(db: AsyncSession, key: str, default=None):
 
 
 async def queue_ai_identify_if_enabled(db: AsyncSession, product: Product) -> bool:
-    """Queue AI identification task if auto-identify is enabled."""
+    """Queue AI identification task if auto-identify is enabled and a provider is available."""
     auto_identify = await get_setting(db, "auto_identify_on_scan", False)
     if not auto_identify:
         return False
-    
+
     # Check if already identified
     if product.ai_identified:
         return False
-    
+
+    # Check if any AI provider is actually available before queuing
+    from grimoire.processors.ai_identifier import get_setting_from_db, check_ollama_available
+    import os
+
+    provider = await get_setting(db, "auto_identify_provider", "ollama")
+    if provider == "openai":
+        key = os.getenv("OPENAI_API_KEY", "") or await get_setting_from_db("openai_api_key")
+        if not key:
+            return False
+    elif provider == "anthropic":
+        key = os.getenv("ANTHROPIC_API_KEY", "") or await get_setting_from_db("anthropic_api_key")
+        if not key:
+            return False
+    elif provider == "ollama":
+        if not check_ollama_available():
+            return False
+
     # Queue AI identify task
     ai_item = ProcessingQueue(
         product_id=product.id,
