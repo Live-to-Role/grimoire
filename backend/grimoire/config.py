@@ -50,8 +50,8 @@ class Settings(BaseSettings):
     codex_contribute_enabled: bool = False  # Opt-in
     codex_timeout: int = 10  # seconds
     
-    # Rate limiting
-    rate_limit_enabled: bool = True
+    # Rate limiting (disabled by default for native/local deployment)
+    rate_limit_enabled: bool = False
     rate_limit_requests: int = 100  # requests per window
     rate_limit_window: int = 60  # seconds
     ai_rate_limit_requests: int = 10  # AI endpoints are more expensive
