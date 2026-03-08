@@ -21,6 +21,7 @@ class Settings(BaseSettings):
     host: str = "0.0.0.0"
     port: int = 8000
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
+    log_file: str = ""  # Path to log file, empty = no file logging
     debug: bool = False
 
     # Database

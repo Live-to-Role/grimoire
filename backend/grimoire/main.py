@@ -16,7 +16,10 @@ from grimoire.middleware import RateLimitMiddleware, CacheMiddleware
 async def lifespan(app: FastAPI):
     """Application lifespan handler."""
     import asyncio
-    
+
+    from grimoire.logging_config import setup_logging
+    setup_logging()
+
     await init_db()
 
     # Watcher disabled temporarily - causing startup hang with watched folders
