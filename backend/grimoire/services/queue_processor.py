@@ -342,89 +342,91 @@ async def handle_ai_identify_task(db: AsyncSession, product: Product) -> bool:
         return False
 
 
-async def process_queue_item(item_id: int) -> bool:
+async def _process_item_with_session(db: AsyncSession, item: ProcessingQueue) -> bool:
+    """Process a queue item using an existing session.
+
+    Args:
+        db: Active database session
+        item: The queue item to process (already loaded)
+
+    Returns:
+        True if successful, False otherwise
     """
-    Process a single queue item.
-    
+    if item.status != "pending":
+        logger.debug(f"Queue item {item.id} is not pending (status: {item.status})")
+        return False
+
+    # Mark as processing
+    item.status = "processing"
+    item.started_at = datetime.now(UTC)
+    item.attempts += 1
+    await db.commit()
+
+    # Get the product
+    product_result = await db.execute(
+        select(Product).where(Product.id == item.product_id)
+    )
+    product = product_result.scalar_one_or_none()
+
+    if not product:
+        item.status = "failed"
+        item.error_message = "Product not found"
+        item.completed_at = datetime.now(UTC)
+        await db.commit()
+        return False
+
+    handler = TASK_HANDLERS.get(item.task_type)
+    if not handler:
+        item.status = "failed"
+        item.error_message = f"Unknown task type: {item.task_type}"
+        item.completed_at = datetime.now(UTC)
+        await db.commit()
+        return False
+
+    try:
+        success = await handler(db, product)
+
+        if success:
+            item.status = "completed"
+            logger.info(f"Queue item {item.id} completed successfully")
+        elif item.attempts >= item.max_attempts:
+            item.status = "failed"
+            item.error_message = "Max attempts reached"
+        else:
+            item.status = "pending"
+        item.completed_at = datetime.now(UTC)
+
+        await db.commit()
+        return success
+
+    except Exception as e:
+        logger.error(f"Error processing queue item {item.id}: {e}")
+        item.error_message = str(e)[:500]
+        item.status = "failed" if item.attempts >= item.max_attempts else "pending"
+        item.completed_at = datetime.now(UTC)
+        await db.commit()
+        return False
+
+
+async def process_queue_item(item_id: int) -> bool:
+    """Process a single queue item by ID (for external API callers).
+
     Args:
         item_id: ID of the queue item to process
-        
+
     Returns:
         True if successful, False otherwise
     """
     async with async_session_maker() as db:
-        # Get the queue item
         query = select(ProcessingQueue).where(ProcessingQueue.id == item_id)
         result = await db.execute(query)
         item = result.scalar_one_or_none()
-        
+
         if not item:
             logger.warning(f"Queue item {item_id} not found")
             return False
-        
-        if item.status != "pending":
-            logger.debug(f"Queue item {item_id} is not pending (status: {item.status})")
-            return False
-        
-        # Mark as processing
-        item.status = "processing"
-        item.started_at = datetime.now(UTC)
-        item.attempts += 1
-        await db.commit()
-        
-        # Get the product
-        product_query = select(Product).where(Product.id == item.product_id)
-        product_result = await db.execute(product_query)
-        product = product_result.scalar_one_or_none()
-        
-        if not product:
-            item.status = "failed"
-            item.error_message = "Product not found"
-            item.completed_at = datetime.now(UTC)
-            await db.commit()
-            return False
-        
-        # Get the handler
-        handler = TASK_HANDLERS.get(item.task_type)
-        if not handler:
-            item.status = "failed"
-            item.error_message = f"Unknown task type: {item.task_type}"
-            item.completed_at = datetime.now(UTC)
-            await db.commit()
-            return False
-        
-        # Execute the task
-        try:
-            success = await handler(db, product)
-            
-            if success:
-                item.status = "completed"
-                item.completed_at = datetime.now(UTC)
-                logger.info(f"Queue item {item_id} completed successfully")
-            else:
-                if item.attempts >= item.max_attempts:
-                    item.status = "failed"
-                    item.error_message = "Max attempts reached"
-                else:
-                    item.status = "pending"  # Retry later
-                item.completed_at = datetime.now(UTC)
-                logger.warning(f"Queue item {item_id} failed (attempt {item.attempts})")
-            
-            await db.commit()
-            return success
-            
-        except Exception as e:
-            logger.error(f"Error processing queue item {item_id}: {e}")
-            item.error_message = str(e)[:500]
-            
-            if item.attempts >= item.max_attempts:
-                item.status = "failed"
-            else:
-                item.status = "pending"  # Retry later
-            
-            item.completed_at = datetime.now(UTC)
-            await db.commit()
-            return False
+
+        return await _process_item_with_session(db, item)
 
 
 async def get_next_pending_item(db: AsyncSession, task_type: str | None = None) -> ProcessingQueue | None:
@@ -477,7 +479,7 @@ async def process_queue(max_items: int = 10, delay: float = 0.5) -> dict:
                 break
             
             processed += 1
-            success = await process_queue_item(item.id)
+            success = await _process_item_with_session(db, item)
             
             if success:
                 succeeded += 1
