@@ -21,14 +21,13 @@ def temp_dirs():
 
 
 @pytest.mark.asyncio
-async def test_browse_default_returns_root():
-    """Browse with no path returns filesystem root."""
+async def test_browse_default_returns_home():
+    """Browse with no path returns home directory."""
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         resp = await client.get("/api/v1/folders/browse")
     assert resp.status_code == 200
     data = resp.json()
-    assert data["current_path"] == str(Path("/"))
-    assert data["parent_path"] is None
+    assert data["current_path"] == str(Path.home())
     assert isinstance(data["directories"], list)
 
 

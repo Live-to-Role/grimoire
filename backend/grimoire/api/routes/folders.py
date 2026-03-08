@@ -28,7 +28,7 @@ async def browse_directories(path: str | None = Query(None, description="Directo
     if path:
         browse_path = Path(path).resolve()
     else:
-        browse_path = Path("/")
+        browse_path = Path.home()
 
     if not browse_path.exists():
         raise HTTPException(status_code=404, detail="Path does not exist")
