@@ -27,10 +27,13 @@ class Product(Base):
         Index("ix_products_file_hash", "file_hash"),
         Index("ix_products_publisher", "publisher"),
         Index("ix_products_is_duplicate", "is_duplicate"),
+        Index("ix_products_is_missing", "is_missing"),
         Index("ix_products_file_size", "file_size"),
         Index("ix_products_system_type", "game_system", "product_type"),
         Index("ix_products_author", "author"),
         Index("ix_products_genre", "genre"),
+        Index("ix_products_updated_at", "updated_at"),
+        Index("ix_products_last_opened_at", "last_opened_at"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -94,6 +97,7 @@ class Product(Base):
 
     # Paths to extracted content
     cover_image_path: Mapped[str | None] = mapped_column(Text, nullable=True)
+    thumbnail_path: Mapped[str | None] = mapped_column(Text, nullable=True)
     extracted_text_path: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # Duplicate detection
