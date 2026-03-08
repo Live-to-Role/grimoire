@@ -205,92 +205,69 @@ async def get_scan_settings(db: AsyncSession) -> dict:
 
 async def queue_products_for_processing(db: AsyncSession, products: list[Product]) -> dict:
     """Queue products for processing based on settings.
-    
-    Args:
-        db: Database session
-        products: List of products to check and queue
-        
-    Returns:
-        Dict with queued counts per task type
+
+    Uses batch queries to check for existing queue items instead of
+    per-product queries. This reduces N*M queries to 1 query.
     """
     from grimoire.models import ProcessingQueue
-    
-    # Get settings for auto-processing
+
     settings = await get_scan_settings(db)
     auto_extract_text = settings.get('auto_extract_text_on_scan', False)
     auto_identify = settings.get('auto_identify_on_scan', False)
-    
+
+    # Filter out duplicates
+    eligible = [p for p in products if not p.is_duplicate]
+    if not eligible:
+        return {"covers": 0, "text": 0}
+
+    product_ids = [p.id for p in eligible]
+
+    # Batch-fetch all existing pending/processing queue items for these products
+    existing_result = await db.execute(
+        select(ProcessingQueue.product_id, ProcessingQueue.task_type)
+        .where(
+            ProcessingQueue.product_id.in_(product_ids),
+            ProcessingQueue.status.in_(["pending", "processing"]),
+        )
+    )
+    existing_tasks = {(row[0], row[1]) for row in existing_result.fetchall()}
+
     queued_covers = 0
     queued_text = 0
-    
-    for product in products:
-        # Skip duplicates
-        if product.is_duplicate:
-            continue
-        
-        # Queue for cover extraction if needed
-        if not product.cover_extracted:
-            existing = await db.execute(
-                select(ProcessingQueue).where(
-                    ProcessingQueue.product_id == product.id,
-                    ProcessingQueue.task_type == "cover",
-                    ProcessingQueue.status.in_(["pending", "processing"])
-                )
-            )
-            if not existing.scalar_one_or_none():
-                queue_item = ProcessingQueue(
-                    product_id=product.id,
-                    task_type="cover",
-                    priority=3,
-                    status="pending",
-                )
-                db.add(queue_item)
-                queued_covers += 1
-        
-        # Queue for text extraction if enabled and needed
+
+    for product in eligible:
+        if not product.cover_extracted and (product.id, "cover") not in existing_tasks:
+            db.add(ProcessingQueue(
+                product_id=product.id,
+                task_type="cover",
+                priority=3,
+                status="pending",
+            ))
+            queued_covers += 1
+
         if auto_extract_text and not product.text_extracted:
-            existing = await db.execute(
-                select(ProcessingQueue).where(
-                    ProcessingQueue.product_id == product.id,
-                    ProcessingQueue.task_type == "text",
-                    ProcessingQueue.status.in_(["pending", "processing"])
-                )
-            )
-            if not existing.scalar_one_or_none():
-                queue_item = ProcessingQueue(
+            if (product.id, "text") not in existing_tasks:
+                db.add(ProcessingQueue(
                     product_id=product.id,
                     task_type="text",
-                    priority=5,  # Lower priority than covers
+                    priority=5,
                     status="pending",
-                )
-                db.add(queue_item)
+                ))
                 queued_text += 1
-        
-        # Queue for AI identification if enabled and text is extracted
+
         if auto_identify and product.text_extracted and not product.ai_identified:
-            existing = await db.execute(
-                select(ProcessingQueue).where(
-                    ProcessingQueue.product_id == product.id,
-                    ProcessingQueue.task_type == "identify",
-                    ProcessingQueue.status.in_(["pending", "processing"])
-                )
-            )
-            if not existing.scalar_one_or_none():
-                queue_item = ProcessingQueue(
+            if (product.id, "ai_identify") not in existing_tasks:
+                db.add(ProcessingQueue(
                     product_id=product.id,
-                    task_type="identify",
-                    priority=7,  # Lower priority than text extraction
+                    task_type="ai_identify",
+                    priority=7,
                     status="pending",
-                )
-                db.add(queue_item)
-        
+                ))
+
     if queued_covers > 0 or queued_text > 0:
         await db.commit()
-        
-    return {
-        "covers": queued_covers,
-        "text": queued_text,
-    }
+
+    return {"covers": queued_covers, "text": queued_text}
 
 
 async def mark_missing_products(db: AsyncSession, folder: WatchedFolder) -> int:
