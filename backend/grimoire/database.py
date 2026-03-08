@@ -17,11 +17,14 @@ class Base(DeclarativeBase):
 
 # SQLite connection settings for better concurrency
 def set_sqlite_pragma(dbapi_connection, connection_record):
-    """Set SQLite pragmas for better concurrent access."""
+    """Set SQLite pragmas for better concurrent access and performance."""
     cursor = dbapi_connection.cursor()
     cursor.execute("PRAGMA journal_mode=WAL")  # Write-Ahead Logging for better concurrency
     cursor.execute("PRAGMA busy_timeout=30000")  # Wait up to 30 seconds if locked
     cursor.execute("PRAGMA synchronous=NORMAL")  # Balance between safety and speed
+    cursor.execute("PRAGMA cache_size=-64000")  # 64MB cache for better query performance
+    cursor.execute("PRAGMA temp_store=MEMORY")  # Use memory for temporary tables
+    cursor.execute("PRAGMA mmap_size=268435456")  # 256MB memory-mapped I/O
     cursor.close()
 
 
@@ -43,11 +46,14 @@ async_session_maker = async_sessionmaker(
 
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
-    """Dependency that provides a database session."""
+    """Dependency that provides a database session.
+
+    Route handlers are responsible for calling commit() explicitly.
+    The session is rolled back on exception and always closed.
+    """
     async with async_session_maker() as session:
         try:
             yield session
-            await session.commit()
         except Exception:
             await session.rollback()
             raise
