@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Save, Database, Sparkles, Check, AlertCircle, FolderOpen, Plus, Trash2, Star, Copy, X } from 'lucide-react';
 import apiClient from '../api/client';
+import { FolderBrowserModal } from '../components/FolderBrowserModal';
 
 interface CodexStatus {
   available: boolean;
@@ -78,6 +79,7 @@ export function Settings() {
   const [newFolderPath, setNewFolderPath] = useState('');
   const [newFolderLabel, setNewFolderLabel] = useState('');
   const [folderError, setFolderError] = useState<string | null>(null);
+  const [showBrowseModal, setShowBrowseModal] = useState(false);
   const [showDuplicateModal, setShowDuplicateModal] = useState(false);
   const [duplicatePreview, setDuplicatePreview] = useState<DuplicatePreview | null>(null);
   const [isLoadingPreview, setIsLoadingPreview] = useState(false);
@@ -335,6 +337,15 @@ export function Settings() {
                   placeholder="/path/to/pdfs"
                   className="flex-1 rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500"
                 />
+                <button
+                  onClick={() => setShowBrowseModal(true)}
+                  type="button"
+                  className="inline-flex items-center gap-1 rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-50"
+                  title="Browse folders"
+                >
+                  <FolderOpen className="h-4 w-4" />
+                  Browse
+                </button>
                 <input
                   type="text"
                   value={newFolderLabel}
@@ -566,6 +577,13 @@ export function Settings() {
           </button>
         </div>
       </footer>
+
+      {/* Folder Browser Modal */}
+      <FolderBrowserModal
+        isOpen={showBrowseModal}
+        onClose={() => setShowBrowseModal(false)}
+        onSelect={(path) => setNewFolderPath(path)}
+      />
 
       {/* Duplicate Resolution Modal */}
       {showDuplicateModal && duplicatePreview && (
