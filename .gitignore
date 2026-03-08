@@ -73,3 +73,6 @@ covers/
 
 # PDF library (user content)
 pdfs/
+
+# Git worktrees
+.worktrees/
