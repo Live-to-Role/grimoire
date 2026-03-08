@@ -1,5 +1,7 @@
 """Watched folder API endpoints."""
 
+import platform
+import string
 from datetime import datetime, UTC
 from pathlib import Path
 
@@ -22,9 +24,29 @@ from grimoire.schemas.folder import (
 router = APIRouter()
 
 
+def _list_windows_drives() -> BrowseResponse:
+    """List available drive letters on Windows."""
+    directories = []
+    for letter in string.ascii_uppercase:
+        drive = Path(f"{letter}:\\")
+        if drive.exists():
+            directories.append(DirectoryEntry(name=f"{letter}:", path=str(drive)))
+    return BrowseResponse(
+        current_path="My Computer",
+        parent_path=None,
+        directories=directories,
+    )
+
+
 @router.get("/browse", response_model=BrowseResponse)
 async def browse_directories(path: str | None = Query(None, description="Directory path to browse")) -> BrowseResponse:
     """Browse server filesystem directories for folder selection."""
+    is_windows = platform.system() == "Windows"
+
+    # Special "My Computer" view to list all drives on Windows
+    if path == "My Computer" and is_windows:
+        return _list_windows_drives()
+
     if path:
         browse_path = Path(path).resolve()
     else:
@@ -35,9 +57,13 @@ async def browse_directories(path: str | None = Query(None, description="Directo
     if not browse_path.is_dir():
         raise HTTPException(status_code=400, detail="Path is not a directory")
 
-    # Get parent path (None if at filesystem root)
+    # Get parent path
     parent = browse_path.parent
-    parent_path = str(parent) if parent != browse_path else None
+    if parent == browse_path:
+        # At filesystem root — on Windows, go up to drive list
+        parent_path = "My Computer" if is_windows else None
+    else:
+        parent_path = str(parent)
 
     # List subdirectories, excluding hidden dirs
     directories = []
