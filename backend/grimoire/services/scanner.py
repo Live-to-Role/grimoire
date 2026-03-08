@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from grimoire.models import Product, WatchedFolder
 from grimoire.services.exclusion_service import create_exclusion_matcher, increment_rule_match
-from grimoire.services.duplicate_service import check_and_mark_duplicate, is_deleted_duplicate
+from grimoire.services.duplicate_service import batch_check_and_mark_duplicates, check_and_mark_duplicate, is_deleted_duplicate
 
 logger = logging.getLogger(__name__)
 
@@ -149,28 +149,18 @@ async def scan_folder(
         # Commit in batches of 100 for better performance
         if len(products) % 100 == 0:
             await db.flush()
-            # Check for duplicates on new products in this batch
             batch = products[-100:]
-            for p in batch:
-                if p.id and not hasattr(p, '_dup_checked'):
-                    if await check_and_mark_duplicate(db, p):
-                        duplicate_count += 1
-                    p._dup_checked = True
+            duplicate_count += await batch_check_and_mark_duplicates(db, batch)
             await db.commit()
-            
-            # Queue this batch for cover extraction immediately
             await queue_products_for_processing(db, batch)
 
     # Final flush and duplicate check for remaining products
     await db.flush()
-    remaining = [p for p in products if not hasattr(p, '_dup_checked')]
-    for p in remaining:
-        if p.id:
-            if await check_and_mark_duplicate(db, p):
-                duplicate_count += 1
+    remaining = products[-(len(products) % 100):] if len(products) % 100 != 0 else []
+    if remaining:
+        duplicate_count += await batch_check_and_mark_duplicates(db, remaining)
     await db.commit()
-    
-    # Queue remaining products for cover extraction
+
     if remaining:
         await queue_products_for_processing(db, remaining)
 
