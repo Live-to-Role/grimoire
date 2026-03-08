@@ -17,7 +17,7 @@ interface LibraryProps {
 export function Library({ selectedCollection, selectedTag, sidebarFilters = {} }: LibraryProps) {
   const [filters, setFilters] = useState<ProductFilters>({
     page: 1,
-    per_page: 50,
+    per_page: 24,
     sort: 'title',
     order: 'asc',
   });
@@ -50,6 +50,7 @@ export function Library({ selectedCollection, selectedTag, sidebarFilters = {} }
     queryKey: ['search', activeSearch, searchContent],
     queryFn: () => searchProducts({ q: activeSearch, search_content: searchContent }),
     enabled: activeSearch.length > 0,
+    staleTime: 60000,
   });
 
   // Count active sidebar filters
