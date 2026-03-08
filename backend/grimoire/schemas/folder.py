@@ -66,3 +66,16 @@ class LibraryStats(BaseModel):
     by_author: dict[str, int]
     by_publisher: dict[str, int]
     processing_status: dict[str, int]
+
+
+class DirectoryEntry(BaseModel):
+    """A single directory in a browse listing."""
+    name: str
+    path: str
+
+
+class BrowseResponse(BaseModel):
+    """Response for the folder browse endpoint."""
+    current_path: str
+    parent_path: str | None
+    directories: list[DirectoryEntry]

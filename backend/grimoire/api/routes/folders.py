@@ -9,6 +9,8 @@ from sqlalchemy import func, select
 from grimoire.api.deps import DbSession
 from grimoire.models import Product, WatchedFolder
 from grimoire.schemas.folder import (
+    BrowseResponse,
+    DirectoryEntry,
     LibraryStats,
     ScanRequest,
     ScanResponse,
@@ -18,6 +20,39 @@ from grimoire.schemas.folder import (
 )
 
 router = APIRouter()
+
+
+@router.get("/browse", response_model=BrowseResponse)
+async def browse_directories(path: str | None = Query(None, description="Directory path to browse")) -> BrowseResponse:
+    """Browse server filesystem directories for folder selection."""
+    if path:
+        browse_path = Path(path)
+    else:
+        browse_path = Path.home()
+
+    if not browse_path.exists():
+        raise HTTPException(status_code=404, detail="Path does not exist")
+    if not browse_path.is_dir():
+        raise HTTPException(status_code=400, detail="Path is not a directory")
+
+    # Get parent path (None if at filesystem root)
+    parent = browse_path.parent
+    parent_path = str(parent) if parent != browse_path else None
+
+    # List subdirectories, excluding hidden dirs
+    directories = []
+    try:
+        for entry in sorted(browse_path.iterdir(), key=lambda e: e.name.lower()):
+            if entry.is_dir() and not entry.name.startswith('.'):
+                directories.append(DirectoryEntry(name=entry.name, path=str(entry)))
+    except PermissionError:
+        raise HTTPException(status_code=403, detail="Permission denied accessing this directory")
+
+    return BrowseResponse(
+        current_path=str(browse_path),
+        parent_path=parent_path,
+        directories=directories,
+    )
 
 
 @router.get("", response_model=list[WatchedFolderResponse])
