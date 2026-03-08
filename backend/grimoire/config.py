@@ -31,7 +31,7 @@ class Settings(BaseSettings):
 
     # Paths
     data_dir: Path = Path("./data")
-    library_path: Path = Path("/library")
+    library_path: Path = Path("./pdfs")
     covers_dir: Path = Path("./data/covers")
 
     # Processing
