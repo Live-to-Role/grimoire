@@ -316,54 +316,47 @@ async def handle_ai_identify_task(db: AsyncSession, product: Product) -> bool:
     """Handle AI identification task using configured provider."""
     from grimoire.processors.ai_identifier import identify_product
     from grimoire.services.processor import get_extracted_text
-    
+
     # Get configured provider
     provider = await get_setting(db, "auto_identify_provider", "ollama")
-    
+
     # Get extracted text — file I/O, run in thread
     text = await asyncio.to_thread(get_extracted_text, product)
     if not text or len(text) < 100:
-        logger.warning(f"Product {product.id} has insufficient text for AI identification")
-        return False
-    
-    try:
-        # Call AI identifier
-        identification = await identify_product(text, provider=provider)
-        
-        if "error" in identification:
-            logger.error(f"AI identification failed for product {product.id}: {identification['error']}")
-            return False
-        
-        # Apply identification results
-        if identification.get("game_system"):
-            product.game_system = identification["game_system"]
-        if identification.get("genre"):
-            product.genre = identification["genre"]
-        if identification.get("product_type"):
-            product.product_type = identification["product_type"]
-        if identification.get("publisher"):
-            product.publisher = identification["publisher"]
-        if identification.get("author"):
-            product.author = identification["author"]
-        if identification.get("title"):
-            product.title = identification["title"]
-        if identification.get("publication_year"):
-            product.publication_year = identification["publication_year"]
-        if identification.get("level_range_min"):
-            product.level_range_min = identification["level_range_min"]
-        if identification.get("level_range_max"):
-            product.level_range_max = identification["level_range_max"]
-        
-        product.ai_identified = True
-        product.updated_at = datetime.now(UTC)
-        await db.commit()
-        
-        logger.info(f"AI identified product {product.id} using {provider}")
-        return True
-        
-    except Exception as e:
-        logger.error(f"AI identification failed for product {product.id}: {e}")
-        return False
+        raise TaskError(f"Insufficient text for AI identification ({len(text) if text else 0} chars)")
+
+    # Call AI identifier
+    identification = await identify_product(text, provider=provider)
+
+    if "error" in identification:
+        raise TaskError(f"AI identify ({provider}): {identification['error']}")
+
+    # Apply identification results
+    if identification.get("game_system"):
+        product.game_system = identification["game_system"]
+    if identification.get("genre"):
+        product.genre = identification["genre"]
+    if identification.get("product_type"):
+        product.product_type = identification["product_type"]
+    if identification.get("publisher"):
+        product.publisher = identification["publisher"]
+    if identification.get("author"):
+        product.author = identification["author"]
+    if identification.get("title"):
+        product.title = identification["title"]
+    if identification.get("publication_year"):
+        product.publication_year = identification["publication_year"]
+    if identification.get("level_range_min"):
+        product.level_range_min = identification["level_range_min"]
+    if identification.get("level_range_max"):
+        product.level_range_max = identification["level_range_max"]
+
+    product.ai_identified = True
+    product.updated_at = datetime.now(UTC)
+    await db.commit()
+
+    logger.info(f"AI identified product {product.id} using {provider}")
+    return True
 
 
 async def _process_item_with_session(db: AsyncSession, item: ProcessingQueue) -> bool:
