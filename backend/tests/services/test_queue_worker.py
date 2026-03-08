@@ -27,6 +27,13 @@ async def test_worker_respects_concurrency_limit():
         "grimoire.services.queue_processor.async_session_maker"
     ) as mock_session:
         mock_db = AsyncMock()
+        # Mock the recovery query (stuck "processing" items) to return empty
+        mock_scalars = MagicMock()
+        mock_scalars.all.return_value = []
+        mock_result = MagicMock()
+        mock_result.scalars.return_value = mock_scalars
+        mock_db.execute = AsyncMock(return_value=mock_result)
+
         items = [MagicMock(id=i, status="pending") for i in range(5)]
 
         call_count = 0
@@ -85,6 +92,13 @@ async def test_worker_processes_batch_concurrently():
         "grimoire.services.queue_processor.async_session_maker"
     ) as mock_session:
         mock_db = AsyncMock()
+        # Mock the recovery query (stuck "processing" items) to return empty
+        mock_scalars = MagicMock()
+        mock_scalars.all.return_value = []
+        mock_result = MagicMock()
+        mock_result.scalars.return_value = mock_scalars
+        mock_db.execute = AsyncMock(return_value=mock_result)
+
         items = [MagicMock(id=i, status="pending") for i in range(3)]
 
         call_count = 0

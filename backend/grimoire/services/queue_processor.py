@@ -564,6 +564,19 @@ async def run_queue_worker(
     if max_concurrent is None:
         max_concurrent = settings.max_concurrent_processing
 
+    # Reset any items stuck in "processing" from a previous crash
+    async with async_session_maker() as db:
+        stuck = await db.execute(
+            select(ProcessingQueue).where(ProcessingQueue.status == "processing")
+        )
+        stuck_items = stuck.scalars().all()
+        if stuck_items:
+            for item in stuck_items:
+                item.status = "pending"
+                item.started_at = None
+            await db.commit()
+            logger.info(f"Reset {len(stuck_items)} stuck 'processing' items to 'pending'")
+
     semaphore = asyncio.Semaphore(max_concurrent)
     logger.info(
         f"Queue worker started (max_concurrent={max_concurrent}, "
