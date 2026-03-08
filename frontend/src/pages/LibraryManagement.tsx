@@ -1381,16 +1381,38 @@ export function LibraryManagement() {
                   </div>
                   <button
                     onClick={() => embedAllMutation.mutate()}
-                    disabled={embedAllMutation.isPending}
+                    disabled={embedAllMutation.isPending || !embeddingStats.provider_available}
                     className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
                   >
                     {embedAllMutation.isPending ? (
                       <Loader2 className="h-4 w-4 animate-spin" />
                     ) : (
-                      <Brain className="h-4 w-4" />
+                      <RefreshCw className="h-4 w-4" />
                     )}
                     Generate Embeddings
                   </button>
+                </div>
+              )}
+
+              {embeddingStats && !embeddingStats.provider_available && (
+                <div className="mt-4 flex items-start gap-3 rounded-lg bg-amber-50 border border-amber-200 p-4">
+                  <AlertTriangle className="h-5 w-5 text-amber-600 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <p className="font-medium text-amber-800">No embedding provider available</p>
+                    <p className="text-sm text-amber-700 mt-1">
+                      Install <code className="bg-amber-100 px-1 rounded">sentence-transformers</code> for free local embeddings,
+                      or set <code className="bg-amber-100 px-1 rounded">OPENAI_API_KEY</code> for faster cloud embeddings.
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {embedAllMutation.isError && (
+                <div className="mt-4 rounded-lg bg-red-50 border border-red-200 p-4 text-red-800">
+                  <p className="font-medium">Failed to queue embeddings</p>
+                  <p className="text-sm mt-1">
+                    {(embedAllMutation.error as Error)?.message || 'Unknown error'}
+                  </p>
                 </div>
               )}
 
@@ -1417,6 +1439,16 @@ export function LibraryManagement() {
                   <strong>Note:</strong> Semantic search requires either a local sentence-transformers model (free, slower)
                   or OpenAI API key (paid, faster). Check the embedding providers in settings.
                 </p>
+                {embeddingStats?.providers && (
+                  <div className="mt-2 flex gap-4 text-xs">
+                    <span className={embeddingStats.providers.local ? 'text-green-600' : 'text-neutral-400'}>
+                      Local: {embeddingStats.providers.local ? '✓ Available' : '✗ Not installed'}
+                    </span>
+                    <span className={embeddingStats.providers.openai ? 'text-green-600' : 'text-neutral-400'}>
+                      OpenAI: {embeddingStats.providers.openai ? '✓ Configured' : '✗ No API key'}
+                    </span>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -1571,10 +1603,13 @@ export function LibraryManagement() {
 
               {identifyAllMutation.isSuccess && (
                 <div className="mt-4 rounded-lg bg-green-50 p-4 text-green-800">
-                  <p className="font-medium">AI identification complete!</p>
+                  <p className="font-medium">AI identification queued!</p>
                   <p className="text-sm">
-                    Identified {identifyAllMutation.data?.success || 0} products.
-                    {identifyAllMutation.data?.failed > 0 && ` ${identifyAllMutation.data.failed} failed.`}
+                    Queued {identifyAllMutation.data?.queued || 0} products for identification.
+                    {identifyAllMutation.data?.already_queued > 0 && ` ${identifyAllMutation.data.already_queued} already in queue.`}
+                  </p>
+                  <p className="text-sm mt-1">
+                    Click "Process Batch Now" to start processing, or items will be processed in the background.
                   </p>
                 </div>
               )}

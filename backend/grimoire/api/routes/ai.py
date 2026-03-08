@@ -441,15 +441,17 @@ async def suggest_tags_endpoint(
 async def identify_all(
     db: DbSession,
     provider: str | None = Query(None, description="AI provider"),
-    model: str | None = Query(None, description="Specific model"),
-    apply: bool = Query(True, description="Apply to products"),
     force: bool = Query(False, description="Re-identify already identified products"),
-    delay: float = Query(1.5, ge=0, le=30, description="Delay between requests in seconds"),
-    min_text_length: int = Query(200, ge=0, description="Minimum text length to attempt identification"),
+    limit: int = Query(1000, ge=1, le=10000, description="Maximum products to queue"),
 ) -> dict:
-    """Identify all products that haven't been identified yet."""
-    from grimoire.processors.ai_identifier import identify_product as ai_identify
-
+    """Queue all unidentified products for AI identification.
+    
+    This queues products for background processing instead of processing synchronously,
+    which prevents timeouts with large libraries.
+    """
+    from grimoire.models import ProcessingQueue
+    
+    # Build query for products needing identification
     if force:
         query = select(Product).where(Product.text_extracted == True)
     else:
@@ -457,90 +459,54 @@ async def identify_all(
             Product.text_extracted == True,
             Product.ai_identified == False,
         )
+    query = query.limit(limit)
 
     result = await db.execute(query)
     products = list(result.scalars().all())
     
-    logger.info(f"Starting AI identification for {len(products)} products with provider={provider}, model={model}")
-
-    success = 0
-    failed = 0
-    skipped = 0
-    errors = []
-
-    for i, product in enumerate(products):
-        text = get_extracted_text(product)
-        if not text:
-            skipped += 1
-            logger.debug(f"[{i+1}/{len(products)}] {product.file_name}: No extracted text, skipping")
-            continue
-        
-        # Skip low-text PDFs (maps, image-only files)
-        if len(text) < min_text_length:
-            skipped += 1
-            logger.debug(f"[{i+1}/{len(products)}] {product.file_name}: Text too short ({len(text)} chars), skipping")
-            continue
-
-        try:
-            identification = await ai_identify(text, provider, model)
-        except Exception as e:
-            failed += 1
-            errors.append(f"{product.file_name}: {str(e)}")
-            logger.error(f"[{i+1}/{len(products)}] {product.file_name}: Exception - {e}")
-            continue
-
-        if "error" in identification:
-            failed += 1
-            errors.append(f"{product.file_name}: {identification['error']}")
-            logger.warning(f"[{i+1}/{len(products)}] {product.file_name}: {identification['error']}")
-            continue
-        
-        logger.info(f"[{i+1}/{len(products)}] Identified: {product.file_name}")
-
-        if apply:
-            if identification.get("game_system"):
-                product.game_system = identification["game_system"]
-            if identification.get("genre"):
-                product.genre = identification["genre"]
-            if identification.get("product_type"):
-                product.product_type = identification["product_type"]
-            if identification.get("publisher"):
-                product.publisher = identification["publisher"]
-            if identification.get("author"):
-                product.author = identification["author"]
-            if identification.get("title"):
-                product.title = identification["title"]
-            if identification.get("publication_year"):
-                product.publication_year = identification["publication_year"]
-            if identification.get("level_range_min"):
-                product.level_range_min = identification["level_range_min"]
-            if identification.get("level_range_max"):
-                product.level_range_max = identification["level_range_max"]
-
-            product.ai_identified = True
-
-        success += 1
-        
-        # Commit periodically to save progress (every 10 products)
-        if success % 10 == 0:
-            await db.commit()
-        
-        # Add delay between requests to avoid rate limits
-        if delay > 0 and i < len(products) - 1:
-            await asyncio.sleep(delay)
-
-    if apply:
-        await db.commit()
+    if not products:
+        return {
+            "message": "All products with extracted text are already identified",
+            "queued": 0,
+        }
     
-    logger.info(f"AI identification complete: {success} succeeded, {failed} failed, {skipped} skipped out of {len(products)} total")
+    # Queue products for AI identification
+    queued = 0
+    already_queued = 0
+    
+    for product in products:
+        # Check if already queued
+        existing = await db.execute(
+            select(ProcessingQueue).where(
+                ProcessingQueue.product_id == product.id,
+                ProcessingQueue.task_type == "ai_identify",
+                ProcessingQueue.status.in_(["pending", "processing"])
+            )
+        )
+        if existing.scalar_one_or_none():
+            already_queued += 1
+            continue
+        
+        # Queue for AI identification
+        item = ProcessingQueue(
+            product_id=product.id,
+            task_type="ai_identify",
+            priority=5,  # Medium priority
+            status="pending",
+        )
+        db.add(item)
+        queued += 1
+    
+    await db.commit()
+    
+    logger.info(f"Queued {queued} products for AI identification (provider={provider})")
 
     return {
-        "message": "Batch identification completed",
-        "total": len(products),
-        "success": success,
-        "failed": failed,
-        "skipped": skipped,
-        "errors": errors[:10],
+        "message": f"Queued {queued} products for AI identification",
+        "queued": queued,
+        "already_queued": already_queued,
+        "total_found": len(products),
+        "provider": provider or "auto (from settings)",
     }
 
 

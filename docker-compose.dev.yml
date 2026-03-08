@@ -1,6 +1,15 @@
 version: '3.8'
 
 services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    restart: unless-stopped
+
   grimoire:
     build:
       context: .
@@ -15,6 +24,7 @@ services:
       - .env
     environment:
       - DATABASE_URL=sqlite+aiosqlite:///./data/grimoire.db
+      - REDIS_URL=redis://redis:6379/0
       - LIBRARY_PATH=/library
       - DATA_DIR=/app/data
       - COVERS_DIR=/app/data/covers
@@ -23,6 +33,8 @@ services:
       - CORS_ORIGINS=["http://localhost:5173","http://localhost:3000","http://localhost:8000"]
     command: ["uvicorn", "grimoire.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
     restart: unless-stopped
+    depends_on:
+      - redis
 
   worker:
     build:
@@ -34,6 +46,7 @@ services:
       - ./backend/grimoire:/app/grimoire:ro
     environment:
       - DATABASE_URL=sqlite+aiosqlite:///./data/grimoire.db
+      - REDIS_URL=redis://redis:6379/0
       - LIBRARY_PATH=/library
       - DATA_DIR=/app/data
       - COVERS_DIR=/app/data/covers
@@ -42,3 +55,7 @@ services:
     restart: unless-stopped
     depends_on:
       - grimoire
+      - redis
+
+volumes:
+  redis_data:

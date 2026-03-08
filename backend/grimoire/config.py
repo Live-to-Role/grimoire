@@ -25,6 +25,9 @@ class Settings(BaseSettings):
 
     # Database
     database_url: str = "sqlite+aiosqlite:///./data/grimoire.db"
+    
+    # Redis
+    redis_url: str = "redis://localhost:6379/0"
 
     # Paths
     data_dir: Path = Path("./data")

@@ -122,6 +122,10 @@ def process_cover_sync(product: Product) -> bool:
         # Extract comprehensive metadata from PDF, text, and filename
         metadata = extract_all_metadata(pdf_path)
         apply_metadata_to_product(product, metadata, overwrite=False)
+        
+        # Generate thumbnail after cover extraction
+        from grimoire.services.thumbnail_service import generate_thumbnail_for_product
+        generate_thumbnail_for_product(product)
 
     return success
 

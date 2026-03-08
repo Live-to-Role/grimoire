@@ -256,17 +256,24 @@ async def embed_all_products(
     limit: int = Query(100, ge=1, le=1000),
 ) -> dict:
     """Queue all products with extracted text for embedding generation."""
-    from sqlalchemy import func
+    # Check if any embedding provider is available
+    providers = get_available_providers()
+    if not providers.get("openai") and not providers.get("local"):
+        raise HTTPException(
+            status_code=400,
+            detail="No embedding provider available. Install sentence-transformers for local embeddings or configure OPENAI_API_KEY."
+        )
     
     # Find products with text but no embeddings
     embedded_query = select(ProductEmbedding.product_id).distinct()
     embedded_result = await db.execute(embedded_query)
     embedded_ids = set(embedded_result.scalars().all())
     
-    products_query = select(Product).where(
-        Product.text_extracted == True,
-        Product.id.notin_(embedded_ids) if embedded_ids else True,
-    ).limit(limit)
+    # Build query for products that need embedding
+    products_query = select(Product).where(Product.text_extracted == True)
+    if embedded_ids:
+        products_query = products_query.where(Product.id.notin_(embedded_ids))
+    products_query = products_query.limit(limit)
     
     result = await db.execute(products_query)
     products = list(result.scalars().all())
@@ -312,22 +319,28 @@ async def embed_all_products(
 
 @router.get("/status")
 async def embedding_status(db: DbSession) -> dict:
-    """Get embedding status for all products."""
+    """Get embedding status for products with extracted text."""
     # Count products with embeddings
     emb_query = select(ProductEmbedding.product_id).distinct()
     emb_result = await db.execute(emb_query)
     embedded_products = set(emb_result.scalars().all())
 
-    # Count total products
-    prod_query = select(Product.id)
+    # Count products that CAN be embedded (have text extracted)
+    prod_query = select(Product.id).where(Product.text_extracted == True)
     prod_result = await db.execute(prod_query)
-    all_products = set(prod_result.scalars().all())
+    embeddable_products = set(prod_result.scalars().all())
+    
+    # Get available providers
+    providers = get_available_providers()
+    any_provider_available = providers.get("openai") or providers.get("local")
 
     return {
-        "total_products": len(all_products),
+        "total_products": len(embeddable_products),
         "embedded_products": len(embedded_products),
-        "not_embedded": len(all_products - embedded_products),
-        "coverage_percent": round(len(embedded_products) / len(all_products) * 100, 1) if all_products else 0,
+        "not_embedded": len(embeddable_products - embedded_products),
+        "coverage_percent": round(len(embedded_products) / len(embeddable_products) * 100, 1) if embeddable_products else 0,
+        "providers": providers,
+        "provider_available": any_provider_available,
     }
 
 

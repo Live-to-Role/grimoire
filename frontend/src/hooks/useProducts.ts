@@ -5,6 +5,6 @@ export function useProducts(filters: ProductFilters = {}) {
   return useQuery({
     queryKey: ['products', filters],
     queryFn: () => getProducts(filters),
-    staleTime: 30000,
+    staleTime: 60000,
   });
 }
