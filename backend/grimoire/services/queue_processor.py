@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import time
 from datetime import datetime, UTC
 from pathlib import Path
 
@@ -29,26 +30,41 @@ def register_handler(task_type: str):
 async def handle_cover_task(db: AsyncSession, product: Product) -> bool:
     """Handle cover extraction task."""
     from grimoire.services.processor import process_cover_sync
-    
-    success = process_cover_sync(product)
+
+    success = await asyncio.to_thread(process_cover_sync, product)
     if success:
         await db.commit()
     return success
 
 
+# Simple TTL cache for settings (avoids DB query per task)
+_settings_cache: dict[str, tuple[float, any]] = {}
+_SETTINGS_CACHE_TTL = 60.0  # seconds
+
+
 async def get_setting(db: AsyncSession, key: str, default=None):
-    """Get a setting value from the database."""
+    """Get a setting value from the database, with 60-second TTL cache."""
     from grimoire.models import Setting
     import json
-    
+
+    now = time.monotonic()
+    if key in _settings_cache:
+        cached_time, cached_value = _settings_cache[key]
+        if now - cached_time < _SETTINGS_CACHE_TTL:
+            return cached_value
+
     result = await db.execute(select(Setting).where(Setting.key == key))
     setting = result.scalar_one_or_none()
     if setting:
         try:
-            return json.loads(setting.value)
+            value = json.loads(setting.value)
         except (json.JSONDecodeError, TypeError):
-            return setting.value
-    return default
+            value = setting.value
+    else:
+        value = default
+
+    _settings_cache[key] = (now, value)
+    return value
 
 
 async def queue_ai_identify_if_enabled(db: AsyncSession, product: Product) -> bool:
@@ -88,7 +104,8 @@ async def handle_text_task(db: AsyncSession, product: Product) -> bool:
     # Check if this PDF needs OCR
     pdf_path = Path(product.file_path)
     if pdf_path.exists():
-        detection = detect_needs_ocr(pdf_path)
+        # detect_needs_ocr opens PDF with fitz — run in thread
+        detection = await asyncio.to_thread(detect_needs_ocr, pdf_path)
         if detection["needs_ocr"]:
             # Queue OCR task instead
             ocr_item = ProcessingQueue(
@@ -101,8 +118,9 @@ async def handle_text_task(db: AsyncSession, product: Product) -> bool:
             await db.commit()
             logger.info(f"Product {product.id} needs OCR: {detection['reason']}")
             return True  # Successfully queued OCR task
-    
-    success = process_text_extraction_sync(product, use_marker=False)
+
+    # Run sync extraction in thread pool
+    success = await asyncio.to_thread(process_text_extraction_sync, product, False)
     if success:
         await db.commit()
         # Also update the FTS index
@@ -134,34 +152,39 @@ async def handle_ocr_text_task(db: AsyncSession, product: Product) -> bool:
         return False
     
     try:
-        # Extract text using OCR
-        markdown_text = extract_with_ocr(pdf_path, dpi=200, lang="eng")
-        
-        # Save the extracted text
-        text_dir = settings.data_dir / "text"
-        text_dir.mkdir(parents=True, exist_ok=True)
-        
-        text_file = text_dir / f"{product.id}.json"
-        
-        # Get page count
-        import fitz
-        doc = fitz.open(str(pdf_path))
-        total_pages = len(doc)
-        doc.close()
-        
-        result = {
-            "markdown": markdown_text,
-            "total_pages": total_pages,
-            "pages_extracted": f"1-{total_pages}",
-            "method": "tesseract_ocr",
-            "char_count": len(markdown_text),
-            "ocr_used": True,
-        }
-        
-        with open(text_file, "w", encoding="utf-8") as f:
-            json.dump(result, f, ensure_ascii=False, indent=2)
-        
-        product.extracted_text_path = str(text_file)
+        # OCR is extremely CPU-heavy — must run in thread
+        markdown_text = await asyncio.to_thread(
+            extract_with_ocr, pdf_path, 200, "eng"
+        )
+
+        # File I/O in thread too
+        def _save_ocr_result():
+            import fitz
+            doc = fitz.open(str(pdf_path))
+            total_pages = len(doc)
+            doc.close()
+
+            text_dir = settings.data_dir / "text"
+            text_dir.mkdir(parents=True, exist_ok=True)
+            text_file = text_dir / f"{product.id}.json"
+
+            result = {
+                "markdown": markdown_text,
+                "total_pages": total_pages,
+                "pages_extracted": f"1-{total_pages}",
+                "method": "tesseract_ocr",
+                "char_count": len(markdown_text),
+                "ocr_used": True,
+            }
+
+            with open(text_file, "w", encoding="utf-8") as f:
+                json.dump(result, f, ensure_ascii=False, indent=2)
+
+            return str(text_file), total_pages
+
+        text_file_path, _ = await asyncio.to_thread(_save_ocr_result)
+
+        product.extracted_text_path = text_file_path
         product.text_extracted = True
         await db.commit()
         
@@ -214,10 +237,11 @@ async def handle_embed_task(db: AsyncSession, product: Product) -> bool:
     if not product.text_extracted:
         return False
     
-    text = get_extracted_text(product)
+    # get_extracted_text reads JSON from disk — run in thread
+    text = await asyncio.to_thread(get_extracted_text, product)
     if not text:
         return False
-    
+
     try:
         # Delete existing embeddings
         await db.execute(
@@ -296,8 +320,8 @@ async def handle_ai_identify_task(db: AsyncSession, product: Product) -> bool:
     # Get configured provider
     provider = await get_setting(db, "auto_identify_provider", "ollama")
     
-    # Get extracted text
-    text = get_extracted_text(product)
+    # Get extracted text — file I/O, run in thread
+    text = await asyncio.to_thread(get_extracted_text, product)
     if not text or len(text) < 100:
         logger.warning(f"Product {product.id} has insufficient text for AI identification")
         return False
@@ -397,6 +421,25 @@ async def _process_item_with_session(db: AsyncSession, item: ProcessingQueue) ->
         item.completed_at = datetime.now(UTC)
 
         await db.commit()
+
+        # Emit SSE event
+        from grimoire.services.event_bus import event_bus
+        if success:
+            await event_bus.publish("queue", {
+                "type": "task_completed",
+                "id": item.id,
+                "task_type": item.task_type,
+                "product_id": item.product_id,
+            })
+        elif item.status == "failed":
+            await event_bus.publish("queue", {
+                "type": "task_failed",
+                "id": item.id,
+                "task_type": item.task_type,
+                "product_id": item.product_id,
+                "error": item.error_message,
+            })
+
         return success
 
     except Exception as e:
@@ -405,6 +448,16 @@ async def _process_item_with_session(db: AsyncSession, item: ProcessingQueue) ->
         item.status = "failed" if item.attempts >= item.max_attempts else "pending"
         item.completed_at = datetime.now(UTC)
         await db.commit()
+
+        from grimoire.services.event_bus import event_bus
+        await event_bus.publish("queue", {
+            "type": "task_failed",
+            "id": item.id,
+            "task_type": item.task_type,
+            "product_id": item.product_id,
+            "error": str(e)[:200],
+        })
+
         return False
 
 
@@ -456,76 +509,106 @@ async def get_next_pending_item(db: AsyncSession, task_type: str | None = None) 
     return result.scalar_one_or_none()
 
 
-async def process_queue(max_items: int = 10, delay: float = 0.5) -> dict:
+async def get_pending_batch(db: AsyncSession, batch_size: int) -> list[ProcessingQueue]:
     """
-    Process pending items from the queue.
-    
-    Args:
-        max_items: Maximum number of items to process
-        delay: Delay between items (seconds)
-        
-    Returns:
-        Summary of processing results
+    Get a batch of pending items from the queue, ordered by priority.
+
+    Returns up to batch_size items. Priority order:
+    1. Highest priority number first
+    2. Oldest created_at first (FIFO within same priority)
     """
-    processed = 0
-    succeeded = 0
-    failed = 0
-    
-    async with async_session_maker() as db:
-        for _ in range(max_items):
-            item = await get_next_pending_item(db)
-            
-            if not item:
-                break
-            
-            processed += 1
-            success = await _process_item_with_session(db, item)
-            
-            if success:
-                succeeded += 1
-            else:
-                failed += 1
-            
-            # Small delay between items
-            if delay > 0:
-                await asyncio.sleep(delay)
-    
-    return {
-        "processed": processed,
-        "succeeded": succeeded,
-        "failed": failed,
-    }
+    query = (
+        select(ProcessingQueue)
+        .where(ProcessingQueue.status == "pending")
+        .order_by(
+            ProcessingQueue.priority.desc(),
+            ProcessingQueue.created_at.asc(),
+        )
+        .limit(batch_size)
+    )
+
+    result = await db.execute(query)
+    return list(result.scalars().all())
 
 
 async def run_queue_worker(
-    poll_interval: float = 5.0,
-    batch_size: int = 5,
+    poll_interval: float = 2.0,
+    batch_size: int = 10,
     stop_event: asyncio.Event | None = None,
+    max_concurrent: int | None = None,
 ) -> None:
     """
-    Run the queue worker continuously.
-    
+    Run the queue worker continuously with concurrent task processing.
+
+    Fetches a batch of pending items each cycle and processes them concurrently,
+    limited by a semaphore to prevent resource exhaustion.
+
     Args:
-        poll_interval: Seconds between polling for new items
-        batch_size: Number of items to process per batch
+        poll_interval: Seconds between polling when queue is empty
+        batch_size: Max items to fetch per poll cycle
         stop_event: Event to signal worker to stop
+        max_concurrent: Max simultaneous tasks (defaults to config value)
     """
-    logger.info("Queue worker started")
-    
+    from grimoire.config import settings
+
+    if max_concurrent is None:
+        max_concurrent = settings.max_concurrent_processing
+
+    semaphore = asyncio.Semaphore(max_concurrent)
+    logger.info(
+        f"Queue worker started (max_concurrent={max_concurrent}, "
+        f"batch_size={batch_size}, poll_interval={poll_interval}s)"
+    )
+
     while True:
         if stop_event and stop_event.is_set():
             logger.info("Queue worker stopping")
             break
-        
+
         try:
-            result = await process_queue(max_items=batch_size, delay=0.1)
-            
-            if result["processed"] > 0:
-                logger.info(
-                    f"Processed {result['processed']} items: "
-                    f"{result['succeeded']} succeeded, {result['failed']} failed"
-                )
+            async with async_session_maker() as db:
+                items = await get_pending_batch(db, batch_size)
+
+            if not items:
+                await asyncio.sleep(poll_interval)
+                continue
+
+            # Process batch concurrently with semaphore
+            async def _process_with_semaphore(item_id: int):
+                async with semaphore:
+                    return await process_queue_item(item_id)
+
+            tasks = [
+                asyncio.create_task(_process_with_semaphore(item.id))
+                for item in items
+            ]
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+
+            succeeded = sum(1 for r in results if r is True)
+            failed = sum(1 for r in results if r is False or isinstance(r, Exception))
+
+            for r in results:
+                if isinstance(r, Exception):
+                    logger.error(f"Queue task raised exception: {r}")
+
+            logger.info(
+                f"Batch complete: {succeeded} succeeded, {failed} failed "
+                f"out of {len(items)}"
+            )
+
+            from grimoire.services.event_bus import event_bus
+            await event_bus.publish("queue", {
+                "type": "batch_complete",
+                "succeeded": succeeded,
+                "failed": failed,
+                "total": len(items),
+            })
+
+            # If we got a full batch, immediately poll again (more items likely)
+            if len(items) >= batch_size:
+                continue
+
         except Exception as e:
             logger.error(f"Queue worker error: {e}")
-        
+
         await asyncio.sleep(poll_interval)

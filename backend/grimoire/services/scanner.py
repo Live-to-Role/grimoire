@@ -1,5 +1,6 @@
 """Library scanner service - scans folders for PDF files."""
 
+import asyncio
 import hashlib
 import logging
 from datetime import datetime, UTC
@@ -18,22 +19,20 @@ logger = logging.getLogger(__name__)
 
 async def calculate_file_hash(file_path: Path, max_bytes: int = 1024 * 1024) -> str:
     """Calculate SHA-256 hash of file header for fast identification.
-    
+
+    Runs file I/O in a thread to avoid blocking the async event loop.
     Uses first max_bytes (default 1MB) + file size for quick fingerprinting.
-    This is much faster than hashing entire files while still catching most changes.
     """
-    sha256_hash = hashlib.sha256()
-    file_size = file_path.stat().st_size
-    
-    # Include file size in hash for additional uniqueness
-    sha256_hash.update(str(file_size).encode())
-    
-    with open(file_path, "rb") as f:
-        # Read only first max_bytes for speed
-        data = f.read(max_bytes)
-        sha256_hash.update(data)
-    
-    return sha256_hash.hexdigest()
+    def _hash_sync():
+        sha256_hash = hashlib.sha256()
+        file_size = file_path.stat().st_size
+        sha256_hash.update(str(file_size).encode())
+        with open(file_path, "rb") as f:
+            data = f.read(max_bytes)
+            sha256_hash.update(data)
+        return sha256_hash.hexdigest()
+
+    return await asyncio.to_thread(_hash_sync)
 
 
 def is_pdf_file(filename: str) -> bool:
@@ -68,10 +67,12 @@ async def scan_folder(
     duplicate_count = 0
     error_count = 0
 
-    for pdf_path in folder_path.rglob("*.pdf"):
-        if not pdf_path.is_file():
-            continue
+    # Collect PDF paths in a thread to avoid blocking on large/network folders
+    pdf_paths = await asyncio.to_thread(
+        lambda: [p for p in folder_path.rglob("*.pdf") if p.is_file()]
+    )
 
+    for pdf_path in pdf_paths:
         try:
             stat = pdf_path.stat()
             file_size = stat.st_size
@@ -230,7 +231,7 @@ async def queue_products_for_processing(db: AsyncSession, products: list[Product
             db.add(ProcessingQueue(
                 product_id=product.id,
                 task_type="cover",
-                priority=3,
+                priority=8,  # Highest — covers visible in UI immediately
                 status="pending",
             ))
             queued_covers += 1
@@ -250,7 +251,7 @@ async def queue_products_for_processing(db: AsyncSession, products: list[Product
                 db.add(ProcessingQueue(
                     product_id=product.id,
                     task_type="ai_identify",
-                    priority=7,
+                    priority=3,  # Lower than text — depends on extracted text
                     status="pending",
                 ))
 

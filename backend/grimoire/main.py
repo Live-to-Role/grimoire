@@ -27,7 +27,11 @@ async def lifespan(app: FastAPI):
     from grimoire.services.queue_processor import run_queue_worker
     queue_stop_event = asyncio.Event()
     queue_task = asyncio.create_task(
-        run_queue_worker(poll_interval=5.0, batch_size=3, stop_event=queue_stop_event)
+        run_queue_worker(
+            poll_interval=2.0,
+            batch_size=10,
+            stop_event=queue_stop_event,
+        )
     )
     
     # Start contribution queue processor for Codex submissions
