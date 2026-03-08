@@ -11,6 +11,9 @@ from grimoire.models import Product
 
 logger = logging.getLogger(__name__)
 
+# Cache FTS availability to avoid repeated sqlite_master queries
+_fts_available_cache: bool | None = None
+
 
 async def update_search_vector(db: AsyncSession, product: Product) -> bool:
     """
@@ -206,11 +209,18 @@ async def search_fts(
 
 
 async def check_fts_available(db: AsyncSession) -> bool:
-    """Check if FTS5 table exists."""
+    """Check if FTS5 table exists (cached after first check)."""
+    global _fts_available_cache
+    
+    if _fts_available_cache is not None:
+        return _fts_available_cache
+    
     try:
         result = await db.execute(
             text("SELECT name FROM sqlite_master WHERE type='table' AND name='products_fts'")
         )
-        return result.fetchone() is not None
+        _fts_available_cache = result.fetchone() is not None
+        return _fts_available_cache
     except Exception:
+        _fts_available_cache = False
         return False

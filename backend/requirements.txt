@@ -24,8 +24,13 @@ watchfiles>=0.21.0
 # Task Queue
 huey>=2.5.0
 
+# Caching
+redis>=5.0.0
+
 # HTTP Client
 httpx>=0.26.0
 
 # Embeddings/Semantic Search
 numpy>=1.26.0
+
+sentence-transformers>=2.2.0

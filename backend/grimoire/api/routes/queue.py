@@ -1,8 +1,10 @@
 """Processing queue API endpoints."""
 
+import json
 from datetime import datetime
 from pydantic import BaseModel, Field
 from fastapi import APIRouter, HTTPException, Query
+from fastapi.responses import StreamingResponse
 from sqlalchemy import select, func
 
 from grimoire.api.deps import DbSession
@@ -19,6 +21,7 @@ class QueueStats(BaseModel):
     completed: int = 0
     failed: int = 0
     total: int = 0
+    pending_by_type: dict[str, int] = {}
 
 
 class QueueItemResponse(BaseModel):
@@ -48,15 +51,16 @@ class CreateQueueItemRequest(BaseModel):
 
 @router.get("/stats")
 async def get_queue_stats(db: DbSession) -> QueueStats:
-    """Get queue statistics."""
+    """Get queue statistics with per-task-type breakdown."""
+    # Overall stats by status
     query = select(
         ProcessingQueue.status,
         func.count(ProcessingQueue.id).label("count")
     ).group_by(ProcessingQueue.status)
-    
+
     result = await db.execute(query)
     rows = result.all()
-    
+
     stats = QueueStats()
     for status, count in rows:
         if status == "pending":
@@ -68,8 +72,45 @@ async def get_queue_stats(db: DbSession) -> QueueStats:
         elif status == "failed":
             stats.failed = count
         stats.total += count
-    
+
+    # Per-task-type pending counts
+    type_query = select(
+        ProcessingQueue.task_type,
+        func.count(ProcessingQueue.id),
+    ).where(
+        ProcessingQueue.status == "pending"
+    ).group_by(ProcessingQueue.task_type)
+    type_result = await db.execute(type_query)
+    stats.pending_by_type = {row[0]: row[1] for row in type_result.all()}
+
     return stats
+
+
+@router.get("/events")
+async def queue_events():
+    """Server-Sent Events stream for real-time queue progress updates.
+
+    Events:
+    - task_completed: {id, task_type, product_id}
+    - task_failed: {id, task_type, product_id, error}
+    - batch_complete: {succeeded, failed, total}
+    """
+    from grimoire.services.event_bus import event_bus
+
+    async def event_stream():
+        async for event in event_bus.subscribe("queue"):
+            data = json.dumps(event)
+            yield f"data: {data}\n\n"
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 @router.get("")
@@ -733,13 +774,28 @@ async def deduplicate_queue(
 
 @router.post("/process")
 async def process_queue_items(
+    db: DbSession,
     max_items: int = Query(10, ge=1, le=100000, description="Max items to process"),
 ) -> dict:
     """Process pending items in the queue."""
-    from grimoire.services.queue_processor import process_queue
-    
-    result = await process_queue(max_items=max_items, delay=0.1)
-    return result
+    from grimoire.services.queue_processor import get_pending_batch, process_queue_item
+
+    items = await get_pending_batch(db, max_items)
+    succeeded = 0
+    failed = 0
+
+    for item in items:
+        success = await process_queue_item(item.id)
+        if success:
+            succeeded += 1
+        else:
+            failed += 1
+
+    return {
+        "processed": len(items),
+        "succeeded": succeeded,
+        "failed": failed,
+    }
 
 
 @router.post("/{item_id}/process")

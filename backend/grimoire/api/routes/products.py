@@ -1,5 +1,6 @@
 """Product API endpoints."""
 
+import asyncio
 from datetime import datetime, UTC
 from pathlib import Path
 from typing import Literal
@@ -36,9 +37,7 @@ def product_to_response(product: Product) -> ProductResponse:
     if product.is_duplicate and product.duplicate_of_id:
         cover_url = f"/api/v1/products/{product.id}/cover"
     elif product.cover_extracted and product.cover_image_path:
-        # Only set cover_url if the cover file actually exists
-        if Path(product.cover_image_path).exists():
-            cover_url = f"/api/v1/products/{product.id}/cover"
+        cover_url = f"/api/v1/products/{product.id}/cover"
 
     # Build run status if any run tracking data exists
     run_status = None
@@ -133,78 +132,125 @@ async def list_products(
     estimated_runtime: str | None = Query(None, description="Filter by estimated runtime (partial match)"),
 ) -> ProductListResponse:
     """List products with filtering and pagination."""
-    query = select(Product).options(selectinload(Product.product_tags).selectinload(ProductTag.tag))
+    # Collect all filter conditions
+    conditions = [Product.is_duplicate == False, Product.is_missing == False]
 
-    # Apply filters
     if search:
-        # Use FTS for fast search (only searches indexed products)
-        # Non-indexed products won't appear - this is intentional for speed
         try:
             if await check_fts_available(db):
                 terms = search.strip().split()
                 if terms:
                     fts_query = " OR ".join(f'"{term}"*' for term in terms)
+                    fts_limit = min(1000, (pagination.page * pagination.per_page) + 200)
                     fts_result = await db.execute(
-                        text("SELECT rowid FROM products_fts WHERE products_fts MATCH :query LIMIT 1000"),
-                        {"query": fts_query}
+                        text("SELECT rowid FROM products_fts WHERE products_fts MATCH :query LIMIT :limit"),
+                        {"query": fts_query, "limit": fts_limit}
                     )
                     fts_product_ids = [row[0] for row in fts_result.fetchall()]
                     if fts_product_ids:
-                        query = query.where(Product.id.in_(fts_product_ids))
+                        conditions.append(Product.id.in_(fts_product_ids))
                     else:
-                        # No FTS matches - return empty
-                        query = query.where(Product.id == -1)
+                        conditions.append(Product.id == -1)
             else:
-                # FTS not available, use ILIKE (slow)
                 search_term = f"%{search}%"
-                query = query.where(
+                conditions.append(
                     (Product.title.ilike(search_term)) | (Product.file_name.ilike(search_term))
                 )
         except Exception:
-            # FTS failed, fall back to ILIKE
             search_term = f"%{search}%"
-            query = query.where(
+            conditions.append(
                 (Product.title.ilike(search_term)) | (Product.file_name.ilike(search_term))
             )
 
     if game_system:
         if game_system == "Unknown":
-            query = query.where(Product.game_system.is_(None))
+            conditions.append(Product.game_system.is_(None))
         else:
-            query = query.where(Product.game_system == game_system)
+            conditions.append(Product.game_system == game_system)
 
     if product_type:
         if product_type == "Unknown":
-            query = query.where(Product.product_type.is_(None))
+            conditions.append(Product.product_type.is_(None))
         else:
-            query = query.where(Product.product_type == product_type)
+            conditions.append(Product.product_type == product_type)
 
     if genre:
         if genre == "Unknown":
-            query = query.where(Product.genre.is_(None))
+            conditions.append(Product.genre.is_(None))
         else:
-            query = query.where(Product.genre == genre)
+            conditions.append(Product.genre == genre)
 
     if publisher:
         if publisher == "Unknown":
-            query = query.where(Product.publisher.is_(None))
+            conditions.append(Product.publisher.is_(None))
         else:
-            query = query.where(Product.publisher == publisher)
+            conditions.append(Product.publisher == publisher)
 
     if author:
         if author == "Unknown":
-            query = query.where(Product.author.is_(None))
+            conditions.append(Product.author.is_(None))
         else:
-            query = query.where(Product.author == author)
+            conditions.append(Product.author == author)
 
     if has_cover is not None:
-        query = query.where(Product.cover_extracted == has_cover)
+        conditions.append(Product.cover_extracted == has_cover)
 
     if text_extracted is not None:
-        query = query.where(Product.text_extracted == text_extracted)
+        conditions.append(Product.text_extracted == text_extracted)
 
     if ai_identified is not None:
-        query = query.where(Product.ai_identified == ai_identified)
+        conditions.append(Product.ai_identified == ai_identified)
+
+    if publication_year_min is not None:
+        conditions.append(Product.publication_year >= publication_year_min)
+    if publication_year_max is not None:
+        conditions.append(Product.publication_year <= publication_year_max)
+
+    if level_min is not None:
+        conditions.append(
+            (Product.level_range_max >= level_min) | (Product.level_range_max.is_(None))
+        )
+    if level_max is not None:
+        conditions.append(
+            (Product.level_range_min <= level_max) | (Product.level_range_min.is_(None))
+        )
+
+    if party_size_min is not None:
+        conditions.append(
+            (Product.party_size_max >= party_size_min) | (Product.party_size_max.is_(None))
+        )
+    if party_size_max is not None:
+        conditions.append(
+            (Product.party_size_min <= party_size_max) | (Product.party_size_min.is_(None))
+        )
+
+    if estimated_runtime:
+        conditions.append(Product.estimated_runtime.ilike(f"%{estimated_runtime}%"))
+
+    # Count query - lightweight, no eager loading or sorting
+    count_query = select(func.count(Product.id)).where(*conditions)
+
+    # Tags and collections require a join — apply to both count and main query
+    if tags:
+        tag_ids = [int(t.strip()) for t in tags.split(",") if t.strip().isdigit()]
+        if tag_ids:
+            count_query = count_query.join(ProductTag).where(ProductTag.tag_id.in_(tag_ids))
+
+    if collection:
+        from grimoire.models import CollectionProduct
+        count_query = count_query.join(CollectionProduct).where(
+            CollectionProduct.collection_id == collection
+        )
+
+    total_result = await db.execute(count_query)
+    total = total_result.scalar() or 0
+
+    # Main query - with eager loading, sorting, pagination
+    query = (
+        select(Product)
+        .options(selectinload(Product.product_tags).selectinload(ProductTag.tag))
+        .where(*conditions)
+    )
 
     if tags:
         tag_ids = [int(t.strip()) for t in tags.split(",") if t.strip().isdigit()]
@@ -213,45 +259,9 @@ async def list_products(
 
     if collection:
         from grimoire.models import CollectionProduct
-
-        query = query.join(CollectionProduct).where(CollectionProduct.collection_id == collection)
-
-    # Publication year range filters
-    if publication_year_min is not None:
-        query = query.where(Product.publication_year >= publication_year_min)
-    if publication_year_max is not None:
-        query = query.where(Product.publication_year <= publication_year_max)
-
-    # Level range filters (find products whose level range overlaps with the filter range)
-    if level_min is not None:
-        # Product's max level must be >= filter's min level (or product has no max set)
-        query = query.where(
-            (Product.level_range_max >= level_min) | (Product.level_range_max.is_(None))
+        query = query.join(CollectionProduct).where(
+            CollectionProduct.collection_id == collection
         )
-    if level_max is not None:
-        # Product's min level must be <= filter's max level (or product has no min set)
-        query = query.where(
-            (Product.level_range_min <= level_max) | (Product.level_range_min.is_(None))
-        )
-
-    # Party size range filters
-    if party_size_min is not None:
-        query = query.where(
-            (Product.party_size_max >= party_size_min) | (Product.party_size_max.is_(None))
-        )
-    if party_size_max is not None:
-        query = query.where(
-            (Product.party_size_min <= party_size_max) | (Product.party_size_min.is_(None))
-        )
-
-    # Estimated runtime filter (partial match)
-    if estimated_runtime:
-        query = query.where(Product.estimated_runtime.ilike(f"%{estimated_runtime}%"))
-
-    # Get total count
-    count_query = select(func.count()).select_from(query.subquery())
-    total_result = await db.execute(count_query)
-    total = total_result.scalar() or 0
 
     # Apply sorting
     sort_column = getattr(Product, sort, Product.title)
@@ -321,12 +331,23 @@ async def update_product(
         raise HTTPException(status_code=404, detail="Product not found")
 
     update_dict = update_data.model_dump(exclude_unset=True)
+    
+    # Check if filter-relevant fields are being updated
+    filter_fields = {'game_system', 'publisher', 'author', 'genre', 'product_type'}
+    invalidate_cache = bool(filter_fields & update_dict.keys())
+    
     for field, value in update_dict.items():
         setattr(product, field, value)
 
     product.updated_at = datetime.now(UTC)
     await db.commit()
     await db.refresh(product)
+
+    # Invalidate filter cache if relevant fields changed
+    if invalidate_cache:
+        from grimoire.services.cache_service import get_cache_service
+        cache = await get_cache_service()
+        await cache.invalidate_filter_options()
 
     # Queue for Codex contribution
     if send_to_codex:
@@ -353,6 +374,11 @@ async def delete_product(db: DbSession, product_id: int) -> Response:
 
     await db.delete(product)
     await db.commit()
+    
+    # Invalidate filter cache since product was deleted
+    from grimoire.services.cache_service import get_cache_service
+    cache = await get_cache_service()
+    await cache.invalidate_filter_options()
 
     return Response(status_code=204)
 
@@ -393,6 +419,82 @@ async def get_product_cover(db: DbSession, product_id: int) -> FileResponse:
         cover_path,
         media_type="image/jpeg",
         headers={"Cache-Control": "public, max-age=86400"},
+    )
+
+
+@router.get("/{product_id}/thumbnail")
+async def get_product_thumbnail(
+    db: DbSession, 
+    product_id: int,
+    format: str = Query("webp", regex="^(webp|jpeg)$", description="Image format: webp or jpeg"),
+) -> FileResponse:
+    """Get the thumbnail image for a product.
+    
+    Thumbnails are optimized versions of cover images (300x400px).
+    If thumbnail doesn't exist, returns the full cover and queues
+    thumbnail generation in background.
+    """
+    query = select(Product).where(Product.id == product_id)
+    result = await db.execute(query)
+    product = result.scalar_one_or_none()
+
+    if not product:
+        raise HTTPException(status_code=404, detail="Product not found")
+
+    # For duplicates, get the original's thumbnail
+    if product.is_duplicate and product.duplicate_of_id:
+        orig_query = select(Product).where(Product.id == product.duplicate_of_id)
+        orig_result = await db.execute(orig_query)
+        original = orig_result.scalar_one_or_none()
+        if original and original.cover_extracted:
+            product = original
+
+    if not product.cover_extracted or not product.cover_image_path:
+        raise HTTPException(status_code=404, detail="Cover not available")
+
+    # Check if thumbnail exists, generate if not
+    from grimoire.services.thumbnail_service import generate_thumbnail_for_product, get_thumbnail_path
+    
+    thumbnail_path = get_thumbnail_path(product, prefer_webp=(format == "webp"))
+    
+    if not thumbnail_path:
+        # Queue thumbnail generation in background via asyncio.to_thread
+        # Return the full cover immediately as a fallback
+        asyncio.get_event_loop().run_in_executor(
+            None, generate_thumbnail_for_product, product
+        )
+
+        cover_path = Path(product.cover_image_path)
+        try:
+            validate_covers_path(cover_path)
+        except PathTraversalError:
+            raise HTTPException(status_code=403, detail="Access denied")
+
+        if not cover_path.exists():
+            raise HTTPException(status_code=404, detail="Cover file not found")
+
+        return FileResponse(
+            cover_path,
+            media_type="image/jpeg",
+            headers={"Cache-Control": "public, max-age=60"},  # Short cache — thumbnail will be ready soon
+        )
+    
+    # Validate path is within allowed directory
+    try:
+        validate_covers_path(thumbnail_path)
+    except PathTraversalError:
+        raise HTTPException(status_code=403, detail="Access denied")
+    
+    if not thumbnail_path.exists():
+        raise HTTPException(status_code=404, detail="Thumbnail file not found")
+
+    # Determine media type based on file extension
+    media_type = "image/webp" if thumbnail_path.suffix == ".webp" else "image/jpeg"
+
+    return FileResponse(
+        thumbnail_path,
+        media_type=media_type,
+        headers={"Cache-Control": "public, max-age=2592000"},  # 30 days
     )
 
 
@@ -519,9 +621,11 @@ async def extract_product_text(
     if not product:
         raise HTTPException(status_code=404, detail="Product not found")
 
+    import asyncio
     from grimoire.services.processor import process_text_extraction_sync
 
-    success = process_text_extraction_sync(product, use_marker=use_marker)
+    # Run CPU-bound extraction in a thread to avoid blocking the event loop
+    success = await asyncio.to_thread(process_text_extraction_sync, product, use_marker)
 
     if not success:
         raise HTTPException(status_code=500, detail="Text extraction failed")

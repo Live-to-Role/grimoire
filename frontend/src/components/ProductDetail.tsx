@@ -34,7 +34,19 @@ import { getCoverUrl, updateProduct, contributeProduct, getContributionStatus, u
 import { getCollections, addProductToCollection, removeProductFromCollection, type Collection } from '../api/collections';
 import { getTags, addTagToProduct, removeTagFromProduct, type Tag as TagType } from '../api/tags';
 import { PDFViewer } from './PDFViewer';
+import { ComboboxWithAdd } from './ComboboxWithAdd';
 import { useFocusTrap } from '../hooks/useFocusTrap';
+
+interface LibraryStats {
+  total_products: number;
+  total_pages: number;
+  total_size_bytes: number;
+  by_system: Record<string, number>;
+  by_type: Record<string, number>;
+  by_genre: Record<string, number>;
+  by_author: Record<string, number>;
+  by_publisher: Record<string, number>;
+}
 
 interface ProductDetailProps {
   product: Product;
@@ -58,6 +70,14 @@ export function ProductDetail({ product, onClose }: ProductDetailProps) {
   const [showTagMenu, setShowTagMenu] = useState(false);
   const [showNoteEditor, setShowNoteEditor] = useState(false);
   const [editingNote, setEditingNote] = useState<RunNote | null>(null);
+
+  const { data: libraryStats } = useQuery({
+    queryKey: ['library-stats'],
+    queryFn: async () => {
+      const res = await apiClient.get<LibraryStats>('/folders/library/stats');
+      return res.data;
+    },
+  });
   const [noteForm, setNoteForm] = useState({
     note_type: 'prep_tip' as 'prep_tip' | 'modification' | 'warning' | 'review',
     title: '',
@@ -750,11 +770,12 @@ export function ProductDetail({ product, onClose }: ProductDetailProps) {
                       <div className="grid grid-cols-2 gap-4">
                         <div>
                           <label className="block text-sm font-medium text-primary-700">Game System</label>
-                          <input
-                            type="text"
+                          <ComboboxWithAdd
                             value={editForm.game_system}
-                            onChange={(e) => setEditForm({ ...editForm, game_system: e.target.value })}
-                            className="mt-1 w-full rounded-sm border border-codex-tan px-3 py-2 text-sm focus:border-codex-olive focus:outline-none focus:ring-1 focus:ring-codex-olive"
+                            onChange={(value) => setEditForm({ ...editForm, game_system: value })}
+                            options={libraryStats ? Object.keys(libraryStats.by_system).sort() : []}
+                            placeholder="Select or add game system..."
+                            className="mt-1"
                           />
                         </div>
                         <div>

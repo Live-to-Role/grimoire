@@ -52,6 +52,58 @@ async def check_and_mark_duplicate(
     return True
 
 
+async def batch_check_and_mark_duplicates(
+    db: AsyncSession,
+    products: list[Product],
+) -> int:
+    """
+    Check a batch of products for duplicates using a single query.
+
+    Instead of N individual queries, fetches all products with matching
+    hashes in one query, then marks duplicates in memory.
+
+    Returns the number of products marked as duplicates.
+    """
+    if not products:
+        return 0
+
+    # Collect unique hashes from the batch
+    hashes = {p.file_hash for p in products}
+    product_ids = {p.id for p in products}
+
+    # Single query: find ALL existing products with these hashes
+    result = await db.execute(
+        select(Product)
+        .where(Product.file_hash.in_(hashes))
+        .order_by(Product.created_at.asc())
+    )
+    all_matching = list(result.scalars().all())
+
+    # Group by hash, find canonical (oldest) for each hash
+    from collections import defaultdict
+    hash_groups: dict[str, list[Product]] = defaultdict(list)
+    for p in all_matching:
+        hash_groups[p.file_hash].append(p)
+
+    marked = 0
+    for product in products:
+        group = hash_groups.get(product.file_hash, [])
+        # Need at least 2 products with the same hash for it to be a duplicate
+        if len(group) < 2:
+            continue
+
+        canonical = group[0]  # Already sorted by created_at asc
+        if canonical.id == product.id:
+            continue  # This IS the canonical
+
+        product.is_duplicate = True
+        product.duplicate_of_id = canonical.id
+        product.duplicate_reason = "exact_hash"
+        marked += 1
+
+    return marked
+
+
 async def get_duplicate_groups(db: AsyncSession) -> list[dict[str, Any]]:
     """
     Get all groups of duplicate files.

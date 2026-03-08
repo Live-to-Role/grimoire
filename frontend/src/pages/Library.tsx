@@ -1,10 +1,11 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { Search, Grid, List, RefreshCw, X } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { useProducts } from '../hooks/useProducts';
 import { ProductGrid } from '../components/ProductGrid';
 import { ProductDetail } from '../components/ProductDetail';
 import { searchProducts } from '../api/search';
+import { useDebounce } from '../hooks/useDebounce';
 import type { Product } from '../types/product';
 import type { ProductFilters } from '../api/products';
 
@@ -17,7 +18,7 @@ interface LibraryProps {
 export function Library({ selectedCollection, selectedTag, sidebarFilters = {} }: LibraryProps) {
   const [filters, setFilters] = useState<ProductFilters>({
     page: 1,
-    per_page: 50,
+    per_page: 24,
     sort: 'title',
     order: 'asc',
   });
@@ -39,6 +40,15 @@ export function Library({ selectedCollection, selectedTag, sidebarFilters = {} }
   const [searchContent, setSearchContent] = useState(false);
   const [activeSearch, setActiveSearch] = useState('');
 
+  const debouncedSearch = useDebounce(searchInput, 300);
+
+  // Live title search: update filters when debounced input changes
+  useEffect(() => {
+    if (!searchContent) {
+      setFilters(prev => ({ ...prev, search: debouncedSearch || undefined, page: 1 }));
+    }
+  }, [debouncedSearch, searchContent]);
+
   const { data, isLoading, error, refetch, isFetching } = useProducts(effectiveFilters);
 
   // Content search query
@@ -50,6 +60,7 @@ export function Library({ selectedCollection, selectedTag, sidebarFilters = {} }
     queryKey: ['search', activeSearch, searchContent],
     queryFn: () => searchProducts({ q: activeSearch, search_content: searchContent }),
     enabled: activeSearch.length > 0,
+    staleTime: 60000,
   });
 
   // Count active sidebar filters

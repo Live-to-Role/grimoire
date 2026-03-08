@@ -1,5 +1,6 @@
 """Library scanner service - scans folders for PDF files."""
 
+import asyncio
 import hashlib
 import logging
 from datetime import datetime, UTC
@@ -11,29 +12,27 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from grimoire.models import Product, WatchedFolder
 from grimoire.services.exclusion_service import create_exclusion_matcher, increment_rule_match
-from grimoire.services.duplicate_service import check_and_mark_duplicate, is_deleted_duplicate
+from grimoire.services.duplicate_service import batch_check_and_mark_duplicates, check_and_mark_duplicate, is_deleted_duplicate
 
 logger = logging.getLogger(__name__)
 
 
 async def calculate_file_hash(file_path: Path, max_bytes: int = 1024 * 1024) -> str:
     """Calculate SHA-256 hash of file header for fast identification.
-    
+
+    Runs file I/O in a thread to avoid blocking the async event loop.
     Uses first max_bytes (default 1MB) + file size for quick fingerprinting.
-    This is much faster than hashing entire files while still catching most changes.
     """
-    sha256_hash = hashlib.sha256()
-    file_size = file_path.stat().st_size
-    
-    # Include file size in hash for additional uniqueness
-    sha256_hash.update(str(file_size).encode())
-    
-    with open(file_path, "rb") as f:
-        # Read only first max_bytes for speed
-        data = f.read(max_bytes)
-        sha256_hash.update(data)
-    
-    return sha256_hash.hexdigest()
+    def _hash_sync():
+        sha256_hash = hashlib.sha256()
+        file_size = file_path.stat().st_size
+        sha256_hash.update(str(file_size).encode())
+        with open(file_path, "rb") as f:
+            data = f.read(max_bytes)
+            sha256_hash.update(data)
+        return sha256_hash.hexdigest()
+
+    return await asyncio.to_thread(_hash_sync)
 
 
 def is_pdf_file(filename: str) -> bool:
@@ -68,10 +67,12 @@ async def scan_folder(
     duplicate_count = 0
     error_count = 0
 
-    for pdf_path in folder_path.rglob("*.pdf"):
-        if not pdf_path.is_file():
-            continue
+    # Collect PDF paths in a thread to avoid blocking on large/network folders
+    pdf_paths = await asyncio.to_thread(
+        lambda: [p for p in folder_path.rglob("*.pdf") if p.is_file()]
+    )
 
+    for pdf_path in pdf_paths:
         try:
             stat = pdf_path.stat()
             file_size = stat.st_size
@@ -149,28 +150,18 @@ async def scan_folder(
         # Commit in batches of 100 for better performance
         if len(products) % 100 == 0:
             await db.flush()
-            # Check for duplicates on new products in this batch
             batch = products[-100:]
-            for p in batch:
-                if p.id and not hasattr(p, '_dup_checked'):
-                    if await check_and_mark_duplicate(db, p):
-                        duplicate_count += 1
-                    p._dup_checked = True
+            duplicate_count += await batch_check_and_mark_duplicates(db, batch)
             await db.commit()
-            
-            # Queue this batch for cover extraction immediately
             await queue_products_for_processing(db, batch)
 
     # Final flush and duplicate check for remaining products
     await db.flush()
-    remaining = [p for p in products if not hasattr(p, '_dup_checked')]
-    for p in remaining:
-        if p.id:
-            if await check_and_mark_duplicate(db, p):
-                duplicate_count += 1
+    remaining = products[-(len(products) % 100):] if len(products) % 100 != 0 else []
+    if remaining:
+        duplicate_count += await batch_check_and_mark_duplicates(db, remaining)
     await db.commit()
-    
-    # Queue remaining products for cover extraction
+
     if remaining:
         await queue_products_for_processing(db, remaining)
 
@@ -205,92 +196,69 @@ async def get_scan_settings(db: AsyncSession) -> dict:
 
 async def queue_products_for_processing(db: AsyncSession, products: list[Product]) -> dict:
     """Queue products for processing based on settings.
-    
-    Args:
-        db: Database session
-        products: List of products to check and queue
-        
-    Returns:
-        Dict with queued counts per task type
+
+    Uses batch queries to check for existing queue items instead of
+    per-product queries. This reduces N*M queries to 1 query.
     """
     from grimoire.models import ProcessingQueue
-    
-    # Get settings for auto-processing
+
     settings = await get_scan_settings(db)
     auto_extract_text = settings.get('auto_extract_text_on_scan', False)
     auto_identify = settings.get('auto_identify_on_scan', False)
-    
+
+    # Filter out duplicates
+    eligible = [p for p in products if not p.is_duplicate]
+    if not eligible:
+        return {"covers": 0, "text": 0}
+
+    product_ids = [p.id for p in eligible]
+
+    # Batch-fetch all existing pending/processing queue items for these products
+    existing_result = await db.execute(
+        select(ProcessingQueue.product_id, ProcessingQueue.task_type)
+        .where(
+            ProcessingQueue.product_id.in_(product_ids),
+            ProcessingQueue.status.in_(["pending", "processing"]),
+        )
+    )
+    existing_tasks = {(row[0], row[1]) for row in existing_result.fetchall()}
+
     queued_covers = 0
     queued_text = 0
-    
-    for product in products:
-        # Skip duplicates
-        if product.is_duplicate:
-            continue
-        
-        # Queue for cover extraction if needed
-        if not product.cover_extracted:
-            existing = await db.execute(
-                select(ProcessingQueue).where(
-                    ProcessingQueue.product_id == product.id,
-                    ProcessingQueue.task_type == "cover",
-                    ProcessingQueue.status.in_(["pending", "processing"])
-                )
-            )
-            if not existing.scalar_one_or_none():
-                queue_item = ProcessingQueue(
-                    product_id=product.id,
-                    task_type="cover",
-                    priority=3,
-                    status="pending",
-                )
-                db.add(queue_item)
-                queued_covers += 1
-        
-        # Queue for text extraction if enabled and needed
+
+    for product in eligible:
+        if not product.cover_extracted and (product.id, "cover") not in existing_tasks:
+            db.add(ProcessingQueue(
+                product_id=product.id,
+                task_type="cover",
+                priority=8,  # Highest — covers visible in UI immediately
+                status="pending",
+            ))
+            queued_covers += 1
+
         if auto_extract_text and not product.text_extracted:
-            existing = await db.execute(
-                select(ProcessingQueue).where(
-                    ProcessingQueue.product_id == product.id,
-                    ProcessingQueue.task_type == "text",
-                    ProcessingQueue.status.in_(["pending", "processing"])
-                )
-            )
-            if not existing.scalar_one_or_none():
-                queue_item = ProcessingQueue(
+            if (product.id, "text") not in existing_tasks:
+                db.add(ProcessingQueue(
                     product_id=product.id,
                     task_type="text",
-                    priority=5,  # Lower priority than covers
+                    priority=5,
                     status="pending",
-                )
-                db.add(queue_item)
+                ))
                 queued_text += 1
-        
-        # Queue for AI identification if enabled and text is extracted
+
         if auto_identify and product.text_extracted and not product.ai_identified:
-            existing = await db.execute(
-                select(ProcessingQueue).where(
-                    ProcessingQueue.product_id == product.id,
-                    ProcessingQueue.task_type == "identify",
-                    ProcessingQueue.status.in_(["pending", "processing"])
-                )
-            )
-            if not existing.scalar_one_or_none():
-                queue_item = ProcessingQueue(
+            if (product.id, "ai_identify") not in existing_tasks:
+                db.add(ProcessingQueue(
                     product_id=product.id,
-                    task_type="identify",
-                    priority=7,  # Lower priority than text extraction
+                    task_type="ai_identify",
+                    priority=3,  # Lower than text — depends on extracted text
                     status="pending",
-                )
-                db.add(queue_item)
-        
+                ))
+
     if queued_covers > 0 or queued_text > 0:
         await db.commit()
-        
-    return {
-        "covers": queued_covers,
-        "text": queued_text,
-    }
+
+    return {"covers": queued_covers, "text": queued_text}
 
 
 async def mark_missing_products(db: AsyncSession, folder: WatchedFolder) -> int:

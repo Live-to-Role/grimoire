@@ -1,3 +1,5 @@
+import { useRef, useMemo, useState, useEffect } from 'react';
+import { useVirtualizer } from '@tanstack/react-virtual';
 import { ProductCard } from './ProductCard';
 import type { Product } from '../types/product';
 
@@ -8,6 +10,44 @@ interface ProductGridProps {
 }
 
 export function ProductGrid({ products, onProductClick, viewMode = 'grid' }: ProductGridProps) {
+  const parentRef = useRef<HTMLDivElement>(null);
+  
+  const [windowWidth, setWindowWidth] = useState(
+    typeof window !== 'undefined' ? window.innerWidth : 1920
+  );
+
+  useEffect(() => {
+    const handleResize = () => setWindowWidth(window.innerWidth);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  // Calculate columns based on viewport width
+  const columns = useMemo(() => {
+    if (viewMode === 'list') return 1;
+    if (windowWidth < 640) return 2;
+    if (windowWidth < 768) return 3;
+    if (windowWidth < 1024) return 4;
+    if (windowWidth < 1280) return 5;
+    return 6;
+  }, [viewMode, windowWidth]);
+  
+  // Calculate row count
+  const rowCount = Math.ceil(products.length / columns);
+  
+  // Estimate item sizes
+  const estimateSize = useMemo(() => {
+    if (viewMode === 'list') return 80; // List item height
+    return 320; // Grid item height (aspect ratio 3:4 + padding)
+  }, [viewMode]);
+  
+  const virtualizer = useVirtualizer({
+    count: rowCount,
+    getScrollElement: () => parentRef.current,
+    estimateSize: () => estimateSize,
+    overscan: 3, // Render 3 extra rows above/below viewport
+  });
+  
   if (products.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-16 text-center">
@@ -34,19 +74,49 @@ export function ProductGrid({ products, onProductClick, viewMode = 'grid' }: Pro
     );
   }
 
+  const virtualItems = virtualizer.getVirtualItems();
+
   return (
-    <div className={viewMode === 'grid' 
-      ? "grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6"
-      : "flex flex-col gap-2"
-    }>
-      {products.map((product) => (
-        <ProductCard
-          key={product.id}
-          product={product}
-          onClick={onProductClick}
-          viewMode={viewMode}
-        />
-      ))}
+    <div ref={parentRef} className="h-full overflow-auto">
+      <div
+        style={{
+          height: `${virtualizer.getTotalSize()}px`,
+          width: '100%',
+          position: 'relative',
+        }}
+      >
+        {virtualItems.map((virtualRow: { key: React.Key; index: number; start: number }) => {
+          const startIndex = virtualRow.index * columns;
+          const rowProducts = products.slice(startIndex, startIndex + columns);
+          
+          return (
+            <div
+              key={virtualRow.key}
+              style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                width: '100%',
+                transform: `translateY(${virtualRow.start}px)`,
+              }}
+            >
+              <div className={viewMode === 'grid' 
+                ? "grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6"
+                : "flex flex-col gap-2"
+              }>
+                {rowProducts.map((product) => (
+                  <ProductCard
+                    key={product.id}
+                    product={product}
+                    onClick={onProductClick}
+                    viewMode={viewMode}
+                  />
+                ))}
+              </div>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }

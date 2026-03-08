@@ -57,7 +57,7 @@ export function ProductCard({ product, onClick, viewMode = 'grid' }: ProductCard
         <div className="h-16 w-12 flex-shrink-0 overflow-hidden rounded-sm bg-primary-200 relative">
           {product.cover_url && !coverError ? (
             <img
-              src={getCoverUrl(product.id)}
+              src={getCoverUrl(product.id, 'thumbnail')}
               alt={`${product.title || product.file_name} cover`}
               className="h-full w-full object-cover"
               loading="lazy"
@@ -139,7 +139,7 @@ export function ProductCard({ product, onClick, viewMode = 'grid' }: ProductCard
       <div className="aspect-[3/4] w-full overflow-hidden bg-primary-200 relative">
         {product.cover_url && !coverError ? (
           <img
-            src={getCoverUrl(product.id)}
+            src={getCoverUrl(product.id, 'thumbnail')}
             alt={`${product.title || product.file_name} cover`}
             className="h-full w-full object-cover transition-transform group-hover:scale-105"
             loading="lazy"

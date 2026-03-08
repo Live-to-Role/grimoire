@@ -47,8 +47,15 @@ export async function updateProduct(id: number, data: Partial<Product>): Promise
   return response.data;
 }
 
-export function getCoverUrl(productId: number): string {
+export function getCoverUrl(productId: number, size: 'thumbnail' | 'cover' = 'cover'): string {
+  if (size === 'thumbnail') {
+    return `/api/v1/products/${productId}/thumbnail?format=webp`;
+  }
   return `/api/v1/products/${productId}/cover`;
+}
+
+export function getThumbnailUrl(productId: number, format: 'webp' | 'jpeg' = 'webp'): string {
+  return `/api/v1/products/${productId}/thumbnail?format=${format}`;
 }
 
 export function getPdfUrl(productId: number): string {

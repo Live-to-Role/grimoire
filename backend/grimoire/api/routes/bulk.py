@@ -182,18 +182,22 @@ async def bulk_update_products(db: DbSession, request: BulkUpdateRequest) -> Bul
     products = list(products_result.scalars().all())
 
     affected = 0
+    filter_fields_updated = False
 
     for product in products:
         updated = False
         if request.game_system is not None:
             product.game_system = request.game_system
             updated = True
+            filter_fields_updated = True
         if request.product_type is not None:
             product.product_type = request.product_type
             updated = True
+            filter_fields_updated = True
         if request.publisher is not None:
             product.publisher = request.publisher
             updated = True
+            filter_fields_updated = True
         if request.publication_year is not None:
             product.publication_year = request.publication_year
             updated = True
@@ -202,6 +206,12 @@ async def bulk_update_products(db: DbSession, request: BulkUpdateRequest) -> Bul
             affected += 1
 
     await db.commit()
+    
+    # Invalidate filter cache if filter-relevant fields were updated
+    if filter_fields_updated:
+        from grimoire.services.cache_service import get_cache_service
+        cache = await get_cache_service()
+        await cache.invalidate_filter_options()
 
     return BulkResponse(
         message=f"Updated products",
@@ -223,6 +233,12 @@ async def bulk_delete_products(db: DbSession, request: BulkDeleteRequest) -> Bul
         affected += 1
 
     await db.commit()
+    
+    # Invalidate filter cache since products were deleted
+    if affected > 0:
+        from grimoire.services.cache_service import get_cache_service
+        cache = await get_cache_service()
+        await cache.invalidate_filter_options()
 
     return BulkResponse(
         message=f"Deleted products",

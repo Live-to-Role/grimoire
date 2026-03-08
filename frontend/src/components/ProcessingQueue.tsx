@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQueueEvents } from '../hooks/useQueueEvents';
 import {
   X,
   Loader2,
@@ -19,6 +20,7 @@ interface QueueStats {
   completed: number;
   failed: number;
   total: number;
+  pending_by_type?: Record<string, number>;
 }
 
 interface QueueItem {
@@ -58,13 +60,16 @@ export function ProcessingQueue({ onClose }: ProcessingQueueProps) {
   const [filter, setFilter] = useState<string | null>(null);
   const queryClient = useQueryClient();
 
+  // SSE connection for real-time updates (falls back to polling below)
+  useQueueEvents();
+
   const { data: stats, isLoading: statsLoading } = useQuery<QueueStats>({
     queryKey: ['queue-stats'],
     queryFn: async () => {
       const response = await api.get('/queue/stats');
       return response.data;
     },
-    refetchInterval: 3000,
+    refetchInterval: 30000,
   });
 
   const { data: queueData, isLoading: queueLoading } = useQuery<{ items: QueueItem[]; total: number }>({
@@ -74,7 +79,7 @@ export function ProcessingQueue({ onClose }: ProcessingQueueProps) {
       const response = await api.get('/queue', { params });
       return response.data;
     },
-    refetchInterval: 3000,
+    refetchInterval: 30000,
   });
 
   const cancelMutation = useMutation({
@@ -219,6 +224,18 @@ export function ProcessingQueue({ onClose }: ProcessingQueueProps) {
                       style={{ width: `${getProgress()}%` }}
                     />
                   </div>
+                </div>
+              )}
+
+              {/* Pending breakdown by task type */}
+              {stats.pending_by_type && Object.keys(stats.pending_by_type).length > 0 && (
+                <div className="flex gap-3 text-xs text-neutral-500">
+                  <span className="font-medium">Pending:</span>
+                  {Object.entries(stats.pending_by_type).map(([type, count]) => (
+                    <span key={type}>
+                      {taskTypeLabels[type] || type}: {count as number}
+                    </span>
+                  ))}
                 </div>
               )}
             </div>
