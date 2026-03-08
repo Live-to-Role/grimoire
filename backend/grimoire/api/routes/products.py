@@ -620,9 +620,11 @@ async def extract_product_text(
     if not product:
         raise HTTPException(status_code=404, detail="Product not found")
 
+    import asyncio
     from grimoire.services.processor import process_text_extraction_sync
 
-    success = process_text_extraction_sync(product, use_marker=use_marker)
+    # Run CPU-bound extraction in a thread to avoid blocking the event loop
+    success = await asyncio.to_thread(process_text_extraction_sync, product, use_marker)
 
     if not success:
         raise HTTPException(status_code=500, detail="Text extraction failed")
