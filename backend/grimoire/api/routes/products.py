@@ -1,5 +1,6 @@
 """Product API endpoints."""
 
+import asyncio
 from datetime import datetime, UTC
 from pathlib import Path
 from typing import Literal
@@ -430,7 +431,8 @@ async def get_product_thumbnail(
     """Get the thumbnail image for a product.
     
     Thumbnails are optimized versions of cover images (300x400px).
-    If thumbnail doesn't exist, it will be generated on-demand.
+    If thumbnail doesn't exist, returns the full cover and queues
+    thumbnail generation in background.
     """
     query = select(Product).where(Product.id == product_id)
     result = await db.execute(query)
@@ -456,27 +458,26 @@ async def get_product_thumbnail(
     thumbnail_path = get_thumbnail_path(product, prefer_webp=(format == "webp"))
     
     if not thumbnail_path:
-        # Generate thumbnail on-demand
-        success = generate_thumbnail_for_product(product)
-        if success:
-            await db.commit()
-            thumbnail_path = get_thumbnail_path(product, prefer_webp=(format == "webp"))
-        else:
-            # Fallback to full cover if thumbnail generation fails
-            cover_path = Path(product.cover_image_path)
-            try:
-                validate_covers_path(cover_path)
-            except PathTraversalError:
-                raise HTTPException(status_code=403, detail="Access denied")
-            
-            if not cover_path.exists():
-                raise HTTPException(status_code=404, detail="Cover file not found")
-                
-            return FileResponse(
-                cover_path,
-                media_type="image/jpeg",
-                headers={"Cache-Control": "public, max-age=86400"},
-            )
+        # Queue thumbnail generation in background via asyncio.to_thread
+        # Return the full cover immediately as a fallback
+        asyncio.get_event_loop().run_in_executor(
+            None, generate_thumbnail_for_product, product
+        )
+
+        cover_path = Path(product.cover_image_path)
+        try:
+            validate_covers_path(cover_path)
+        except PathTraversalError:
+            raise HTTPException(status_code=403, detail="Access denied")
+
+        if not cover_path.exists():
+            raise HTTPException(status_code=404, detail="Cover file not found")
+
+        return FileResponse(
+            cover_path,
+            media_type="image/jpeg",
+            headers={"Cache-Control": "public, max-age=60"},  # Short cache — thumbnail will be ready soon
+        )
     
     # Validate path is within allowed directory
     try:
