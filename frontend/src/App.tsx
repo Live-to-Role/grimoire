@@ -1,11 +1,12 @@
 import { useState } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { Sparkles } from 'lucide-react';
+import { ThemeProvider } from './contexts/ThemeContext';
 import { Library } from './pages/Library';
 import { Settings } from './pages/Settings';
 import { Campaigns } from './pages/Campaigns';
 import { LibraryManagement } from './pages/LibraryManagement';
-import { Sidebar } from './components/Sidebar';
+import { NavRail, NavBottomBar } from './components/NavRail';
+import { FilterDrawer } from './components/FilterDrawer';
 import { ProcessingQueue } from './components/ProcessingQueue';
 import { MaintenanceTools } from './components/MaintenanceTools';
 import type { ProductFilters } from './api/products';
@@ -24,6 +25,7 @@ function App() {
   const [selectedCollection, setSelectedCollection] = useState<number | null>(null);
   const [selectedTag, setSelectedTag] = useState<number | null>(null);
   const [sidebarFilters, setSidebarFilters] = useState<Partial<ProductFilters>>({});
+  const [filterDrawerOpen, setFilterDrawerOpen] = useState(false);
 
   const handleFilterChange = (filterType: keyof ProductFilters, value: string | null) => {
     setSidebarFilters(prev => {
@@ -43,53 +45,50 @@ function App() {
     setSelectedTag(null);
   };
 
+  const activeFilterCount = Object.keys(sidebarFilters).filter(
+    k => !['page', 'per_page', 'sort', 'order'].includes(k)
+  ).length + (selectedCollection ? 1 : 0) + (selectedTag ? 1 : 0);
+
   return (
     <QueryClientProvider client={queryClient}>
-      <div className="flex h-screen flex-col bg-primary-100">
-        {/* Top Header Bar - Codex style */}
-        <header className="flex items-center justify-between bg-codex-olive px-6 py-3 shadow-md">
-          <div className="flex items-center gap-3">
-            <div className="flex h-8 w-8 items-center justify-center rounded bg-codex-dark">
-              <Sparkles className="h-5 w-5 text-codex-cream" />
-            </div>
-            <h1 className="font-display text-xl font-semibold tracking-wide text-codex-cream">Grimoire</h1>
-          </div>
-          <div className="text-sm text-codex-tan">Your Personal TTRPG Library</div>
-        </header>
-        
-        <div className="flex flex-1 overflow-hidden">
-        <Sidebar
-          activeView={activeView}
-          onViewChange={setActiveView}
-          onCollectionSelect={setSelectedCollection}
-          onTagSelect={setSelectedTag}
-          selectedCollection={selectedCollection}
-          selectedTag={selectedTag}
-          onFilterChange={handleFilterChange}
-          activeFilters={sidebarFilters}
-          onClearFilters={clearAllFilters}
-        />
-        <main className="flex-1 overflow-hidden">
-          {activeView === 'settings' ? (
-            <Settings />
-          ) : activeView === 'queue' ? (
-            <ProcessingQueue onClose={() => setActiveView('library')} />
-          ) : activeView === 'tools' ? (
-            <MaintenanceTools onClose={() => setActiveView('library')} />
-          ) : activeView === 'campaigns' ? (
-            <Campaigns />
-          ) : activeView === 'library-management' ? (
-            <LibraryManagement />
-          ) : (
-            <Library
-              selectedCollection={selectedCollection}
-              selectedTag={selectedTag}
-              sidebarFilters={sidebarFilters}
-            />
-          )}
-        </main>
+      <ThemeProvider>
+        <div className="flex h-screen" style={{ backgroundColor: 'var(--color-bg)' }}>
+          <NavRail activeView={activeView} onViewChange={setActiveView} />
+          <main className="flex-1 overflow-hidden pb-14 lg:pb-0">
+            {activeView === 'settings' ? (
+              <Settings />
+            ) : activeView === 'queue' ? (
+              <ProcessingQueue onClose={() => setActiveView('library')} />
+            ) : activeView === 'tools' ? (
+              <MaintenanceTools onClose={() => setActiveView('library')} />
+            ) : activeView === 'campaigns' ? (
+              <Campaigns />
+            ) : activeView === 'library-management' ? (
+              <LibraryManagement />
+            ) : (
+              <Library
+                selectedCollection={selectedCollection}
+                selectedTag={selectedTag}
+                sidebarFilters={sidebarFilters}
+                onOpenFilters={() => setFilterDrawerOpen(true)}
+                activeFilterCount={activeFilterCount}
+              />
+            )}
+          </main>
+          <NavBottomBar activeView={activeView} onViewChange={setActiveView} />
+          <FilterDrawer
+            isOpen={filterDrawerOpen}
+            onClose={() => setFilterDrawerOpen(false)}
+            onFilterChange={handleFilterChange}
+            activeFilters={sidebarFilters}
+            onClearFilters={clearAllFilters}
+            selectedCollection={selectedCollection}
+            onSelectCollection={setSelectedCollection}
+            selectedTag={selectedTag}
+            onSelectTag={setSelectedTag}
+          />
         </div>
-      </div>
+      </ThemeProvider>
     </QueryClientProvider>
   );
 }
