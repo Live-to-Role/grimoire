@@ -383,11 +383,11 @@ export function LibraryManagement() {
         params: { text_extracted: true, ai_identified: false, per_page: 10000 },
       });
       const productIds = res.data.items.map((p: { id: number }) => p.id);
-      
+
       if (productIds.length === 0) {
         return null;
       }
-      
+
       const costRes = await apiClient.post<CostEstimate>('/ai/estimate-cost', {
         product_ids: productIds,
         provider,
@@ -465,27 +465,30 @@ export function LibraryManagement() {
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
-      <header className="border-b border-neutral-200 bg-white px-6 py-4">
-        <h1 className="text-2xl font-bold text-neutral-900">Library Management</h1>
-        <p className="text-sm text-neutral-500">
+      <header className="border-b px-6 py-5" style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-surface)' }}>
+        <h1 className="text-2xl font-semibold" style={{ color: 'var(--color-text-primary)' }}>Library Management</h1>
+        <p className="text-base mt-1" style={{ color: 'var(--color-text-secondary)' }}>
           Manage duplicates, exclusion rules, and library scanning
         </p>
       </header>
 
       {/* Tabs */}
-      <div className="border-b border-neutral-200 bg-white px-6">
-        <nav className="flex gap-6">
+      <div className="border-b px-6" style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-surface)' }}>
+        <nav className="flex gap-6" style={{ height: '48px' }}>
           {tabs.map((tab) => (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
-              className={`flex items-center gap-2 border-b-2 px-1 py-3 text-sm font-medium transition-colors ${
+              className={`flex items-center gap-2 border-b-2 px-1 text-lg font-medium transition-colors ${
                 activeTab === tab.id
-                  ? 'border-purple-600 text-purple-600'
-                  : 'border-transparent text-neutral-500 hover:text-neutral-700'
+                  ? 'border-current'
+                  : 'border-transparent'
               }`}
+              style={{
+                color: activeTab === tab.id ? 'var(--color-accent)' : 'var(--color-text-secondary)',
+              }}
             >
-              <tab.icon className="h-4 w-4" />
+              <tab.icon className="h-5 w-5" />
               {tab.label}
             </button>
           ))}
@@ -497,31 +500,31 @@ export function LibraryManagement() {
         {activeTab === 'overview' && stats && (
           <div className="space-y-6">
             <div className="grid grid-cols-4 gap-4">
-              <div className="rounded-xl border border-neutral-200 bg-white p-4">
-                <p className="text-sm text-neutral-500">Total Products</p>
-                <p className="text-2xl font-bold text-neutral-900">{stats.total_products}</p>
+              <div className="rounded-xl border p-5" style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-surface)' }}>
+                <p className="text-base" style={{ color: 'var(--color-text-secondary)' }}>Total Products</p>
+                <p className="text-2xl font-bold" style={{ color: 'var(--color-text-primary)' }}>{stats.total_products}</p>
               </div>
-              <div className="rounded-xl border border-neutral-200 bg-white p-4">
-                <p className="text-sm text-neutral-500">Total Size</p>
-                <p className="text-2xl font-bold text-neutral-900">{stats.total_size_gb} GB</p>
+              <div className="rounded-xl border p-5" style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-surface)' }}>
+                <p className="text-base" style={{ color: 'var(--color-text-secondary)' }}>Total Size</p>
+                <p className="text-2xl font-bold" style={{ color: 'var(--color-text-primary)' }}>{stats.total_size_gb} GB</p>
               </div>
-              <div className="rounded-xl border border-neutral-200 bg-white p-4">
-                <p className="text-sm text-neutral-500">Duplicates</p>
+              <div className="rounded-xl border p-5" style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-surface)' }}>
+                <p className="text-base" style={{ color: 'var(--color-text-secondary)' }}>Duplicates</p>
                 <p className="text-2xl font-bold text-amber-600">{stats.duplicates}</p>
               </div>
-              <div className="rounded-xl border border-neutral-200 bg-white p-4">
-                <p className="text-sm text-neutral-500">Missing Files</p>
+              <div className="rounded-xl border p-5" style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-surface)' }}>
+                <p className="text-base" style={{ color: 'var(--color-text-secondary)' }}>Missing Files</p>
                 <p className="text-2xl font-bold text-red-600">{stats.missing}</p>
               </div>
             </div>
 
-            <div className="rounded-xl border border-neutral-200 bg-white p-6">
-              <h2 className="mb-4 text-lg font-semibold text-neutral-900">Processing Status</h2>
-              <div className="space-y-3">
+            <div className="rounded-xl border p-6" style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-surface)' }}>
+              <h2 className="mb-4 text-lg font-semibold" style={{ color: 'var(--color-text-primary)' }}>Processing Status</h2>
+              <div className="space-y-4">
                 <div className="flex items-center justify-between">
-                  <span className="text-sm text-neutral-600">Covers Extracted</span>
+                  <span className="text-base" style={{ color: 'var(--color-text-secondary)' }}>Covers Extracted</span>
                   <div className="flex items-center gap-2">
-                    <div className="h-2 w-32 rounded-full bg-neutral-200">
+                    <div className="h-2 w-32 rounded-full" style={{ backgroundColor: 'var(--color-border)' }}>
                       <div
                         className="h-2 rounded-full bg-green-500"
                         style={{
@@ -529,15 +532,15 @@ export function LibraryManagement() {
                         }}
                       />
                     </div>
-                    <span className="text-sm text-neutral-500">
+                    <span className="text-base" style={{ color: 'var(--color-text-secondary)' }}>
                       {stats.processing.covers_extracted}/{stats.total_products}
                     </span>
                   </div>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-sm text-neutral-600">Text Extracted</span>
+                  <span className="text-base" style={{ color: 'var(--color-text-secondary)' }}>Text Extracted</span>
                   <div className="flex items-center gap-2">
-                    <div className="h-2 w-32 rounded-full bg-neutral-200">
+                    <div className="h-2 w-32 rounded-full" style={{ backgroundColor: 'var(--color-border)' }}>
                       <div
                         className="h-2 rounded-full bg-blue-500"
                         style={{
@@ -545,23 +548,24 @@ export function LibraryManagement() {
                         }}
                       />
                     </div>
-                    <span className="text-sm text-neutral-500">
+                    <span className="text-base" style={{ color: 'var(--color-text-secondary)' }}>
                       {stats.processing.text_extracted}/{stats.total_products}
                     </span>
                   </div>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-sm text-neutral-600">AI Identified</span>
+                  <span className="text-base" style={{ color: 'var(--color-text-secondary)' }}>AI Identified</span>
                   <div className="flex items-center gap-2">
-                    <div className="h-2 w-32 rounded-full bg-neutral-200">
+                    <div className="h-2 w-32 rounded-full" style={{ backgroundColor: 'var(--color-border)' }}>
                       <div
-                        className="h-2 rounded-full bg-purple-500"
+                        className="h-2 rounded-full transition-all"
                         style={{
+                          backgroundColor: 'var(--color-accent)',
                           width: `${(stats.processing.ai_identified / stats.total_products) * 100}%`,
                         }}
                       />
                     </div>
-                    <span className="text-sm text-neutral-500">
+                    <span className="text-base" style={{ color: 'var(--color-text-secondary)' }}>
                       {stats.processing.ai_identified}/{stats.total_products}
                     </span>
                   </div>
@@ -598,9 +602,9 @@ export function LibraryManagement() {
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <div>
-                <h2 className="text-lg font-semibold text-neutral-900">Duplicate Files</h2>
+                <h2 className="text-lg font-semibold" style={{ color: 'var(--color-text-primary)' }}>Duplicate Files</h2>
                 {duplicateStats && (
-                  <p className="text-sm text-neutral-500">
+                  <p className="text-base" style={{ color: 'var(--color-text-secondary)' }}>
                     {duplicateStats.unique_duplicate_groups} groups, {duplicateStats.wasted_space_mb} MB wasted
                   </p>
                 )}
@@ -609,7 +613,8 @@ export function LibraryManagement() {
                 <button
                   onClick={() => scanDuplicatesMutation.mutate()}
                   disabled={scanDuplicatesMutation.isPending}
-                  className="inline-flex items-center gap-2 rounded-lg border border-neutral-300 bg-white px-4 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-50 disabled:opacity-50"
+                  className="inline-flex items-center gap-2 rounded-md border px-4 text-base font-medium disabled:opacity-50"
+                  style={{ minHeight: '44px', borderColor: 'var(--color-border)', backgroundColor: 'var(--color-surface)', color: 'var(--color-text-secondary)' }}
                 >
                   <RefreshCw className={`h-4 w-4 ${scanDuplicatesMutation.isPending ? 'animate-spin' : ''}`} />
                   Re-scan
@@ -617,7 +622,8 @@ export function LibraryManagement() {
                 {duplicateGroups?.groups && duplicateGroups.groups.length > 0 && (
                   <button
                     onClick={selectAllDuplicates}
-                    className="inline-flex items-center gap-2 rounded-lg border border-neutral-300 bg-white px-4 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-50"
+                    className="inline-flex items-center gap-2 rounded-md border px-4 text-base font-medium"
+                    style={{ minHeight: '44px', borderColor: 'var(--color-border)', backgroundColor: 'var(--color-surface)', color: 'var(--color-text-secondary)' }}
                   >
                     Select All
                   </button>
@@ -627,31 +633,33 @@ export function LibraryManagement() {
 
             {/* Bulk Actions Bar */}
             {selectedDuplicates.size > 0 && (
-              <div className="flex items-center justify-between rounded-lg border border-purple-200 bg-purple-50 p-3">
+              <div className="flex items-center justify-between rounded-md border p-4" style={{ borderColor: 'var(--color-accent)', backgroundColor: 'var(--color-accent-light)' }}>
                 <div className="flex items-center gap-3">
-                  <span className="text-sm font-medium text-purple-800">
+                  <span className="text-base font-medium" style={{ color: 'var(--color-text-primary)' }}>
                     {selectedDuplicates.size} selected ({formatBytes(getSelectedSize())})
                   </span>
                   <button
                     onClick={() => setSelectedDuplicates(new Set())}
-                    className="text-sm text-purple-600 hover:text-purple-800"
+                    className="text-base"
+                    style={{ color: 'var(--color-accent)' }}
                   >
                     Clear selection
                   </button>
                 </div>
                 <div className="flex items-center gap-2">
-                  <label className="flex items-center gap-2 text-sm text-purple-700">
+                  <label className="flex items-center gap-2 text-base" style={{ color: 'var(--color-accent)' }}>
                     <input
                       type="checkbox"
                       checked={deleteFiles}
                       onChange={(e) => setDeleteFiles(e.target.checked)}
-                      className="rounded border-purple-300 text-purple-600 focus:ring-purple-500"
+                      className="rounded"
                     />
                     Delete files from disk
                   </label>
                   <button
                     onClick={() => setShowDeleteConfirm({ type: 'selected' })}
-                    className="inline-flex items-center gap-2 rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700"
+                    className="inline-flex items-center gap-2 rounded-md bg-red-600 px-4 text-base font-medium text-white hover:bg-red-700"
+                    style={{ minHeight: '44px' }}
                   >
                     <Trash2 className="h-4 w-4" />
                     Delete Selected
@@ -665,23 +673,25 @@ export function LibraryManagement() {
                 {duplicateGroups.groups.map((group) => (
                   <div
                     key={group.file_hash}
-                    className="rounded-lg border border-neutral-200 bg-white"
+                    className="rounded-md border"
+                    style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-surface)' }}
                   >
                     <button
                       onClick={() => toggleGroup(group.file_hash)}
                       className="flex w-full items-center justify-between p-4 text-left"
+                      style={{ minHeight: '56px' }}
                     >
                       <div className="flex items-center gap-3">
                         {expandedGroups.has(group.file_hash) ? (
-                          <ChevronDown className="h-4 w-4 text-neutral-400" />
+                          <ChevronDown className="h-4 w-4" style={{ color: 'var(--color-text-secondary)' }} />
                         ) : (
-                          <ChevronRight className="h-4 w-4 text-neutral-400" />
+                          <ChevronRight className="h-4 w-4" style={{ color: 'var(--color-text-secondary)' }} />
                         )}
                         <div>
-                          <p className="font-medium text-neutral-900">
+                          <p className="text-base font-medium" style={{ color: 'var(--color-text-primary)' }}>
                             {group.canonical.title}
                           </p>
-                          <p className="text-sm text-neutral-500">
+                          <p className="text-sm" style={{ color: 'var(--color-text-secondary)' }}>
                             {group.duplicate_count + 1} copies · {formatBytes(group.wasted_space_bytes)} wasted
                           </p>
                         </div>
@@ -692,43 +702,45 @@ export function LibraryManagement() {
                     </button>
 
                     {expandedGroups.has(group.file_hash) && (
-                      <div className="border-t border-neutral-100 p-4">
+                      <div className="border-t p-4" style={{ borderColor: 'var(--color-border)' }}>
                         <div className="mb-3 flex items-center justify-between">
                           <div className="flex items-center gap-2">
                             <button
                               onClick={() => selectAllInGroup(group)}
-                              className="text-xs text-purple-600 hover:text-purple-800"
+                              className="text-sm"
+                              style={{ color: 'var(--color-accent)' }}
                             >
                               Select all in group
                             </button>
-                            <span className="text-neutral-300">|</span>
+                            <span style={{ color: 'var(--color-border)' }}>|</span>
                             <button
                               onClick={() => deselectAllInGroup(group)}
-                              className="text-xs text-neutral-500 hover:text-neutral-700"
+                              className="text-sm"
+                              style={{ color: 'var(--color-text-secondary)' }}
                             >
                               Deselect
                             </button>
                           </div>
                           <button
                             onClick={() => setShowDeleteConfirm({ type: 'group', hash: group.file_hash })}
-                            className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs font-medium text-red-600 hover:bg-red-50"
+                            className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-sm font-medium text-red-600 hover:bg-red-50"
                           >
                             <Trash2 className="h-3 w-3" />
                             Remove all duplicates
                           </button>
                         </div>
                         <div className="space-y-2">
-                          <div className="flex items-center gap-2 rounded-lg bg-green-50 p-3">
+                          <div className="flex items-center gap-2 rounded-md bg-green-50 p-3" style={{ minHeight: '56px' }}>
                             <Check className="h-4 w-4 text-green-600" />
                             <div className="flex-1 min-w-0">
-                              <p className="text-sm font-medium text-green-800">
+                              <p className="text-base font-medium text-green-800">
                                 {group.canonical.title} (Keep)
                               </p>
-                              <p className="text-xs text-green-600 truncate">
+                              <p className="text-sm text-green-600 truncate">
                                 {group.canonical.file_path}
                               </p>
                             </div>
-                            <span className="text-xs text-green-600">
+                            <span className="text-sm text-green-600">
                               {formatBytes(group.canonical.file_size)}
                             </span>
                           </div>
@@ -736,11 +748,16 @@ export function LibraryManagement() {
                           {group.duplicates.map((dup) => (
                             <div
                               key={dup.id}
-                              className={`flex items-center gap-2 rounded-lg p-3 cursor-pointer transition-colors ${
+                              className={`flex items-center gap-2 rounded-md p-3 cursor-pointer transition-colors ${
                                 selectedDuplicates.has(dup.id)
-                                  ? 'bg-purple-50 border border-purple-200'
-                                  : 'bg-neutral-50 hover:bg-neutral-100'
+                                  ? 'border'
+                                  : ''
                               }`}
+                              style={{
+                                minHeight: '56px',
+                                backgroundColor: selectedDuplicates.has(dup.id) ? 'var(--color-accent-light)' : 'var(--color-surface-raised)',
+                                borderColor: selectedDuplicates.has(dup.id) ? 'var(--color-accent)' : undefined,
+                              }}
                               onClick={() => toggleDuplicateSelection(dup.id)}
                             >
                               <input
@@ -748,18 +765,18 @@ export function LibraryManagement() {
                                 checked={selectedDuplicates.has(dup.id)}
                                 onChange={() => toggleDuplicateSelection(dup.id)}
                                 onClick={(e) => e.stopPropagation()}
-                                className="rounded border-neutral-300 text-purple-600 focus:ring-purple-500"
+                                className="rounded"
                               />
-                              <Copy className="h-4 w-4 text-neutral-400" />
+                              <Copy className="h-4 w-4" style={{ color: 'var(--color-text-secondary)' }} />
                               <div className="flex-1 min-w-0">
-                                <p className="text-sm font-medium text-neutral-700">
+                                <p className="text-base font-medium" style={{ color: 'var(--color-text-secondary)' }}>
                                   {dup.title}
                                 </p>
-                                <p className="text-xs text-neutral-500 truncate">
+                                <p className="text-sm truncate" style={{ color: 'var(--color-text-secondary)' }}>
                                   {dup.file_path}
                                 </p>
                               </div>
-                              <span className="text-xs text-neutral-500">
+                              <span className="text-sm" style={{ color: 'var(--color-text-secondary)' }}>
                                 {formatBytes(dup.file_size)}
                               </span>
                             </div>
@@ -771,9 +788,9 @@ export function LibraryManagement() {
                 ))}
               </div>
             ) : (
-              <div className="rounded-xl border border-neutral-200 bg-white p-8 text-center">
-                <Copy className="mx-auto h-12 w-12 text-neutral-300" />
-                <p className="mt-2 text-neutral-500">No duplicates found</p>
+              <div className="rounded-xl border p-8 text-center" style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-surface)' }}>
+                <Copy className="mx-auto h-12 w-12" style={{ color: 'var(--color-border)' }} />
+                <p className="mt-2 text-base" style={{ color: 'var(--color-text-secondary)' }}>No duplicates found</p>
               </div>
             )}
           </div>
@@ -784,31 +801,31 @@ export function LibraryManagement() {
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <div>
-                <h2 className="text-lg font-semibold text-neutral-900">Exclusion Rules</h2>
-                <p className="text-sm text-neutral-500">
+                <h2 className="text-lg font-semibold" style={{ color: 'var(--color-text-primary)' }}>Exclusion Rules</h2>
+                <p className="text-base" style={{ color: 'var(--color-text-secondary)' }}>
                   Files matching these rules will be skipped during scanning
                 </p>
               </div>
               <button
                 onClick={() => setShowAddRule(true)}
-                className="inline-flex items-center gap-2 rounded-lg bg-purple-600 px-4 py-2 text-sm font-medium text-white hover:bg-purple-700"
+                className="inline-flex items-center gap-2 rounded-md px-4 text-base font-medium text-white"
+                style={{ minHeight: '44px', backgroundColor: 'var(--color-accent)' }}
               >
                 Add Rule
               </button>
             </div>
 
             {exclusionRules?.rules && exclusionRules.rules.length > 0 ? (
-              <div className="rounded-xl border border-neutral-200 bg-white divide-y divide-neutral-100">
+              <div className="rounded-xl border divide-y" style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-surface)' }}>
                 {exclusionRules.rules.map((rule) => (
-                  <div key={rule.id} className="flex items-center justify-between p-4">
+                  <div key={rule.id} className="flex items-center justify-between p-4" style={{ minHeight: '56px', borderColor: 'var(--color-border)' }}>
                     <div className="flex items-center gap-4">
                       <button
                         onClick={() =>
                           toggleRuleMutation.mutate({ id: rule.id, enabled: !rule.enabled })
                         }
-                        className={`relative h-6 w-11 rounded-full transition-colors ${
-                          rule.enabled ? 'bg-purple-600' : 'bg-neutral-200'
-                        }`}
+                        className="relative h-6 w-11 rounded-full transition-colors"
+                        style={{ backgroundColor: rule.enabled ? 'var(--color-accent)' : 'var(--color-border)' }}
                       >
                         <span
                           className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${
@@ -818,20 +835,20 @@ export function LibraryManagement() {
                       </button>
                       <div>
                         <div className="flex items-center gap-2">
-                          <span className="rounded bg-neutral-100 px-2 py-0.5 text-xs font-medium text-neutral-600">
+                          <span className="rounded-md px-2 py-0.5 text-xs font-medium" style={{ backgroundColor: 'var(--color-surface-raised)', color: 'var(--color-text-secondary)' }}>
                             {rule.rule_type}
                           </span>
-                          <code className="text-sm font-mono text-neutral-900">{rule.pattern}</code>
+                          <code className="text-base font-mono" style={{ color: 'var(--color-text-primary)' }}>{rule.pattern}</code>
                           {rule.is_default && (
-                            <span className="rounded bg-blue-100 px-2 py-0.5 text-xs text-blue-700">
+                            <span className="rounded-md bg-blue-100 px-2 py-0.5 text-xs text-blue-700">
                               default
                             </span>
                           )}
                         </div>
                         {rule.description && (
-                          <p className="text-sm text-neutral-500">{rule.description}</p>
+                          <p className="text-base" style={{ color: 'var(--color-text-secondary)' }}>{rule.description}</p>
                         )}
-                        <p className="text-xs text-neutral-400">
+                        <p className="text-sm" style={{ color: 'var(--color-text-secondary)' }}>
                           {rule.files_excluded} files excluded
                         </p>
                       </div>
@@ -843,7 +860,8 @@ export function LibraryManagement() {
                             deleteRuleMutation.mutate(rule.id);
                           }
                         }}
-                        className="rounded p-2 text-neutral-400 hover:bg-neutral-100 hover:text-red-600"
+                        className="rounded-md p-2 hover:bg-red-50 hover:text-red-600"
+                        style={{ color: 'var(--color-text-secondary)' }}
                       >
                         <Trash2 className="h-4 w-4" />
                       </button>
@@ -852,21 +870,21 @@ export function LibraryManagement() {
                 ))}
               </div>
             ) : (
-              <div className="rounded-xl border border-neutral-200 bg-white p-8 text-center">
-                <Filter className="mx-auto h-12 w-12 text-neutral-300" />
-                <p className="mt-2 text-neutral-500">No exclusion rules</p>
+              <div className="rounded-xl border p-8 text-center" style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-surface)' }}>
+                <Filter className="mx-auto h-12 w-12" style={{ color: 'var(--color-border)' }} />
+                <p className="mt-2 text-base" style={{ color: 'var(--color-text-secondary)' }}>No exclusion rules</p>
               </div>
             )}
 
             {/* Add Rule Modal */}
             {showAddRule && (
               <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-                <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-xl">
+                <div className="w-full max-w-md rounded-xl p-6 shadow-xl" style={{ backgroundColor: 'var(--color-surface)' }}>
                   <div className="mb-4 flex items-center justify-between">
-                    <h2 className="text-lg font-semibold text-neutral-900">Add Exclusion Rule</h2>
+                    <h2 className="text-2xl font-semibold" style={{ color: 'var(--color-text-primary)' }}>Add Exclusion Rule</h2>
                     <button
                       onClick={() => setShowAddRule(false)}
-                      className="text-neutral-400 hover:text-neutral-600"
+                      style={{ color: 'var(--color-text-secondary)' }}
                     >
                       <X className="h-5 w-5" />
                     </button>
@@ -880,13 +898,14 @@ export function LibraryManagement() {
                     className="space-y-4"
                   >
                     <div>
-                      <label className="block text-sm font-medium text-neutral-700">
+                      <label className="block text-lg font-medium" style={{ color: 'var(--color-text-secondary)' }}>
                         Rule Type
                       </label>
                       <select
                         value={newRule.rule_type}
                         onChange={(e) => setNewRule({ ...newRule, rule_type: e.target.value })}
-                        className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+                        className="mt-1 w-full rounded-md border px-3 text-base"
+                        style={{ height: '48px', borderColor: 'var(--color-border)', backgroundColor: 'var(--color-surface)', color: 'var(--color-text-primary)' }}
                       >
                         <option value="folder_name">Folder Name</option>
                         <option value="folder_path">Folder Path</option>
@@ -898,7 +917,7 @@ export function LibraryManagement() {
                     </div>
 
                     <div>
-                      <label className="block text-sm font-medium text-neutral-700">
+                      <label className="block text-lg font-medium" style={{ color: 'var(--color-text-secondary)' }}>
                         Pattern
                       </label>
                       <input
@@ -915,12 +934,13 @@ export function LibraryManagement() {
                             ? '10240'
                             : ''
                         }
-                        className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+                        className="mt-1 w-full rounded-md border px-3 text-base"
+                        style={{ height: '48px', borderColor: 'var(--color-border)', backgroundColor: 'var(--color-surface)', color: 'var(--color-text-primary)' }}
                       />
                     </div>
 
                     <div>
-                      <label className="block text-sm font-medium text-neutral-700">
+                      <label className="block text-lg font-medium" style={{ color: 'var(--color-text-secondary)' }}>
                         Description
                       </label>
                       <input
@@ -928,7 +948,8 @@ export function LibraryManagement() {
                         value={newRule.description}
                         onChange={(e) => setNewRule({ ...newRule, description: e.target.value })}
                         placeholder="Optional description"
-                        className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+                        className="mt-1 w-full rounded-md border px-3 text-base"
+                        style={{ height: '48px', borderColor: 'var(--color-border)', backgroundColor: 'var(--color-surface)', color: 'var(--color-text-primary)' }}
                       />
                     </div>
 
@@ -936,14 +957,16 @@ export function LibraryManagement() {
                       <button
                         type="button"
                         onClick={() => setShowAddRule(false)}
-                        className="rounded-lg border border-neutral-300 px-4 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-50"
+                        className="rounded-md border px-4 text-base font-medium"
+                        style={{ minHeight: '44px', borderColor: 'var(--color-border)', color: 'var(--color-text-secondary)' }}
                       >
                         Cancel
                       </button>
                       <button
                         type="submit"
                         disabled={createRuleMutation.isPending}
-                        className="rounded-lg bg-purple-600 px-4 py-2 text-sm font-medium text-white hover:bg-purple-700 disabled:opacity-50"
+                        className="rounded-md px-4 text-base font-medium text-white disabled:opacity-50"
+                        style={{ minHeight: '44px', backgroundColor: 'var(--color-accent)' }}
                       >
                         Add Rule
                       </button>
@@ -959,13 +982,13 @@ export function LibraryManagement() {
         {activeTab === 'processing' && stats && (
           <div className="space-y-6">
             {/* Processing Settings */}
-            <div className="rounded-xl border border-neutral-200 bg-white p-6">
-              <h2 className="text-lg font-semibold text-neutral-900 mb-4">Processing Settings</h2>
-              
+            <div className="rounded-xl border p-6" style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-surface)' }}>
+              <h2 className="text-lg font-semibold mb-4" style={{ color: 'var(--color-text-primary)' }}>Processing Settings</h2>
+
               <div className="grid gap-6 md:grid-cols-2">
                 {/* Batch Size */}
                 <div>
-                  <label className="block text-sm font-medium text-neutral-700 mb-2">
+                  <label className="block text-lg font-medium mb-2" style={{ color: 'var(--color-text-secondary)' }}>
                     Batch Size
                   </label>
                   <select
@@ -974,7 +997,8 @@ export function LibraryManagement() {
                       key: 'extraction_batch_size',
                       value: parseInt(e.target.value),
                     })}
-                    className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+                    className="w-full rounded-md border px-3 text-base"
+                    style={{ height: '48px', borderColor: 'var(--color-border)', backgroundColor: 'var(--color-surface)', color: 'var(--color-text-primary)' }}
                   >
                     <option value={50}>50 - More responsive, slower overall</option>
                     <option value={100}>100 - Balanced (recommended)</option>
@@ -984,14 +1008,14 @@ export function LibraryManagement() {
                     <option value={500}>500 - Maximum batch</option>
                     <option value={10000}>Everything - Process all at once</option>
                   </select>
-                  <p className="mt-1 text-xs text-neutral-500">
+                  <p className="mt-1 text-sm" style={{ color: 'var(--color-text-secondary)' }}>
                     Smaller batches are more responsive but slower. Larger batches are faster but may use more memory.
                   </p>
                 </div>
-                
+
                 {/* Continue on Close */}
                 <div>
-                  <label className="block text-sm font-medium text-neutral-700 mb-2">
+                  <label className="block text-lg font-medium mb-2" style={{ color: 'var(--color-text-secondary)' }}>
                     Continue Processing When Browser Closes
                   </label>
                   <div className="flex items-center gap-3">
@@ -1000,11 +1024,12 @@ export function LibraryManagement() {
                         key: 'continue_on_close',
                         value: true,
                       })}
-                      className={`px-4 py-2 rounded-lg text-sm font-medium ${
-                        (appSettings?.continue_on_close ?? true)
-                          ? 'bg-purple-600 text-white'
-                          : 'bg-neutral-100 text-neutral-700 hover:bg-neutral-200'
-                      }`}
+                      className="px-4 rounded-md text-base font-medium"
+                      style={{
+                        minHeight: '44px',
+                        backgroundColor: (appSettings?.continue_on_close ?? true) ? 'var(--color-accent)' : 'var(--color-surface-raised)',
+                        color: (appSettings?.continue_on_close ?? true) ? 'white' : 'var(--color-text-secondary)',
+                      }}
                     >
                       Yes
                     </button>
@@ -1013,24 +1038,25 @@ export function LibraryManagement() {
                         key: 'continue_on_close',
                         value: false,
                       })}
-                      className={`px-4 py-2 rounded-lg text-sm font-medium ${
-                        appSettings?.continue_on_close === false
-                          ? 'bg-purple-600 text-white'
-                          : 'bg-neutral-100 text-neutral-700 hover:bg-neutral-200'
-                      }`}
+                      className="px-4 rounded-md text-base font-medium"
+                      style={{
+                        minHeight: '44px',
+                        backgroundColor: appSettings?.continue_on_close === false ? 'var(--color-accent)' : 'var(--color-surface-raised)',
+                        color: appSettings?.continue_on_close === false ? 'white' : 'var(--color-text-secondary)',
+                      }}
                     >
                       No
                     </button>
                   </div>
-                  <p className="mt-1 text-xs text-neutral-500">
+                  <p className="mt-1 text-sm" style={{ color: 'var(--color-text-secondary)' }}>
                     If enabled, queue processing continues even if you close the browser.
                   </p>
                 </div>
               </div>
-              
+
               {/* Auto-processing during scan */}
-              <div className="mt-6 pt-6 border-t border-neutral-200">
-                <h3 className="text-sm font-medium text-neutral-900 mb-3">Auto-Processing During Library Scan</h3>
+              <div className="mt-6 pt-6 border-t" style={{ borderColor: 'var(--color-border)' }}>
+                <h3 className="text-base font-medium mb-3" style={{ color: 'var(--color-text-primary)' }}>Auto-Processing During Library Scan</h3>
                 <div className="space-y-3">
                   <label className="flex items-center gap-3 cursor-pointer">
                     <input
@@ -1040,16 +1066,16 @@ export function LibraryManagement() {
                         key: 'auto_extract_text_on_scan',
                         value: e.target.checked,
                       })}
-                      className="h-4 w-4 rounded border-neutral-300 text-purple-600 focus:ring-purple-500"
+                      className="h-4 w-4 rounded"
                     />
                     <div>
-                      <span className="text-sm font-medium text-neutral-900">Auto-extract text on scan</span>
-                      <p className="text-xs text-neutral-500">
+                      <span className="text-base font-medium" style={{ color: 'var(--color-text-primary)' }}>Auto-extract text on scan</span>
+                      <p className="text-sm" style={{ color: 'var(--color-text-secondary)' }}>
                         Automatically queue new products for text extraction when scanning library
                       </p>
                     </div>
                   </label>
-                  
+
                   <label className="flex items-center gap-3 cursor-pointer">
                     <input
                       type="checkbox"
@@ -1059,11 +1085,11 @@ export function LibraryManagement() {
                         value: e.target.checked,
                       })}
                       disabled={!appSettings?.auto_extract_text_on_scan}
-                      className="h-4 w-4 rounded border-neutral-300 text-purple-600 focus:ring-purple-500 disabled:opacity-50"
+                      className="h-4 w-4 rounded disabled:opacity-50"
                     />
                     <div className={!appSettings?.auto_extract_text_on_scan ? 'opacity-50' : ''}>
-                      <span className="text-sm font-medium text-neutral-900">Auto-identify with AI on scan</span>
-                      <p className="text-xs text-neutral-500">
+                      <span className="text-base font-medium" style={{ color: 'var(--color-text-primary)' }}>Auto-identify with AI on scan</span>
+                      <p className="text-sm" style={{ color: 'var(--color-text-secondary)' }}>
                         Automatically identify products after text extraction
                       </p>
                     </div>
@@ -1072,25 +1098,27 @@ export function LibraryManagement() {
                   {/* Provider Selection for Auto-Identify */}
                   {appSettings?.auto_identify_on_scan && appSettings?.auto_extract_text_on_scan && (
                     <div className="ml-7 mt-2 space-y-2">
-                      <p className="text-xs font-medium text-neutral-700">AI Provider for auto-identification:</p>
+                      <p className="text-sm font-medium" style={{ color: 'var(--color-text-secondary)' }}>AI Provider for auto-identification:</p>
                       <div className="flex flex-wrap gap-2">
                         <button
                           onClick={() => updateSettingMutation.mutate({
                             key: 'auto_identify_provider',
                             value: 'ollama',
                           })}
-                          className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium ${
-                            (appSettings?.auto_identify_provider || 'ollama') === 'ollama'
-                              ? 'bg-purple-600 text-white'
-                              : 'bg-neutral-100 text-neutral-700 hover:bg-neutral-200'
-                          }`}
+                          className="inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium"
+                          style={{
+                            backgroundColor: (appSettings?.auto_identify_provider || 'ollama') === 'ollama' ? 'var(--color-accent)' : 'var(--color-surface-raised)',
+                            color: (appSettings?.auto_identify_provider || 'ollama') === 'ollama' ? 'white' : 'var(--color-text-secondary)',
+                          }}
                         >
                           Ollama
-                          <span className={`rounded px-1 ${
-                            (appSettings?.auto_identify_provider || 'ollama') === 'ollama'
-                              ? 'bg-purple-500 text-white'
-                              : 'bg-green-100 text-green-700'
-                          }`}>Free</span>
+                          <span className="rounded px-1" style={{
+                            backgroundColor: (appSettings?.auto_identify_provider || 'ollama') === 'ollama' ? 'var(--color-accent-hover)' : undefined,
+                            color: (appSettings?.auto_identify_provider || 'ollama') === 'ollama' ? 'white' : undefined,
+                          }}>{(appSettings?.auto_identify_provider || 'ollama') === 'ollama' ? 'Free' : ''}</span>
+                          {(appSettings?.auto_identify_provider || 'ollama') !== 'ollama' && (
+                            <span className="rounded px-1 bg-green-100 text-green-700">Free</span>
+                          )}
                         </button>
                         <button
                           onClick={() => updateSettingMutation.mutate({
@@ -1098,18 +1126,18 @@ export function LibraryManagement() {
                             value: 'openai',
                           })}
                           disabled={!aiProviders?.providers.openai}
-                          className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium ${
-                            appSettings?.auto_identify_provider === 'openai'
-                              ? 'bg-purple-600 text-white'
-                              : 'bg-neutral-100 text-neutral-700 hover:bg-neutral-200 disabled:opacity-50 disabled:cursor-not-allowed'
-                          }`}
+                          className="inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                          style={{
+                            backgroundColor: appSettings?.auto_identify_provider === 'openai' ? 'var(--color-accent)' : 'var(--color-surface-raised)',
+                            color: appSettings?.auto_identify_provider === 'openai' ? 'white' : 'var(--color-text-secondary)',
+                          }}
                         >
                           OpenAI
-                          <span className={`rounded px-1 ${
-                            appSettings?.auto_identify_provider === 'openai'
-                              ? 'bg-purple-500 text-white'
-                              : 'bg-amber-100 text-amber-700'
-                          }`}>Paid</span>
+                          {appSettings?.auto_identify_provider === 'openai' ? (
+                            <span className="rounded px-1" style={{ backgroundColor: 'var(--color-accent-hover)', color: 'white' }}>Paid</span>
+                          ) : (
+                            <span className="rounded px-1 bg-amber-100 text-amber-700">Paid</span>
+                          )}
                         </button>
                         <button
                           onClick={() => updateSettingMutation.mutate({
@@ -1117,22 +1145,22 @@ export function LibraryManagement() {
                             value: 'anthropic',
                           })}
                           disabled={!aiProviders?.providers.anthropic}
-                          className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium ${
-                            appSettings?.auto_identify_provider === 'anthropic'
-                              ? 'bg-purple-600 text-white'
-                              : 'bg-neutral-100 text-neutral-700 hover:bg-neutral-200 disabled:opacity-50 disabled:cursor-not-allowed'
-                          }`}
+                          className="inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                          style={{
+                            backgroundColor: appSettings?.auto_identify_provider === 'anthropic' ? 'var(--color-accent)' : 'var(--color-surface-raised)',
+                            color: appSettings?.auto_identify_provider === 'anthropic' ? 'white' : 'var(--color-text-secondary)',
+                          }}
                         >
                           Anthropic
-                          <span className={`rounded px-1 ${
-                            appSettings?.auto_identify_provider === 'anthropic'
-                              ? 'bg-purple-500 text-white'
-                              : 'bg-amber-100 text-amber-700'
-                          }`}>Paid</span>
+                          {appSettings?.auto_identify_provider === 'anthropic' ? (
+                            <span className="rounded px-1" style={{ backgroundColor: 'var(--color-accent-hover)', color: 'white' }}>Paid</span>
+                          ) : (
+                            <span className="rounded px-1 bg-amber-100 text-amber-700">Paid</span>
+                          )}
                         </button>
                       </div>
                       {(appSettings?.auto_identify_provider === 'openai' || appSettings?.auto_identify_provider === 'anthropic') && (
-                        <div className="rounded-lg bg-amber-50 p-2 mt-2">
+                        <div className="rounded-md bg-amber-50 p-2 mt-2">
                           <p className="text-xs text-amber-800">
                             <AlertTriangle className="inline h-3 w-3 mr-1" />
                             <strong>Cost warning:</strong> Using {appSettings.auto_identify_provider} will incur API costs for each new product scanned.
@@ -1143,9 +1171,9 @@ export function LibraryManagement() {
                     </div>
                   )}
                 </div>
-                
+
                 {appSettings?.auto_extract_text_on_scan && (
-                  <div className="mt-3 rounded-lg bg-blue-50 p-3">
+                  <div className="mt-3 rounded-md bg-blue-50 p-3">
                     <p className="text-sm text-blue-800">
                       <Info className="inline h-4 w-4 mr-1" />
                       New products will be automatically queued for processing when you scan your library.
@@ -1183,7 +1211,8 @@ export function LibraryManagement() {
                   <button
                     onClick={() => processQueueMutation.mutate(appSettings?.extraction_batch_size || 100)}
                     disabled={processQueueMutation.isPending}
-                    className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+                    className="inline-flex items-center gap-2 rounded-md bg-blue-600 px-4 text-base font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+                    style={{ minHeight: '44px' }}
                   >
                     {processQueueMutation.isPending ? (
                       <Loader2 className="h-4 w-4 animate-spin" />
@@ -1197,27 +1226,27 @@ export function LibraryManagement() {
             )}
 
             {/* Text Extraction Section */}
-            <div className="rounded-xl border border-neutral-200 bg-white p-6">
+            <div className="rounded-xl border p-6" style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-surface)' }}>
               <div className="flex items-start justify-between">
                 <div>
-                  <h2 className="text-lg font-semibold text-neutral-900 flex items-center gap-2">
+                  <h2 className="text-lg font-semibold flex items-center gap-2" style={{ color: 'var(--color-text-primary)' }}>
                     <FileText className="h-5 w-5 text-blue-600" />
                     Text Extraction
                   </h2>
-                  <p className="mt-1 text-sm text-neutral-500">
+                  <p className="mt-1 text-base" style={{ color: 'var(--color-text-secondary)' }}>
                     Extract text from PDFs to enable searching and AI identification.
                   </p>
                 </div>
                 <div className="text-right">
-                  <p className="text-2xl font-bold text-neutral-900">
+                  <p className="text-2xl font-bold" style={{ color: 'var(--color-text-primary)' }}>
                     {stats.processing.text_extracted} / {stats.total_products}
                   </p>
-                  <p className="text-sm text-neutral-500">products extracted</p>
+                  <p className="text-base" style={{ color: 'var(--color-text-secondary)' }}>products extracted</p>
                 </div>
               </div>
 
               <div className="mt-4">
-                <div className="h-2 rounded-full bg-neutral-200">
+                <div className="h-2 rounded-full" style={{ backgroundColor: 'var(--color-border)' }}>
                   <div
                     className="h-2 rounded-full bg-blue-500 transition-all"
                     style={{
@@ -1228,7 +1257,7 @@ export function LibraryManagement() {
               </div>
 
               {stats.total_products - stats.processing.text_extracted > 0 && (
-                <div className="mt-4 flex items-center justify-between rounded-lg bg-blue-50 p-4">
+                <div className="mt-4 flex items-center justify-between rounded-md bg-blue-50 p-4">
                   <div>
                     <p className="font-medium text-blue-900">
                       {stats.total_products - stats.processing.text_extracted} products need text extraction
@@ -1240,7 +1269,8 @@ export function LibraryManagement() {
                   <button
                     onClick={() => queueAllForExtractionMutation.mutate()}
                     disabled={queueAllForExtractionMutation.isPending}
-                    className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+                    className="inline-flex items-center gap-2 rounded-md bg-blue-600 px-4 text-base font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+                    style={{ minHeight: '44px' }}
                   >
                     {queueAllForExtractionMutation.isPending ? (
                       <Loader2 className="h-4 w-4 animate-spin" />
@@ -1253,7 +1283,7 @@ export function LibraryManagement() {
               )}
 
               {queueAllForExtractionMutation.isSuccess && (
-                <div className="mt-4 rounded-lg bg-green-50 p-4 text-green-800">
+                <div className="mt-4 rounded-md bg-green-50 p-4 text-green-800">
                   <p className="font-medium">Products queued for extraction!</p>
                   <p className="text-sm">
                     Queued {queueAllForExtractionMutation.data?.created || 0} products.
@@ -1264,27 +1294,27 @@ export function LibraryManagement() {
             </div>
 
             {/* Full-Text Search Indexing Section */}
-            <div className="rounded-xl border border-neutral-200 bg-white p-6">
+            <div className="rounded-xl border p-6" style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-surface)' }}>
               <div className="flex items-start justify-between">
                 <div>
-                  <h2 className="text-lg font-semibold text-neutral-900 flex items-center gap-2">
+                  <h2 className="text-lg font-semibold flex items-center gap-2" style={{ color: 'var(--color-text-primary)' }}>
                     <Wand2 className="h-5 w-5 text-green-600" />
                     Full-Text Search Index
                   </h2>
-                  <p className="mt-1 text-sm text-neutral-500">
+                  <p className="mt-1 text-base" style={{ color: 'var(--color-text-secondary)' }}>
                     Build search indexes for fast content search (e.g., "encounter table with kobolds").
                   </p>
                 </div>
                 <div className="text-right">
-                  <p className="text-2xl font-bold text-neutral-900">
+                  <p className="text-2xl font-bold" style={{ color: 'var(--color-text-primary)' }}>
                     {ftsStats?.indexed || 0} / {ftsStats?.total_with_text || 0}
                   </p>
-                  <p className="text-sm text-neutral-500">products indexed</p>
+                  <p className="text-base" style={{ color: 'var(--color-text-secondary)' }}>products indexed</p>
                 </div>
               </div>
 
               <div className="mt-4">
-                <div className="h-2 rounded-full bg-neutral-200">
+                <div className="h-2 rounded-full" style={{ backgroundColor: 'var(--color-border)' }}>
                   <div
                     className="h-2 rounded-full bg-green-500 transition-all"
                     style={{
@@ -1295,7 +1325,7 @@ export function LibraryManagement() {
               </div>
 
               {ftsStats && ftsStats.need_indexing > 0 && (
-                <div className="mt-4 flex items-center justify-between rounded-lg bg-green-50 p-4">
+                <div className="mt-4 flex items-center justify-between rounded-md bg-green-50 p-4">
                   <div>
                     <p className="font-medium text-green-900">
                       {ftsStats.need_indexing} products need FTS indexing
@@ -1307,7 +1337,8 @@ export function LibraryManagement() {
                   <button
                     onClick={() => rebuildFtsMutation.mutate()}
                     disabled={rebuildFtsMutation.isPending}
-                    className="inline-flex items-center gap-2 rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50"
+                    className="inline-flex items-center gap-2 rounded-md bg-green-600 px-4 text-base font-medium text-white hover:bg-green-700 disabled:opacity-50"
+                    style={{ minHeight: '44px' }}
                   >
                     {rebuildFtsMutation.isPending ? (
                       <Loader2 className="h-4 w-4 animate-spin" />
@@ -1320,7 +1351,7 @@ export function LibraryManagement() {
               )}
 
               {rebuildFtsMutation.isSuccess && (
-                <div className="mt-4 rounded-lg bg-green-50 p-4 text-green-800">
+                <div className="mt-4 rounded-md bg-green-50 p-4 text-green-800">
                   <p className="font-medium">FTS indexing queued!</p>
                   <p className="text-sm">
                     Queued {rebuildFtsMutation.data?.created || 0} products for indexing.
@@ -1329,7 +1360,7 @@ export function LibraryManagement() {
               )}
 
               {ftsStats?.indexed > 0 && ftsStats?.need_indexing === 0 && (
-                <div className="mt-4 rounded-lg bg-green-50 p-4 text-green-800">
+                <div className="mt-4 rounded-md bg-green-50 p-4 text-green-800">
                   <p className="font-medium">All products indexed!</p>
                   <p className="text-sm">
                     Full-text search is available for {ftsStats.indexed} products.
@@ -1339,27 +1370,27 @@ export function LibraryManagement() {
             </div>
 
             {/* Semantic Search / Embeddings Section */}
-            <div className="rounded-xl border border-neutral-200 bg-white p-6">
+            <div className="rounded-xl border p-6" style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-surface)' }}>
               <div className="flex items-start justify-between">
                 <div>
-                  <h2 className="text-lg font-semibold text-neutral-900 flex items-center gap-2">
+                  <h2 className="text-lg font-semibold flex items-center gap-2" style={{ color: 'var(--color-text-primary)' }}>
                     <Brain className="h-5 w-5 text-indigo-600" />
                     Semantic Search (AI Embeddings)
                   </h2>
-                  <p className="mt-1 text-sm text-neutral-500">
+                  <p className="mt-1 text-base" style={{ color: 'var(--color-text-secondary)' }}>
                     Enable natural language search like "swamp adventures for level 3 parties".
                   </p>
                 </div>
                 <div className="text-right">
-                  <p className="text-2xl font-bold text-neutral-900">
+                  <p className="text-2xl font-bold" style={{ color: 'var(--color-text-primary)' }}>
                     {embeddingStats?.embedded_products || 0} / {embeddingStats?.total_products || 0}
                   </p>
-                  <p className="text-sm text-neutral-500">products embedded</p>
+                  <p className="text-base" style={{ color: 'var(--color-text-secondary)' }}>products embedded</p>
                 </div>
               </div>
 
               <div className="mt-4">
-                <div className="h-2 rounded-full bg-neutral-200">
+                <div className="h-2 rounded-full" style={{ backgroundColor: 'var(--color-border)' }}>
                   <div
                     className="h-2 rounded-full bg-indigo-500 transition-all"
                     style={{
@@ -1370,7 +1401,7 @@ export function LibraryManagement() {
               </div>
 
               {embeddingStats && embeddingStats.not_embedded > 0 && (
-                <div className="mt-4 flex items-center justify-between rounded-lg bg-indigo-50 p-4">
+                <div className="mt-4 flex items-center justify-between rounded-md bg-indigo-50 p-4">
                   <div>
                     <p className="font-medium text-indigo-900">
                       {embeddingStats.not_embedded} products need embeddings
@@ -1382,7 +1413,8 @@ export function LibraryManagement() {
                   <button
                     onClick={() => embedAllMutation.mutate()}
                     disabled={embedAllMutation.isPending || !embeddingStats.provider_available}
-                    className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
+                    className="inline-flex items-center gap-2 rounded-md bg-indigo-600 px-4 text-base font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
+                    style={{ minHeight: '44px' }}
                   >
                     {embedAllMutation.isPending ? (
                       <Loader2 className="h-4 w-4 animate-spin" />
@@ -1395,7 +1427,7 @@ export function LibraryManagement() {
               )}
 
               {embeddingStats && !embeddingStats.provider_available && (
-                <div className="mt-4 flex items-start gap-3 rounded-lg bg-amber-50 border border-amber-200 p-4">
+                <div className="mt-4 flex items-start gap-3 rounded-md bg-amber-50 border border-amber-200 p-4">
                   <AlertTriangle className="h-5 w-5 text-amber-600 flex-shrink-0 mt-0.5" />
                   <div>
                     <p className="font-medium text-amber-800">No embedding provider available</p>
@@ -1408,7 +1440,7 @@ export function LibraryManagement() {
               )}
 
               {embedAllMutation.isError && (
-                <div className="mt-4 rounded-lg bg-red-50 border border-red-200 p-4 text-red-800">
+                <div className="mt-4 rounded-md bg-red-50 border border-red-200 p-4 text-red-800">
                   <p className="font-medium">Failed to queue embeddings</p>
                   <p className="text-sm mt-1">
                     {(embedAllMutation.error as Error)?.message || 'Unknown error'}
@@ -1417,7 +1449,7 @@ export function LibraryManagement() {
               )}
 
               {embedAllMutation.isSuccess && (
-                <div className="mt-4 rounded-lg bg-indigo-50 p-4 text-indigo-800">
+                <div className="mt-4 rounded-md bg-indigo-50 p-4 text-indigo-800">
                   <p className="font-medium">Embedding generation queued!</p>
                   <p className="text-sm">
                     Queued {embedAllMutation.data?.queued || 0} products for embedding.
@@ -1426,7 +1458,7 @@ export function LibraryManagement() {
               )}
 
               {embeddingStats?.embedded_products > 0 && embeddingStats?.not_embedded === 0 && (
-                <div className="mt-4 rounded-lg bg-indigo-50 p-4 text-indigo-800">
+                <div className="mt-4 rounded-md bg-indigo-50 p-4 text-indigo-800">
                   <p className="font-medium">All products have embeddings!</p>
                   <p className="text-sm">
                     Semantic search is available for {embeddingStats.embedded_products} products.
@@ -1434,17 +1466,17 @@ export function LibraryManagement() {
                 </div>
               )}
 
-              <div className="mt-4 rounded-lg bg-neutral-50 p-4">
-                <p className="text-sm text-neutral-600">
+              <div className="mt-4 rounded-md p-4" style={{ backgroundColor: 'var(--color-surface-raised)' }}>
+                <p className="text-base" style={{ color: 'var(--color-text-secondary)' }}>
                   <strong>Note:</strong> Semantic search requires either a local sentence-transformers model (free, slower)
                   or OpenAI API key (paid, faster). Check the embedding providers in settings.
                 </p>
                 {embeddingStats?.providers && (
                   <div className="mt-2 flex gap-4 text-xs">
-                    <span className={embeddingStats.providers.local ? 'text-green-600' : 'text-neutral-400'}>
+                    <span className={embeddingStats.providers.local ? 'text-green-600' : ''} style={!embeddingStats.providers.local ? { color: 'var(--color-text-secondary)' } : undefined}>
                       Local: {embeddingStats.providers.local ? '✓ Available' : '✗ Not installed'}
                     </span>
-                    <span className={embeddingStats.providers.openai ? 'text-green-600' : 'text-neutral-400'}>
+                    <span className={embeddingStats.providers.openai ? 'text-green-600' : ''} style={!embeddingStats.providers.openai ? { color: 'var(--color-text-secondary)' } : undefined}>
                       OpenAI: {embeddingStats.providers.openai ? '✓ Configured' : '✗ No API key'}
                     </span>
                   </div>
@@ -1453,30 +1485,31 @@ export function LibraryManagement() {
             </div>
 
             {/* AI Identification Section */}
-            <div className="rounded-xl border border-neutral-200 bg-white p-6">
+            <div className="rounded-xl border p-6" style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-surface)' }}>
               <div className="flex items-start justify-between">
                 <div>
-                  <h2 className="text-lg font-semibold text-neutral-900 flex items-center gap-2">
-                    <Wand2 className="h-5 w-5 text-purple-600" />
+                  <h2 className="text-lg font-semibold flex items-center gap-2" style={{ color: 'var(--color-text-primary)' }}>
+                    <Wand2 className="h-5 w-5" style={{ color: 'var(--color-accent)' }} />
                     AI Identification
                   </h2>
-                  <p className="mt-1 text-sm text-neutral-500">
+                  <p className="mt-1 text-base" style={{ color: 'var(--color-text-secondary)' }}>
                     Use AI to identify game system, publisher, and product type.
                   </p>
                 </div>
                 <div className="text-right">
-                  <p className="text-2xl font-bold text-neutral-900">
+                  <p className="text-2xl font-bold" style={{ color: 'var(--color-text-primary)' }}>
                     {stats.processing.ai_identified} / {stats.total_products}
                   </p>
-                  <p className="text-sm text-neutral-500">products identified</p>
+                  <p className="text-base" style={{ color: 'var(--color-text-secondary)' }}>products identified</p>
                 </div>
               </div>
 
               <div className="mt-4">
-                <div className="h-2 rounded-full bg-neutral-200">
+                <div className="h-2 rounded-full" style={{ backgroundColor: 'var(--color-border)' }}>
                   <div
-                    className="h-2 rounded-full bg-purple-500 transition-all"
+                    className="h-2 rounded-full transition-all"
                     style={{
+                      backgroundColor: 'var(--color-accent)',
                       width: `${(stats.processing.ai_identified / stats.total_products) * 100}%`,
                     }}
                   />
@@ -1484,8 +1517,8 @@ export function LibraryManagement() {
               </div>
 
               {/* Provider Selection */}
-              <div className="mt-4 rounded-lg border border-neutral-200 p-4">
-                <h3 className="font-medium text-neutral-900 mb-3">AI Provider</h3>
+              <div className="mt-4 rounded-md border p-4" style={{ borderColor: 'var(--color-border)' }}>
+                <h3 className="font-medium mb-3" style={{ color: 'var(--color-text-primary)' }}>AI Provider</h3>
                 <div className="space-y-2">
                   <label className="flex items-center gap-3 cursor-pointer">
                     <input
@@ -1494,11 +1527,10 @@ export function LibraryManagement() {
                       value="ollama"
                       checked={selectedProvider === 'ollama'}
                       onChange={(e) => setSelectedProvider(e.target.value)}
-                      className="text-purple-600 focus:ring-purple-500"
                     />
                     <div className="flex-1">
-                      <span className="font-medium text-neutral-900">Ollama (Local)</span>
-                      <span className="ml-2 rounded bg-green-100 px-2 py-0.5 text-xs text-green-700">Free</span>
+                      <span className="font-medium" style={{ color: 'var(--color-text-primary)' }}>Ollama (Local)</span>
+                      <span className="ml-2 rounded-md bg-green-100 px-2 py-0.5 text-xs text-green-700">Free</span>
                       {aiProviders?.providers.ollama && (
                         <span className="ml-2 text-xs text-green-600">● Connected</span>
                       )}
@@ -1512,15 +1544,14 @@ export function LibraryManagement() {
                       checked={selectedProvider === 'openai'}
                       onChange={(e) => setSelectedProvider(e.target.value)}
                       disabled={!aiProviders?.providers.openai}
-                      className="text-purple-600 focus:ring-purple-500"
                     />
                     <div className="flex-1">
-                      <span className={`font-medium ${aiProviders?.providers.openai ? 'text-neutral-900' : 'text-neutral-400'}`}>
+                      <span className="font-medium" style={{ color: aiProviders?.providers.openai ? 'var(--color-text-primary)' : 'var(--color-text-secondary)' }}>
                         OpenAI (Cloud)
                       </span>
-                      <span className="ml-2 rounded bg-amber-100 px-2 py-0.5 text-xs text-amber-700">Paid</span>
+                      <span className="ml-2 rounded-md bg-amber-100 px-2 py-0.5 text-xs text-amber-700">Paid</span>
                       {!aiProviders?.providers.openai && (
-                        <span className="ml-2 text-xs text-neutral-400">Not configured</span>
+                        <span className="ml-2 text-xs" style={{ color: 'var(--color-text-secondary)' }}>Not configured</span>
                       )}
                     </div>
                   </label>
@@ -1532,15 +1563,14 @@ export function LibraryManagement() {
                       checked={selectedProvider === 'anthropic'}
                       onChange={(e) => setSelectedProvider(e.target.value)}
                       disabled={!aiProviders?.providers.anthropic}
-                      className="text-purple-600 focus:ring-purple-500"
                     />
                     <div className="flex-1">
-                      <span className={`font-medium ${aiProviders?.providers.anthropic ? 'text-neutral-900' : 'text-neutral-400'}`}>
+                      <span className="font-medium" style={{ color: aiProviders?.providers.anthropic ? 'var(--color-text-primary)' : 'var(--color-text-secondary)' }}>
                         Anthropic (Cloud)
                       </span>
-                      <span className="ml-2 rounded bg-amber-100 px-2 py-0.5 text-xs text-amber-700">Paid</span>
+                      <span className="ml-2 rounded-md bg-amber-100 px-2 py-0.5 text-xs text-amber-700">Paid</span>
                       {!aiProviders?.providers.anthropic && (
-                        <span className="ml-2 text-xs text-neutral-400">Not configured</span>
+                        <span className="ml-2 text-xs" style={{ color: 'var(--color-text-secondary)' }}>Not configured</span>
                       )}
                     </div>
                   </label>
@@ -1548,7 +1578,8 @@ export function LibraryManagement() {
 
                 <button
                   onClick={() => setShowPrivacyNotice(true)}
-                  className="mt-3 inline-flex items-center gap-1 text-sm text-neutral-500 hover:text-neutral-700"
+                  className="mt-3 inline-flex items-center gap-1 text-base"
+                  style={{ color: 'var(--color-text-secondary)' }}
                 >
                   <Info className="h-4 w-4" />
                   View AI privacy information
@@ -1557,13 +1588,13 @@ export function LibraryManagement() {
 
               {/* Identify Button */}
               {stats.processing.text_extracted > stats.processing.ai_identified && (
-                <div className="mt-4 flex items-center justify-between rounded-lg bg-purple-50 p-4">
+                <div className="mt-4 flex items-center justify-between rounded-md p-4" style={{ backgroundColor: 'var(--color-accent-light)' }}>
                   <div>
-                    <p className="font-medium text-purple-900">
+                    <p className="font-medium" style={{ color: 'var(--color-text-primary)' }}>
                       {stats.processing.text_extracted - stats.processing.ai_identified} products ready for identification
                     </p>
-                    <p className="text-sm text-purple-700">
-                      {selectedProvider === 'ollama' 
+                    <p className="text-sm" style={{ color: 'var(--color-accent)' }}>
+                      {selectedProvider === 'ollama'
                         ? 'Using Ollama (free, local processing)'
                         : `Using ${selectedProvider} (cloud, see cost estimate)`}
                     </p>
@@ -1580,7 +1611,8 @@ export function LibraryManagement() {
                       }
                     }}
                     disabled={identifyAllMutation.isPending || estimateCostMutation.isPending}
-                    className="inline-flex items-center gap-2 rounded-lg bg-purple-600 px-4 py-2 text-sm font-medium text-white hover:bg-purple-700 disabled:opacity-50"
+                    className="inline-flex items-center gap-2 rounded-md px-4 text-base font-medium text-white disabled:opacity-50"
+                    style={{ minHeight: '44px', backgroundColor: 'var(--color-accent)' }}
                   >
                     {(identifyAllMutation.isPending || estimateCostMutation.isPending) ? (
                       <Loader2 className="h-4 w-4 animate-spin" />
@@ -1593,7 +1625,7 @@ export function LibraryManagement() {
               )}
 
               {stats.processing.text_extracted === 0 && (
-                <div className="mt-4 rounded-lg bg-amber-50 p-4">
+                <div className="mt-4 rounded-md bg-amber-50 p-4">
                   <p className="text-amber-800">
                     <AlertTriangle className="inline h-4 w-4 mr-1" />
                     Text must be extracted before AI identification. Extract text first.
@@ -1602,7 +1634,7 @@ export function LibraryManagement() {
               )}
 
               {identifyAllMutation.isSuccess && (
-                <div className="mt-4 rounded-lg bg-green-50 p-4 text-green-800">
+                <div className="mt-4 rounded-md bg-green-50 p-4 text-green-800">
                   <p className="font-medium">AI identification queued!</p>
                   <p className="text-sm">
                     Queued {identifyAllMutation.data?.queued || 0} products for identification.
@@ -1620,19 +1652,19 @@ export function LibraryManagement() {
         {/* Scan Tab */}
         {activeTab === 'scan' && (
           <div className="space-y-6">
-            <div className="rounded-xl border border-neutral-200 bg-white p-6">
-              <h2 className="mb-4 text-lg font-semibold text-neutral-900">Library Scan</h2>
+            <div className="rounded-xl border p-6" style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-surface)' }}>
+              <h2 className="mb-4 text-lg font-semibold" style={{ color: 'var(--color-text-primary)' }}>Library Scan</h2>
 
               {scanStatus?.is_running ? (
                 <div className="space-y-4">
                   <div className="flex items-center gap-3">
-                    <RefreshCw className="h-5 w-5 animate-spin text-purple-600" />
+                    <RefreshCw className="h-5 w-5 animate-spin" style={{ color: 'var(--color-accent)' }} />
                     <div>
-                      <p className="font-medium text-neutral-900">
+                      <p className="font-medium text-base" style={{ color: 'var(--color-text-primary)' }}>
                         {scanStatus.current_phase || 'Scanning...'}
                       </p>
                       {scanStatus.current_file && (
-                        <p className="text-sm text-neutral-500 truncate max-w-md">
+                        <p className="text-sm truncate max-w-md" style={{ color: 'var(--color-text-secondary)' }}>
                           {scanStatus.current_file}
                         </p>
                       )}
@@ -1640,65 +1672,66 @@ export function LibraryManagement() {
                   </div>
 
                   <div>
-                    <div className="mb-1 flex justify-between text-sm">
-                      <span className="text-neutral-600">Progress</span>
-                      <span className="text-neutral-500">{scanStatus.progress.percent}%</span>
+                    <div className="mb-1 flex justify-between text-base">
+                      <span style={{ color: 'var(--color-text-secondary)' }}>Progress</span>
+                      <span style={{ color: 'var(--color-text-secondary)' }}>{scanStatus.progress.percent}%</span>
                     </div>
-                    <div className="h-2 rounded-full bg-neutral-200">
+                    <div className="h-2 rounded-full" style={{ backgroundColor: 'var(--color-border)' }}>
                       <div
-                        className="h-2 rounded-full bg-purple-600 transition-all"
-                        style={{ width: `${scanStatus.progress.percent}%` }}
+                        className="h-2 rounded-full transition-all"
+                        style={{ backgroundColor: 'var(--color-accent)', width: `${scanStatus.progress.percent}%` }}
                       />
                     </div>
-                    <p className="mt-1 text-xs text-neutral-500">
+                    <p className="mt-1 text-sm" style={{ color: 'var(--color-text-secondary)' }}>
                       {scanStatus.progress.processed_files} / {scanStatus.progress.total_files} files
                     </p>
                   </div>
 
                   <div className="grid grid-cols-4 gap-4 text-center">
                     <div>
-                      <p className="text-lg font-semibold text-green-600">
+                      <p className="text-2xl font-semibold text-green-600">
                         {scanStatus.results.new_products}
                       </p>
-                      <p className="text-xs text-neutral-500">New</p>
+                      <p className="text-sm" style={{ color: 'var(--color-text-secondary)' }}>New</p>
                     </div>
                     <div>
-                      <p className="text-lg font-semibold text-blue-600">
+                      <p className="text-2xl font-semibold text-blue-600">
                         {scanStatus.results.updated_products}
                       </p>
-                      <p className="text-xs text-neutral-500">Updated</p>
+                      <p className="text-sm" style={{ color: 'var(--color-text-secondary)' }}>Updated</p>
                     </div>
                     <div>
-                      <p className="text-lg font-semibold text-amber-600">
+                      <p className="text-2xl font-semibold text-amber-600">
                         {scanStatus.results.duplicates_found}
                       </p>
-                      <p className="text-xs text-neutral-500">Duplicates</p>
+                      <p className="text-sm" style={{ color: 'var(--color-text-secondary)' }}>Duplicates</p>
                     </div>
                     <div>
-                      <p className="text-lg font-semibold text-neutral-600">
+                      <p className="text-2xl font-semibold" style={{ color: 'var(--color-text-secondary)' }}>
                         {scanStatus.results.excluded_files}
                       </p>
-                      <p className="text-xs text-neutral-500">Excluded</p>
+                      <p className="text-sm" style={{ color: 'var(--color-text-secondary)' }}>Excluded</p>
                     </div>
                   </div>
                 </div>
               ) : (
                 <div className="text-center py-8">
-                  <HardDrive className="mx-auto h-12 w-12 text-neutral-300" />
-                  <p className="mt-2 text-neutral-500">
+                  <HardDrive className="mx-auto h-12 w-12" style={{ color: 'var(--color-border)' }} />
+                  <p className="mt-2 text-base" style={{ color: 'var(--color-text-secondary)' }}>
                     {scanStatus?.status === 'complete'
                       ? 'Last scan completed successfully'
                       : 'Ready to scan library'}
                   </p>
                   {scanStatus?.completed_at && (
-                    <p className="text-xs text-neutral-400">
+                    <p className="text-sm" style={{ color: 'var(--color-text-secondary)' }}>
                       Last scan: {new Date(scanStatus.completed_at).toLocaleString()}
                     </p>
                   )}
                   <button
                     onClick={() => scanMutation.mutate()}
                     disabled={scanMutation.isPending}
-                    className="mt-4 inline-flex items-center gap-2 rounded-lg bg-purple-600 px-6 py-2 text-sm font-medium text-white hover:bg-purple-700 disabled:opacity-50"
+                    className="mt-4 inline-flex items-center gap-2 rounded-md px-6 text-base font-medium text-white disabled:opacity-50"
+                    style={{ minHeight: '44px', backgroundColor: 'var(--color-accent)' }}
                   >
                     <Play className="h-4 w-4" />
                     Start Scan
@@ -1708,38 +1741,38 @@ export function LibraryManagement() {
             </div>
 
             {scanStatus && !scanStatus.is_running && scanStatus.status === 'complete' && (
-              <div className="rounded-xl border border-neutral-200 bg-white p-6">
-                <h3 className="mb-4 font-semibold text-neutral-900">Last Scan Results</h3>
+              <div className="rounded-xl border p-6" style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-surface)' }}>
+                <h3 className="mb-4 font-semibold text-lg" style={{ color: 'var(--color-text-primary)' }}>Last Scan Results</h3>
                 <div className="grid grid-cols-5 gap-4">
                   <div className="text-center">
                     <p className="text-2xl font-bold text-green-600">
                       {scanStatus.results.new_products}
                     </p>
-                    <p className="text-sm text-neutral-500">New Products</p>
+                    <p className="text-base" style={{ color: 'var(--color-text-secondary)' }}>New Products</p>
                   </div>
                   <div className="text-center">
                     <p className="text-2xl font-bold text-blue-600">
                       {scanStatus.results.updated_products}
                     </p>
-                    <p className="text-sm text-neutral-500">Updated</p>
+                    <p className="text-base" style={{ color: 'var(--color-text-secondary)' }}>Updated</p>
                   </div>
                   <div className="text-center">
                     <p className="text-2xl font-bold text-amber-600">
                       {scanStatus.results.duplicates_found}
                     </p>
-                    <p className="text-sm text-neutral-500">Duplicates</p>
+                    <p className="text-base" style={{ color: 'var(--color-text-secondary)' }}>Duplicates</p>
                   </div>
                   <div className="text-center">
-                    <p className="text-2xl font-bold text-neutral-600">
+                    <p className="text-2xl font-bold" style={{ color: 'var(--color-text-secondary)' }}>
                       {scanStatus.results.excluded_files}
                     </p>
-                    <p className="text-sm text-neutral-500">Excluded</p>
+                    <p className="text-base" style={{ color: 'var(--color-text-secondary)' }}>Excluded</p>
                   </div>
                   <div className="text-center">
                     <p className="text-2xl font-bold text-red-600">
                       {scanStatus.results.errors}
                     </p>
-                    <p className="text-sm text-neutral-500">Errors</p>
+                    <p className="text-base" style={{ color: 'var(--color-text-secondary)' }}>Errors</p>
                   </div>
                 </div>
               </div>
@@ -1751,48 +1784,48 @@ export function LibraryManagement() {
       {/* Cost Confirmation Modal */}
       {showCostConfirm && showCostConfirm.estimate && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-xl">
+          <div className="w-full max-w-md rounded-xl p-6 shadow-xl" style={{ backgroundColor: 'var(--color-surface)' }}>
             <div className="mb-4 flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-purple-100">
-                <Wand2 className="h-5 w-5 text-purple-600" />
+              <div className="flex h-10 w-10 items-center justify-center rounded-full" style={{ backgroundColor: 'var(--color-accent-light)' }}>
+                <Wand2 className="h-5 w-5" style={{ color: 'var(--color-accent)' }} />
               </div>
               <div>
-                <h2 className="text-lg font-semibold text-neutral-900">
+                <h2 className="text-2xl font-semibold" style={{ color: 'var(--color-text-primary)' }}>
                   AI Processing Cost Estimate
                 </h2>
-                <p className="text-sm text-neutral-500">
+                <p className="text-base" style={{ color: 'var(--color-text-secondary)' }}>
                   {showCostConfirm.estimate.item_count} products to identify
                 </p>
               </div>
             </div>
 
-            <div className="mb-4 space-y-2 rounded-lg bg-neutral-50 p-4">
-              <div className="flex justify-between text-sm">
-                <span className="text-neutral-600">Provider</span>
-                <span className="font-medium text-neutral-900">{showCostConfirm.estimate.provider}</span>
+            <div className="mb-4 space-y-2 rounded-md p-4" style={{ backgroundColor: 'var(--color-surface-raised)' }}>
+              <div className="flex justify-between text-base">
+                <span style={{ color: 'var(--color-text-secondary)' }}>Provider</span>
+                <span className="font-medium" style={{ color: 'var(--color-text-primary)' }}>{showCostConfirm.estimate.provider}</span>
               </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-neutral-600">Model</span>
-                <span className="font-medium text-neutral-900">{showCostConfirm.estimate.model}</span>
+              <div className="flex justify-between text-base">
+                <span style={{ color: 'var(--color-text-secondary)' }}>Model</span>
+                <span className="font-medium" style={{ color: 'var(--color-text-primary)' }}>{showCostConfirm.estimate.model}</span>
               </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-neutral-600">Estimated tokens</span>
-                <span className="font-medium text-neutral-900">
+              <div className="flex justify-between text-base">
+                <span style={{ color: 'var(--color-text-secondary)' }}>Estimated tokens</span>
+                <span className="font-medium" style={{ color: 'var(--color-text-primary)' }}>
                   ~{showCostConfirm.estimate.total_input_tokens.toLocaleString()} input
                 </span>
               </div>
-              <div className="border-t border-neutral-200 pt-2 mt-2">
+              <div className="border-t pt-2 mt-2" style={{ borderColor: 'var(--color-border)' }}>
                 <div className="flex justify-between">
-                  <span className="font-medium text-neutral-900">Estimated cost</span>
-                  <span className="font-bold text-lg text-neutral-900">
+                  <span className="font-medium" style={{ color: 'var(--color-text-primary)' }}>Estimated cost</span>
+                  <span className="font-bold text-lg" style={{ color: 'var(--color-text-primary)' }}>
                     ${showCostConfirm.estimate.total_cost_usd.toFixed(4)} USD
                   </span>
                 </div>
               </div>
             </div>
 
-            <div className="mb-4 rounded-lg bg-blue-50 p-3">
-              <p className="text-sm text-blue-800">
+            <div className="mb-4 rounded-md bg-blue-50 p-3">
+              <p className="text-lg text-blue-800">
                 <Info className="inline h-4 w-4 mr-1" />
                 Your PDF text will be sent to {showCostConfirm.provider}'s API for processing.
                 Data is not used for AI training.
@@ -1802,7 +1835,8 @@ export function LibraryManagement() {
             <div className="flex justify-end gap-3">
               <button
                 onClick={() => setShowCostConfirm(null)}
-                className="rounded-lg border border-neutral-300 px-4 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-50"
+                className="rounded-md border px-4 text-base font-medium"
+                style={{ minHeight: '44px', borderColor: 'var(--color-border)', color: 'var(--color-text-secondary)' }}
               >
                 Cancel
               </button>
@@ -1811,7 +1845,8 @@ export function LibraryManagement() {
                   identifyAllMutation.mutate(showCostConfirm.provider);
                 }}
                 disabled={identifyAllMutation.isPending}
-                className="inline-flex items-center gap-2 rounded-lg bg-purple-600 px-4 py-2 text-sm font-medium text-white hover:bg-purple-700 disabled:opacity-50"
+                className="inline-flex items-center gap-2 rounded-md px-4 text-base font-medium text-white disabled:opacity-50"
+                style={{ minHeight: '44px', backgroundColor: 'var(--color-accent)' }}
               >
                 {identifyAllMutation.isPending ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
@@ -1828,42 +1863,42 @@ export function LibraryManagement() {
       {/* Privacy Notice Modal */}
       {showPrivacyNotice && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="w-full max-w-lg rounded-xl bg-white p-6 shadow-xl">
+          <div className="w-full max-w-lg rounded-xl p-6 shadow-xl" style={{ backgroundColor: 'var(--color-surface)' }}>
             <div className="mb-4 flex items-center justify-between">
-              <h2 className="text-lg font-semibold text-neutral-900 flex items-center gap-2">
+              <h2 className="text-2xl font-semibold flex items-center gap-2" style={{ color: 'var(--color-text-primary)' }}>
                 <Info className="h-5 w-5 text-blue-600" />
                 AI Privacy Information
               </h2>
               <button
                 onClick={() => setShowPrivacyNotice(false)}
-                className="text-neutral-400 hover:text-neutral-600"
+                style={{ color: 'var(--color-text-secondary)' }}
               >
                 <X className="h-5 w-5" />
               </button>
             </div>
 
             <div className="space-y-4">
-              <div className="rounded-lg bg-green-50 p-4">
+              <div className="rounded-md bg-green-50 p-4">
                 <h3 className="font-medium text-green-900">Ollama (Local)</h3>
-                <p className="mt-1 text-sm text-green-800">
+                <p className="mt-1 text-lg text-green-800">
                   All processing happens on your computer. No data leaves your machine.
                   This is the most private option.
                 </p>
               </div>
 
-              <div className="rounded-lg bg-amber-50 p-4">
+              <div className="rounded-md bg-amber-50 p-4">
                 <h3 className="font-medium text-amber-900">Cloud Providers (OpenAI, Anthropic)</h3>
-                <p className="mt-1 text-sm text-amber-800">
+                <p className="mt-1 text-lg text-amber-800">
                   When using cloud AI providers:
                 </p>
-                <ul className="mt-2 text-sm text-amber-800 list-disc list-inside space-y-1">
+                <ul className="mt-2 text-lg text-amber-800 list-disc list-inside space-y-1">
                   <li>Your PDF text is sent to the provider's API for processing</li>
                   <li>Text is <strong>NOT</strong> used to train AI models</li>
                   <li>Data is typically deleted within 30 days</li>
                 </ul>
               </div>
 
-              <div className="text-sm text-neutral-600">
+              <div className="text-base" style={{ color: 'var(--color-text-secondary)' }}>
                 <p className="font-medium mb-2">Provider Data Policies:</p>
                 <div className="space-y-1">
                   <a
@@ -1891,7 +1926,8 @@ export function LibraryManagement() {
             <div className="mt-6 flex justify-end">
               <button
                 onClick={() => setShowPrivacyNotice(false)}
-                className="rounded-lg bg-neutral-100 px-4 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-200"
+                className="rounded-md px-4 text-base font-medium"
+                style={{ minHeight: '44px', backgroundColor: 'var(--color-surface-raised)', color: 'var(--color-text-secondary)' }}
               >
                 Close
               </button>
@@ -1903,16 +1939,16 @@ export function LibraryManagement() {
       {/* Delete Confirmation Modal */}
       {showDeleteConfirm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-xl">
+          <div className="w-full max-w-md rounded-xl p-6 shadow-xl" style={{ backgroundColor: 'var(--color-surface)' }}>
             <div className="mb-4 flex items-center gap-3">
               <div className="flex h-10 w-10 items-center justify-center rounded-full bg-red-100">
                 <AlertTriangle className="h-5 w-5 text-red-600" />
               </div>
               <div>
-                <h2 className="text-lg font-semibold text-neutral-900">
+                <h2 className="text-2xl font-semibold" style={{ color: 'var(--color-text-primary)' }}>
                   {showDeleteConfirm.type === 'selected' ? 'Delete Selected Duplicates' : 'Delete All Duplicates in Group'}
                 </h2>
-                <p className="text-sm text-neutral-500">
+                <p className="text-base" style={{ color: 'var(--color-text-secondary)' }}>
                   {showDeleteConfirm.type === 'selected'
                     ? `${selectedDuplicates.size} files (${formatBytes(getSelectedSize())})`
                     : 'All duplicate copies will be removed'}
@@ -1920,8 +1956,8 @@ export function LibraryManagement() {
               </div>
             </div>
 
-            <div className="mb-4 rounded-lg bg-amber-50 p-3">
-              <p className="text-sm text-amber-800">
+            <div className="mb-4 rounded-md bg-amber-50 p-3">
+              <p className="text-lg text-amber-800">
                 {deleteFiles
                   ? '⚠️ Files will be permanently deleted from disk. This cannot be undone.'
                   : 'Only database records will be removed. Files will remain on disk.'}
@@ -1929,12 +1965,12 @@ export function LibraryManagement() {
             </div>
 
             <div className="mb-4">
-              <label className="flex items-center gap-2 text-sm text-neutral-700">
+              <label className="flex items-center gap-2 text-base" style={{ color: 'var(--color-text-secondary)' }}>
                 <input
                   type="checkbox"
                   checked={deleteFiles}
                   onChange={(e) => setDeleteFiles(e.target.checked)}
-                  className="rounded border-neutral-300 text-red-600 focus:ring-red-500"
+                  className="rounded border-red-300 text-red-600 focus:ring-red-500"
                 />
                 Also delete files from disk
               </label>
@@ -1943,7 +1979,8 @@ export function LibraryManagement() {
             <div className="flex justify-end gap-3">
               <button
                 onClick={() => setShowDeleteConfirm(null)}
-                className="rounded-lg border border-neutral-300 px-4 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-50"
+                className="rounded-md border px-4 text-base font-medium"
+                style={{ minHeight: '44px', borderColor: 'var(--color-border)', color: 'var(--color-text-secondary)' }}
               >
                 Cancel
               </button>
@@ -1962,7 +1999,8 @@ export function LibraryManagement() {
                   }
                 }}
                 disabled={bulkDeleteMutation.isPending || deleteGroupMutation.isPending}
-                className="inline-flex items-center gap-2 rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50"
+                className="inline-flex items-center gap-2 rounded-md bg-red-600 px-4 text-base font-medium text-white hover:bg-red-700 disabled:opacity-50"
+                style={{ minHeight: '44px' }}
               >
                 {(bulkDeleteMutation.isPending || deleteGroupMutation.isPending) ? (
                   <RefreshCw className="h-4 w-4 animate-spin" />
