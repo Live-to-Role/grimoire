@@ -45,9 +45,13 @@ export function ProductGrid({ products, onProductClick, viewMode = 'grid', hasNe
   if (products.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-16 text-center">
-        <div className="rounded-full bg-neutral-100 p-4">
+        <div
+          className="rounded-full p-4"
+          style={{ backgroundColor: 'var(--color-surface-raised)' }}
+        >
           <svg
-            className="h-12 w-12 text-neutral-400"
+            className="h-12 w-12"
+            style={{ color: 'var(--color-text-secondary)' }}
             fill="none"
             viewBox="0 0 24 24"
             stroke="currentColor"
@@ -60,8 +64,16 @@ export function ProductGrid({ products, onProductClick, viewMode = 'grid', hasNe
             />
           </svg>
         </div>
-        <h3 className="mt-4 text-lg font-medium text-neutral-900">No products found</h3>
-        <p className="mt-1 text-sm text-neutral-500">
+        <h3
+          className="mt-4 text-xl font-medium"
+          style={{ color: 'var(--color-text-primary)' }}
+        >
+          No products found
+        </h3>
+        <p
+          className="mt-1 text-lg"
+          style={{ color: 'var(--color-text-secondary)' }}
+        >
           Add a folder to watch or adjust your filters.
         </p>
       </div>
@@ -71,7 +83,7 @@ export function ProductGrid({ products, onProductClick, viewMode = 'grid', hasNe
   return (
     <div>
       <div className={viewMode === 'grid'
-        ? "grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6"
+        ? "grid grid-cols-2 gap-5 md:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5"
         : "flex flex-col gap-2"
       }>
         {products.map((product) => (
@@ -89,7 +101,13 @@ export function ProductGrid({ products, onProductClick, viewMode = 'grid', hasNe
         <div ref={sentinelRef} className="py-4">
           {isFetchingNextPage && (
             <div className="flex items-center justify-center py-4">
-              <div className="h-6 w-6 animate-spin rounded-full border-4 border-codex-tan border-t-codex-olive" />
+              <div
+                className="h-6 w-6 animate-spin rounded-full border-4"
+                style={{
+                  borderColor: 'var(--color-border)',
+                  borderTopColor: 'var(--color-accent)',
+                }}
+              />
             </div>
           )}
         </div>
