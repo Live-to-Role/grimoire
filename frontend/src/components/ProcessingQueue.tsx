@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useQueueEvents } from '../hooks/useQueueEvents';
 import {
@@ -58,6 +58,7 @@ const taskTypeLabels: Record<string, string> = {
 
 export function ProcessingQueue({ onClose }: ProcessingQueueProps) {
   const [filter, setFilter] = useState<string | null>(null);
+  const [expandedError, setExpandedError] = useState<number | null>(null);
   const queryClient = useQueryClient();
 
   // SSE connection for real-time updates (falls back to polling below)
@@ -267,7 +268,8 @@ export function ProcessingQueue({ onClose }: ProcessingQueueProps) {
               </thead>
               <tbody className="divide-y divide-neutral-100">
                 {queueData?.items.map((item) => (
-                  <tr key={item.id} className="hover:bg-neutral-50">
+                  <React.Fragment key={item.id}>
+                  <tr className="hover:bg-neutral-50">
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-2">
                         {statusIcons[item.status] || statusIcons.pending}
@@ -327,16 +329,37 @@ export function ProcessingQueue({ onClose }: ProcessingQueueProps) {
                           </>
                         )}
                         {item.error_message && (
-                          <span
-                            className="ml-2 text-xs text-red-500 cursor-help"
-                            title={item.error_message}
+                          <button
+                            onClick={() => setExpandedError(expandedError === item.id ? null : item.id)}
+                            className="ml-2 text-xs text-red-500 hover:text-red-700 underline"
                           >
-                            Error
-                          </span>
+                            {expandedError === item.id ? 'Hide Error' : 'Show Error'}
+                          </button>
                         )}
                       </div>
                     </td>
                   </tr>
+                  {expandedError === item.id && item.error_message && (
+                    <tr>
+                      <td colSpan={6} className="px-4 py-2 bg-red-50 border-b border-red-100">
+                        <div className="flex items-start justify-between gap-2">
+                          <pre className="text-xs text-red-700 whitespace-pre-wrap font-mono flex-1">
+                            {item.error_message}
+                          </pre>
+                          <button
+                            onClick={() => {
+                              navigator.clipboard.writeText(item.error_message || '');
+                            }}
+                            className="shrink-0 rounded px-2 py-1 text-xs text-red-600 hover:bg-red-100"
+                            title="Copy error"
+                          >
+                            Copy
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                  </React.Fragment>
                 ))}
               </tbody>
             </table>
