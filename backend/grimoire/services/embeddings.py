@@ -1,6 +1,6 @@
 """
 Vector embeddings service for semantic search.
-Supports OpenAI embeddings and local sentence-transformers.
+Supports OpenAI, Ollama, and local sentence-transformers embeddings.
 """
 
 import json
@@ -90,6 +90,41 @@ def embed_with_local(
     return results
 
 
+async def embed_with_ollama(
+    texts: list[str],
+    base_url: str,
+    model: str = "nomic-embed-text",
+) -> list[EmbeddingResult]:
+    """Generate embeddings using Ollama API."""
+    results = []
+    async with httpx.AsyncClient(timeout=120.0) as client:
+        for text in texts:
+            response = await client.post(
+                f"{base_url.rstrip('/')}/api/embed",
+                json={
+                    "model": model,
+                    "input": text,
+                },
+            )
+            response.raise_for_status()
+            data = response.json()
+            results.append(EmbeddingResult(
+                embedding=data["embeddings"][0],
+                model=model,
+            ))
+    return results
+
+
+async def _check_ollama_available(base_url: str) -> bool:
+    """Check if Ollama is reachable."""
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            response = await client.get(f"{base_url.rstrip('/')}/api/tags")
+            return response.status_code == 200
+    except Exception:
+        return False
+
+
 async def generate_embeddings(
     texts: list[str],
     provider: str | None = None,
@@ -100,18 +135,21 @@ async def generate_embeddings(
 
     Args:
         texts: List of text strings to embed
-        provider: "openai" or "local" (None for auto-detect)
+        provider: "openai", "ollama", or "local" (None for auto-detect)
         model: Specific model to use
 
     Returns:
         List of EmbeddingResult objects
     """
     openai_key = os.getenv("OPENAI_API_KEY", "")
+    ollama_url = os.getenv("OLLAMA_BASE_URL", "")
 
     # Auto-detect provider
     if provider is None:
         if openai_key:
             provider = "openai"
+        elif ollama_url:
+            provider = "ollama"
         elif SENTENCE_TRANSFORMERS_AVAILABLE:
             provider = "local"
         else:
@@ -124,6 +162,14 @@ async def generate_embeddings(
             texts,
             openai_key,
             model or "text-embedding-3-small",
+        )
+    elif provider == "ollama":
+        if not ollama_url:
+            raise ValueError("OLLAMA_BASE_URL not configured")
+        return await embed_with_ollama(
+            texts,
+            ollama_url,
+            model or "nomic-embed-text",
         )
     elif provider == "local":
         return embed_with_local(texts, model or "all-MiniLM-L6-v2")
@@ -209,5 +255,6 @@ def get_available_providers() -> dict[str, bool]:
     """Check which embedding providers are available."""
     return {
         "openai": bool(os.getenv("OPENAI_API_KEY")),
+        "ollama": bool(os.getenv("OLLAMA_BASE_URL")),
         "local": SENTENCE_TRANSFORMERS_AVAILABLE,
     }

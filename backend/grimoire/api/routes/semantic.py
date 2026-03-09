@@ -258,10 +258,10 @@ async def embed_all_products(
     """Queue all products with extracted text for embedding generation."""
     # Check if any embedding provider is available
     providers = get_available_providers()
-    if not providers.get("openai") and not providers.get("local"):
+    if not any(providers.values()):
         raise HTTPException(
             status_code=400,
-            detail="No embedding provider available. Install sentence-transformers for local embeddings or configure OPENAI_API_KEY."
+            detail="No embedding provider available. Install sentence-transformers for local embeddings, configure OLLAMA_BASE_URL, or set OPENAI_API_KEY."
         )
     
     # Find products with text but no embeddings
@@ -320,6 +320,9 @@ async def embed_all_products(
 @router.get("/status")
 async def embedding_status(db: DbSession) -> dict:
     """Get embedding status for products with extracted text."""
+    import os
+    from grimoire.models import ProcessingQueue
+
     # Count products with embeddings
     emb_query = select(ProductEmbedding.product_id).distinct()
     emb_result = await db.execute(emb_query)
@@ -329,10 +332,37 @@ async def embedding_status(db: DbSession) -> dict:
     prod_query = select(Product.id).where(Product.text_extracted == True)
     prod_result = await db.execute(prod_query)
     embeddable_products = set(prod_result.scalars().all())
-    
+
     # Get available providers
     providers = get_available_providers()
-    any_provider_available = providers.get("openai") or providers.get("local")
+    any_provider_available = providers.get("openai") or providers.get("local") or providers.get("ollama", False)
+
+    # Queue stats for embed tasks
+    from sqlalchemy import func as sql_func
+    queue_stats_query = (
+        select(ProcessingQueue.status, sql_func.count())
+        .where(ProcessingQueue.task_type == "embed")
+        .group_by(ProcessingQueue.status)
+    )
+    queue_result = await db.execute(queue_stats_query)
+    queue_counts = dict(queue_result.all())
+
+    # Get last error message from failed embed tasks
+    last_error_query = (
+        select(ProcessingQueue.error_message)
+        .where(
+            ProcessingQueue.task_type == "embed",
+            ProcessingQueue.status == "failed",
+            ProcessingQueue.error_message.isnot(None),
+        )
+        .order_by(ProcessingQueue.completed_at.desc())
+        .limit(1)
+    )
+    last_error_result = await db.execute(last_error_query)
+    last_error = last_error_result.scalar_one_or_none()
+
+    # Anthropic availability (for NL query interpretation, not embeddings)
+    anthropic_available = bool(os.getenv("ANTHROPIC_API_KEY", ""))
 
     return {
         "total_products": len(embeddable_products),
@@ -341,6 +371,14 @@ async def embedding_status(db: DbSession) -> dict:
         "coverage_percent": round(len(embedded_products) / len(embeddable_products) * 100, 1) if embeddable_products else 0,
         "providers": providers,
         "provider_available": any_provider_available,
+        "anthropic_available": anthropic_available,
+        "queue": {
+            "pending": queue_counts.get("pending", 0),
+            "processing": queue_counts.get("processing", 0),
+            "completed": queue_counts.get("completed", 0),
+            "failed": queue_counts.get("failed", 0),
+            "last_error": last_error,
+        },
     }
 
 

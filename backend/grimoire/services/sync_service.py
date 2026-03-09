@@ -194,16 +194,18 @@ async def sync_product_from_codex(
 ) -> dict[str, Any]:
     """
     Sync a single product's metadata from Codex.
-    
+
     Args:
         db: Database session
         product: Product to sync
         overwrite_existing: If True, overwrite existing metadata
-        
+
     Returns:
         Dict with sync results
     """
-    client = get_codex_client()
+    # Read API key from DB so we use the real API, not mock mode
+    _, api_key = await get_codex_settings_from_db(db)
+    client = get_codex_client(api_key=api_key)
     
     if not await client.is_available():
         return {"synced": False, "reason": "Codex unavailable"}
@@ -283,8 +285,10 @@ async def sync_all_products(
     Returns:
         Summary of sync results
     """
-    client = get_codex_client()
-    
+    # Read API key from DB so we use the real API, not mock mode
+    _, api_key = await get_codex_settings_from_db(db)
+    client = get_codex_client(api_key=api_key)
+
     if not await client.is_available():
         return {
             "success": False,
@@ -293,7 +297,7 @@ async def sync_all_products(
             "failed": 0,
             "skipped": 0,
         }
-    
+
     query = select(Product)
     if only_unidentified:
         query = query.where(Product.ai_identified == False)
@@ -342,11 +346,13 @@ async def check_for_updates(
     Check if Codex has updated metadata for a product.
     Does not apply changes, just reports differences.
     """
-    client = get_codex_client()
-    
+    # Read API key from DB so we use the real API, not mock mode
+    _, api_key = await get_codex_settings_from_db(db)
+    client = get_codex_client(api_key=api_key)
+
     if not await client.is_available():
         return None
-    
+
     match = await client.identify_by_hash(product.file_hash)
     
     if not match or not match.product:

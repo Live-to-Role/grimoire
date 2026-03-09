@@ -81,11 +81,83 @@ def _find_tesseract() -> str | None:
     return None
 
 
+def _find_poppler() -> str | None:
+    """
+    Auto-detect poppler binaries directory across platforms.
+
+    Checks in order:
+    1. POPPLER_PATH setting/env var (explicit override)
+    2. System PATH (works if installed via package manager or Docker)
+    3. Common installation locations by platform
+
+    Returns:
+        Path to poppler bin directory, or None if not found (assumes system PATH)
+    """
+    import shutil
+    import os
+    import platform
+
+    # 1. Check for explicit override via settings/env var
+    try:
+        from grimoire.config import settings
+        if settings.poppler_path:
+            if Path(settings.poppler_path).is_dir():
+                return settings.poppler_path
+    except Exception:
+        pass
+
+    # 2. Check if pdftoppm is on system PATH (Linux/Docker/macOS with brew)
+    if shutil.which("pdftoppm"):
+        return None  # None tells pdf2image to use system PATH
+
+    # 3. Check common installation locations by platform
+    system = platform.system()
+    common_paths = []
+
+    if system == "Windows":
+        common_paths = [
+            r"C:\poppler\Library\bin",
+            r"C:\Program Files\poppler\Library\bin",
+            r"C:\Program Files (x86)\poppler\Library\bin",
+            os.path.expanduser(r"~\AppData\Local\poppler\Library\bin"),
+            # Conda-installed poppler
+            os.path.expanduser(r"~\miniconda3\Library\bin"),
+            os.path.expanduser(r"~\anaconda3\Library\bin"),
+        ]
+    elif system == "Darwin":
+        common_paths = [
+            "/opt/homebrew/bin",       # Apple Silicon Homebrew
+            "/usr/local/bin",          # Intel Homebrew
+            "/opt/local/bin",          # MacPorts
+        ]
+
+    for path in common_paths:
+        pdftoppm = Path(path) / ("pdftoppm.exe" if system == "Windows" else "pdftoppm")
+        if pdftoppm.exists():
+            return path
+
+    return None
+
+
+# Module-level cache for poppler path (looked up once)
+_poppler_path: str | None = None
+_poppler_path_resolved = False
+
+
+def _get_poppler_path() -> str | None:
+    """Get cached poppler path, resolving on first call."""
+    global _poppler_path, _poppler_path_resolved
+    if not _poppler_path_resolved:
+        _poppler_path = _find_poppler()
+        _poppler_path_resolved = True
+    return _poppler_path
+
+
 def _configure_tesseract():
     """Configure pytesseract with auto-detected path."""
     if not TESSERACT_AVAILABLE:
         return
-    
+
     tesseract_path = _find_tesseract()
     if tesseract_path:
         pytesseract.pytesseract.tesseract_cmd = tesseract_path
@@ -789,11 +861,13 @@ def extract_with_ocr(
     markdown_content = []
     
     # Convert PDF pages to images
+    poppler_path = _get_poppler_path()
     images = convert_from_path(
         str(pdf_path),
         dpi=dpi,
         first_page=start_page,
         last_page=end_page,
+        poppler_path=poppler_path,
     )
     
     for i, image in enumerate(images):

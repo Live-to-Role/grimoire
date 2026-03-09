@@ -171,7 +171,7 @@ async def handle_ocr_text_task(db: AsyncSession, product: Product) -> bool:
     try:
         # OCR is extremely CPU-heavy — must run in thread
         markdown_text = await asyncio.to_thread(
-            extract_with_ocr, pdf_path, 200, "eng"
+            extract_with_ocr, pdf_path, dpi=200, lang="eng"
         )
 
         # File I/O in thread too
@@ -259,40 +259,40 @@ async def handle_embed_task(db: AsyncSession, product: Product) -> bool:
     if not text:
         return False
 
-    try:
-        # Delete existing embeddings
-        await db.execute(
-            delete(ProductEmbedding).where(ProductEmbedding.product_id == product.id)
+    # Delete existing embeddings
+    await db.execute(
+        delete(ProductEmbedding).where(ProductEmbedding.product_id == product.id)
+    )
+
+    # Chunk and embed — let exceptions propagate so queue processor captures error details
+    chunks = chunk_text(text, 500, 50)
+    embeddings = await generate_embeddings(chunks)
+
+    for i, (chunk, emb_result) in enumerate(zip(chunks, embeddings)):
+        embedding_record = ProductEmbedding(
+            product_id=product.id,
+            chunk_index=i,
+            chunk_text=chunk[:1000],
+            embedding_model=emb_result.model,
+            embedding_dim=len(emb_result.embedding),
         )
-        
-        # Chunk and embed
-        chunks = chunk_text(text, 500, 50)
-        embeddings = await generate_embeddings(chunks)
-        
-        for i, (chunk, emb_result) in enumerate(zip(chunks, embeddings)):
-            embedding_record = ProductEmbedding(
-                product_id=product.id,
-                chunk_index=i,
-                chunk_text=chunk[:1000],
-                embedding_model=emb_result.model,
-                embedding_dim=len(emb_result.embedding),
-            )
-            embedding_record.set_embedding_vector(emb_result.embedding)
-            db.add(embedding_record)
-        
-        await db.commit()
-        return True
-    except Exception as e:
-        logger.error(f"Failed to generate embeddings for product {product.id}: {e}")
-        return False
+        embedding_record.set_embedding_vector(emb_result.embedding)
+        db.add(embedding_record)
+
+    await db.commit()
+    return True
 
 
 @register_handler("identify")
 async def handle_identify_task(db: AsyncSession, product: Product) -> bool:
     """Handle AI identification task."""
     from grimoire.services.codex import get_codex_client
-    
-    client = get_codex_client()
+    from grimoire.services.sync_service import get_codex_settings_from_db
+
+    # Read API key from DB (where the frontend saves it) so we don't
+    # fall back to mock mode when the key is only stored in the database.
+    _, api_key = await get_codex_settings_from_db(db)
+    client = get_codex_client(api_key=api_key)
     
     # Try hash lookup first
     match = await client.identify_by_hash(product.file_hash)

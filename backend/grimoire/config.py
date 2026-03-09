@@ -46,6 +46,9 @@ class Settings(BaseSettings):
     
     # OCR (Tesseract) - empty string uses system PATH (Linux/Docker default)
     tesseract_cmd: str = ""
+    # Poppler - empty string uses system PATH (Linux/Docker default)
+    # Windows: set to folder containing pdftoppm.exe, e.g. C:\poppler\Library\bin
+    poppler_path: str = ""
 
     # Security
     secret_key: str = Field(default_factory=lambda: secrets.token_urlsafe(32))

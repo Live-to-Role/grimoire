@@ -1407,7 +1407,7 @@ export function LibraryManagement() {
                       {embeddingStats.not_embedded} products need embeddings
                     </p>
                     <p className="text-sm text-indigo-700">
-                      Uses local AI (free) or OpenAI for embedding generation.
+                      Uses local AI (free), Ollama, or OpenAI for embedding generation.
                     </p>
                   </div>
                   <button
@@ -1433,7 +1433,40 @@ export function LibraryManagement() {
                     <p className="font-medium text-amber-800">No embedding provider available</p>
                     <p className="text-sm text-amber-700 mt-1">
                       Install <code className="bg-amber-100 px-1 rounded">sentence-transformers</code> for free local embeddings,
-                      or set <code className="bg-amber-100 px-1 rounded">OPENAI_API_KEY</code> for faster cloud embeddings.
+                      set <code className="bg-amber-100 px-1 rounded">OLLAMA_BASE_URL</code> with an embedding model,
+                      or set <code className="bg-amber-100 px-1 rounded">OPENAI_API_KEY</code> for cloud embeddings.
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {embeddingStats?.queue && embeddingStats.queue.failed > 0 && (
+                <div className="mt-4 flex items-start gap-3 rounded-lg bg-red-50 border border-red-200 p-4">
+                  <AlertTriangle className="h-5 w-5 text-red-600 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <p className="font-medium text-red-800">
+                      {embeddingStats.queue.failed} embedding task{embeddingStats.queue.failed !== 1 ? 's' : ''} failed
+                    </p>
+                    {embeddingStats.queue.last_error && (
+                      <p className="text-sm text-red-700 mt-1">
+                        Last error: {embeddingStats.queue.last_error}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {embeddingStats?.queue && (embeddingStats.queue.pending > 0 || embeddingStats.queue.processing > 0) && (
+                <div className="mt-4 flex items-center gap-3 rounded-lg bg-blue-50 border border-blue-200 p-4">
+                  <Loader2 className="h-5 w-5 text-blue-600 animate-spin flex-shrink-0" />
+                  <div>
+                    <p className="font-medium text-blue-800">
+                      Embedding in progress
+                    </p>
+                    <p className="text-sm text-blue-700">
+                      {embeddingStats.queue.processing > 0 && `${embeddingStats.queue.processing} processing`}
+                      {embeddingStats.queue.processing > 0 && embeddingStats.queue.pending > 0 && ', '}
+                      {embeddingStats.queue.pending > 0 && `${embeddingStats.queue.pending} pending`}
                     </p>
                   </div>
                 </div>
@@ -1468,19 +1501,32 @@ export function LibraryManagement() {
 
               <div className="mt-4 rounded-md p-4" style={{ backgroundColor: 'var(--color-surface-raised)' }}>
                 <p className="text-base" style={{ color: 'var(--color-text-secondary)' }}>
-                  <strong>Note:</strong> Semantic search requires either a local sentence-transformers model (free, slower)
-                  or OpenAI API key (paid, faster). Check the embedding providers in settings.
+                  <strong>Embedding providers</strong> generate vector representations for semantic search.
+                  <strong> AI query</strong> uses Anthropic or OpenAI to interpret natural language searches.
                 </p>
                 {embeddingStats?.providers && (
-                  <div className="mt-2 flex gap-4 text-xs">
+                  <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs">
+                    <span className="font-medium" style={{ color: 'var(--color-text-secondary)' }}>Embeddings:</span>
                     <span className={embeddingStats.providers.local ? 'text-green-600' : ''} style={!embeddingStats.providers.local ? { color: 'var(--color-text-secondary)' } : undefined}>
                       Local: {embeddingStats.providers.local ? '✓ Available' : '✗ Not installed'}
+                    </span>
+                    <span className={embeddingStats.providers.ollama ? 'text-green-600' : ''} style={!embeddingStats.providers.ollama ? { color: 'var(--color-text-secondary)' } : undefined}>
+                      Ollama: {embeddingStats.providers.ollama ? '✓ Available' : '✗ Not configured'}
                     </span>
                     <span className={embeddingStats.providers.openai ? 'text-green-600' : ''} style={!embeddingStats.providers.openai ? { color: 'var(--color-text-secondary)' } : undefined}>
                       OpenAI: {embeddingStats.providers.openai ? '✓ Configured' : '✗ No API key'}
                     </span>
                   </div>
                 )}
+                <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-xs">
+                  <span className="font-medium" style={{ color: 'var(--color-text-secondary)' }}>AI Query:</span>
+                  <span className={embeddingStats?.anthropic_available ? 'text-green-600' : ''} style={!embeddingStats?.anthropic_available ? { color: 'var(--color-text-secondary)' } : undefined}>
+                    Anthropic: {embeddingStats?.anthropic_available ? '✓ Configured' : '✗ No API key'}
+                  </span>
+                  <span className={embeddingStats?.providers?.openai ? 'text-green-600' : ''} style={!embeddingStats?.providers?.openai ? { color: 'var(--color-text-secondary)' } : undefined}>
+                    OpenAI: {embeddingStats?.providers?.openai ? '✓ Configured' : '✗ No API key'}
+                  </span>
+                </div>
               </div>
             </div>
 

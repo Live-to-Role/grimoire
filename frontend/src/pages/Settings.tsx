@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Save, Database, Sparkles, Check, AlertCircle, FolderOpen, Plus, Trash2, Star, Copy, X } from 'lucide-react';
+import { Save, Database, Sparkles, Check, AlertCircle, FolderOpen, Plus, Trash2, Star, Copy, X, RefreshCw, Upload } from 'lucide-react';
 import apiClient from '../api/client';
 import { FolderBrowserModal } from '../components/FolderBrowserModal';
 import { useThemeContext } from '../contexts/ThemeContext';
@@ -87,6 +87,49 @@ export function Settings() {
   const [isLoadingPreview, setIsLoadingPreview] = useState(false);
   const [isResolving, setIsResolving] = useState(false);
   const [deleteFiles, setDeleteFiles] = useState(false);
+  const [syncResult, setSyncResult] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+
+  const syncFromCodexMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiClient.post('/settings/codex/sync', {
+        overwrite_existing: false,
+        only_unidentified: true,
+      });
+      return res.data;
+    },
+    onSuccess: (data) => {
+      setSyncResult({
+        message: `Synced ${data.synced} products (${data.skipped} skipped, ${data.failed} failed)`,
+        type: data.synced > 0 || data.failed === 0 ? 'success' : 'error',
+      });
+      queryClient.invalidateQueries({ queryKey: ['products'] });
+      setTimeout(() => setSyncResult(null), 5000);
+    },
+    onError: () => {
+      setSyncResult({ message: 'Failed to sync with Codex', type: 'error' });
+      setTimeout(() => setSyncResult(null), 5000);
+    },
+  });
+
+  const syncContributionsMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiClient.post('/settings/codex/sync-contributions');
+      return res.data;
+    },
+    onSuccess: (data) => {
+      setSyncResult({
+        message: data.success
+          ? `Submitted ${data.submitted} contributions (${data.failed} failed)`
+          : data.reason || 'Nothing to sync',
+        type: data.success ? 'success' : 'error',
+      });
+      setTimeout(() => setSyncResult(null), 5000);
+    },
+    onError: () => {
+      setSyncResult({ message: 'Failed to sync contributions', type: 'error' });
+      setTimeout(() => setSyncResult(null), 5000);
+    },
+  });
 
   const { data: codexStatus } = useQuery({
     queryKey: ['codex-status'],
@@ -475,6 +518,46 @@ export function Settings() {
                 </div>
               </label>
             </div>
+
+            {/* Sync Actions */}
+            {codexStatus?.available && !codexStatus?.mock_mode && (
+              <div className="border-t border-neutral-200 pt-4">
+                <p className="mb-3 text-sm font-medium text-neutral-700">Sync Actions</p>
+                {syncResult && (
+                  <div
+                    className={`mb-3 rounded-lg p-2 text-sm ${
+                      syncResult.type === 'success'
+                        ? 'bg-green-50 text-green-700'
+                        : 'bg-red-50 text-red-600'
+                    }`}
+                  >
+                    {syncResult.message}
+                  </div>
+                )}
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => syncFromCodexMutation.mutate()}
+                    disabled={syncFromCodexMutation.isPending}
+                    className="inline-flex items-center gap-2 rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-50 disabled:opacity-50"
+                  >
+                    <RefreshCw className={`h-4 w-4 ${syncFromCodexMutation.isPending ? 'animate-spin' : ''}`} />
+                    {syncFromCodexMutation.isPending ? 'Syncing...' : 'Sync from Codex'}
+                  </button>
+                  <button
+                    onClick={() => syncContributionsMutation.mutate()}
+                    disabled={syncContributionsMutation.isPending || !settings.codex_contribute_enabled}
+                    className="inline-flex items-center gap-2 rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-50 disabled:opacity-50"
+                    title={!settings.codex_contribute_enabled ? 'Enable "Contribute to Codex" first' : ''}
+                  >
+                    <Upload className={`h-4 w-4 ${syncContributionsMutation.isPending ? 'animate-spin' : ''}`} />
+                    {syncContributionsMutation.isPending ? 'Submitting...' : 'Push Contributions'}
+                  </button>
+                </div>
+                <p className="mt-2 text-xs text-neutral-500">
+                  "Sync from Codex" pulls metadata for unidentified products. "Push Contributions" sends your edits to the community database.
+                </p>
+              </div>
+            )}
           </section>
 
           {/* AI Settings */}

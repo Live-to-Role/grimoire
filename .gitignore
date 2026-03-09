@@ -76,3 +76,12 @@ pdfs/
 
 # Git worktrees
 .worktrees/
+
+# Claude Code
+.claude/
+
+# Backup files
+*.bak
+
+# Design/planning docs
+docs/plans/

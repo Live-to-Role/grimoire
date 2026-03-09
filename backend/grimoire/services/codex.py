@@ -459,16 +459,21 @@ class CodexClient:
 _codex_client: CodexClient | None = None
 
 
-def get_codex_client(use_mock: bool | None = None, refresh: bool = False) -> CodexClient:
+def get_codex_client(
+    use_mock: bool | None = None,
+    refresh: bool = False,
+    api_key: str | None = None,
+) -> CodexClient:
     """Get or create the Codex client singleton.
-    
+
     Args:
         use_mock: Force mock mode on/off. None = auto-detect based on API key.
         refresh: If True, recreate the client (useful when settings change).
+        api_key: Override API key (e.g. from database settings).
     """
     global _codex_client
-    if _codex_client is None or refresh:
-        _codex_client = CodexClient(use_mock=use_mock)
+    if _codex_client is None or refresh or api_key:
+        _codex_client = CodexClient(use_mock=use_mock, api_key=api_key)
     return _codex_client
 
 
