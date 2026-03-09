@@ -78,6 +78,19 @@ export function ProductDetail({ product, onClose }: ProductDetailProps) {
       return res.data;
     },
   });
+
+  const { data: failedQueueItems } = useQuery({
+    queryKey: ['queue-errors', product.id],
+    queryFn: async () => {
+      const response = await apiClient.get('/queue/items', {
+        params: { status: 'failed', limit: 10 },
+      });
+      // Filter to this product's items client-side
+      return (response.data.items || []).filter(
+        (item: any) => item.product_id === product.id
+      );
+    },
+  });
   const [noteForm, setNoteForm] = useState({
     note_type: 'prep_tip' as 'prep_tip' | 'modification' | 'warning' | 'review',
     title: '',
@@ -1482,6 +1495,14 @@ export function ProductDetail({ product, onClose }: ProductDetailProps) {
                   <span className={`h-2 w-2 rounded-full ${localProduct.processing_status?.ai_identified ? 'bg-green-500' : 'bg-neutral-300'}`} />
                   <span className="text-sm text-neutral-600">AI Identified</span>
                 </div>
+                {failedQueueItems && failedQueueItems.length > 0 && (
+                  <div className="flex items-center gap-2">
+                    <span className="h-2 w-2 rounded-full bg-red-500" />
+                    <span className="text-sm text-red-600">
+                      {failedQueueItems.length} failed task{failedQueueItems.length > 1 ? 's' : ''}
+                    </span>
+                  </div>
+                )}
                 <div className="flex-1" />
                 {!localProduct.processing_status?.text_extracted && (
                   <button
@@ -1512,6 +1533,26 @@ export function ProductDetail({ product, onClose }: ProductDetailProps) {
                   </button>
                 )}
               </div>
+
+              {failedQueueItems && failedQueueItems.length > 0 && (
+                <div className="mb-4 rounded-lg border border-red-200 bg-red-50 p-3">
+                  <p className="text-sm font-medium text-red-800 mb-2">Processing Errors</p>
+                  {failedQueueItems.map((item: any) => (
+                    <div key={item.id} className="flex items-start justify-between gap-2 mb-1 last:mb-0">
+                      <div className="flex-1">
+                        <span className="text-xs font-medium text-red-700">{item.task_type}:</span>
+                        <span className="ml-1 text-xs text-red-600">{item.error_message}</span>
+                      </div>
+                      <button
+                        onClick={() => navigator.clipboard.writeText(item.error_message || '')}
+                        className="shrink-0 text-xs text-red-500 hover:text-red-700 underline"
+                      >
+                        Copy
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
 
               {/* Extraction in progress */}
               {extractTextMutation.isPending && (
