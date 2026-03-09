@@ -2,7 +2,6 @@
 
 import platform
 import sys
-from datetime import datetime, UTC
 
 from fastapi import APIRouter
 from sqlalchemy import func, select, text
