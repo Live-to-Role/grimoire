@@ -145,21 +145,31 @@ export function ProcessingQueue({ onClose }: ProcessingQueueProps) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <div className="flex h-[80vh] w-full max-w-4xl flex-col overflow-hidden rounded-xl bg-white shadow-2xl">
-        <header className="flex items-center justify-between border-b border-neutral-200 px-6 py-4">
-          <h2 className="text-xl font-semibold text-neutral-900">Processing Queue</h2>
+      <div
+        className="flex h-[80vh] w-full max-w-4xl flex-col overflow-hidden rounded-xl shadow-2xl"
+        style={{ backgroundColor: 'var(--color-surface)' }}
+      >
+        <header
+          className="flex items-center justify-between border-b px-6 py-4"
+          style={{ borderColor: 'var(--color-border)' }}
+        >
+          <h2 className="text-xl font-semibold" style={{ color: 'var(--color-text-primary)' }}>Processing Queue</h2>
           <button
             onClick={onClose}
-            className="rounded-lg p-2 text-neutral-500 hover:bg-neutral-100"
+            className="rounded-lg p-2"
+            style={{ color: 'var(--color-text-secondary)', minWidth: 44, minHeight: 44 }}
           >
             <X className="h-5 w-5" />
           </button>
         </header>
 
         {/* Stats Bar */}
-        <div className="border-b border-neutral-200 bg-neutral-50 px-6 py-4">
+        <div
+          className="border-b px-6 py-4"
+          style={{ backgroundColor: 'var(--color-surface-raised)', borderColor: 'var(--color-border)' }}
+        >
           {statsLoading ? (
-            <div className="flex items-center gap-2 text-neutral-500">
+            <div className="flex items-center gap-2" style={{ color: 'var(--color-text-secondary)' }}>
               <Loader2 className="h-4 w-4 animate-spin" />
               Loading stats...
             </div>
@@ -168,44 +178,59 @@ export function ProcessingQueue({ onClose }: ProcessingQueueProps) {
               <div className="flex items-center gap-6">
                 <button
                   onClick={() => setFilter(null)}
-                  className={`flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm font-medium ${
-                    filter === null ? 'bg-purple-100 text-purple-700' : 'text-neutral-600 hover:bg-neutral-100'
-                  }`}
+                  className="flex items-center gap-2 rounded-lg px-3 py-1.5 text-base font-medium"
+                  style={{
+                    minHeight: 44,
+                    backgroundColor: filter === null ? 'var(--color-accent-light)' : 'transparent',
+                    color: filter === null ? 'var(--color-accent)' : 'var(--color-text-secondary)',
+                  }}
                 >
                   All ({stats.total})
                 </button>
                 <button
                   onClick={() => setFilter('pending')}
-                  className={`flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm font-medium ${
-                    filter === 'pending' ? 'bg-amber-100 text-amber-700' : 'text-neutral-600 hover:bg-neutral-100'
-                  }`}
+                  className="flex items-center gap-2 rounded-lg px-3 py-1.5 text-base font-medium"
+                  style={{
+                    minHeight: 44,
+                    backgroundColor: filter === 'pending' ? 'var(--color-accent-light)' : 'transparent',
+                    color: filter === 'pending' ? 'var(--color-accent)' : 'var(--color-text-secondary)',
+                  }}
                 >
                   <Clock className="h-4 w-4" />
                   Pending ({stats.pending})
                 </button>
                 <button
                   onClick={() => setFilter('processing')}
-                  className={`flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm font-medium ${
-                    filter === 'processing' ? 'bg-blue-100 text-blue-700' : 'text-neutral-600 hover:bg-neutral-100'
-                  }`}
+                  className="flex items-center gap-2 rounded-lg px-3 py-1.5 text-base font-medium"
+                  style={{
+                    minHeight: 44,
+                    backgroundColor: filter === 'processing' ? 'var(--color-accent-light)' : 'transparent',
+                    color: filter === 'processing' ? 'var(--color-accent)' : 'var(--color-text-secondary)',
+                  }}
                 >
                   <Loader2 className="h-4 w-4" />
                   Processing ({stats.processing})
                 </button>
                 <button
                   onClick={() => setFilter('completed')}
-                  className={`flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm font-medium ${
-                    filter === 'completed' ? 'bg-green-100 text-green-700' : 'text-neutral-600 hover:bg-neutral-100'
-                  }`}
+                  className="flex items-center gap-2 rounded-lg px-3 py-1.5 text-base font-medium"
+                  style={{
+                    minHeight: 44,
+                    backgroundColor: filter === 'completed' ? 'var(--color-accent-light)' : 'transparent',
+                    color: filter === 'completed' ? 'var(--color-accent)' : 'var(--color-text-secondary)',
+                  }}
                 >
                   <CheckCircle className="h-4 w-4" />
                   Completed ({stats.completed})
                 </button>
                 <button
                   onClick={() => setFilter('failed')}
-                  className={`flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm font-medium ${
-                    filter === 'failed' ? 'bg-red-100 text-red-700' : 'text-neutral-600 hover:bg-neutral-100'
-                  }`}
+                  className="flex items-center gap-2 rounded-lg px-3 py-1.5 text-base font-medium"
+                  style={{
+                    minHeight: 44,
+                    backgroundColor: filter === 'failed' ? 'var(--color-accent-light)' : 'transparent',
+                    color: filter === 'failed' ? 'var(--color-accent)' : 'var(--color-text-secondary)',
+                  }}
                 >
                   <XCircle className="h-4 w-4" />
                   Failed ({stats.failed})
@@ -215,14 +240,17 @@ export function ProcessingQueue({ onClose }: ProcessingQueueProps) {
               {/* Progress bar */}
               {stats.total > 0 && (
                 <div className="space-y-1">
-                  <div className="flex justify-between text-xs text-neutral-500">
+                  <div className="flex justify-between text-xs" style={{ color: 'var(--color-text-secondary)' }}>
                     <span>Progress</span>
                     <span>{getProgress()}%</span>
                   </div>
-                  <div className="h-2 overflow-hidden rounded-full bg-neutral-200">
+                  <div
+                    className="h-2 overflow-hidden rounded-full"
+                    style={{ backgroundColor: 'var(--color-surface-raised)' }}
+                  >
                     <div
-                      className="h-full bg-gradient-to-r from-purple-500 to-purple-600 transition-all duration-300"
-                      style={{ width: `${getProgress()}%` }}
+                      className="h-full transition-all duration-300"
+                      style={{ width: `${getProgress()}%`, backgroundColor: 'var(--color-accent)' }}
                     />
                   </div>
                 </div>
@@ -230,7 +258,7 @@ export function ProcessingQueue({ onClose }: ProcessingQueueProps) {
 
               {/* Pending breakdown by task type */}
               {stats.pending_by_type && Object.keys(stats.pending_by_type).length > 0 && (
-                <div className="flex gap-3 text-xs text-neutral-500">
+                <div className="flex gap-3 text-xs" style={{ color: 'var(--color-text-secondary)' }}>
                   <span className="font-medium">Pending:</span>
                   {Object.entries(stats.pending_by_type).map(([type, count]) => (
                     <span key={type}>
@@ -247,16 +275,19 @@ export function ProcessingQueue({ onClose }: ProcessingQueueProps) {
         <div className="flex-1 overflow-auto">
           {queueLoading ? (
             <div className="flex items-center justify-center py-12">
-              <Loader2 className="h-8 w-8 animate-spin text-purple-600" />
+              <Loader2 className="h-8 w-8 animate-spin" style={{ color: 'var(--color-accent)' }} />
             </div>
           ) : queueData?.items.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-12 text-neutral-500">
+            <div className="flex flex-col items-center justify-center py-12" style={{ color: 'var(--color-text-secondary)' }}>
               <Clock className="h-12 w-12 mb-4 opacity-50" />
               <p>No items in queue</p>
             </div>
           ) : (
             <table className="w-full">
-              <thead className="bg-neutral-50 text-left text-xs font-medium uppercase tracking-wider text-neutral-500">
+              <thead
+                className="text-left text-xs font-medium uppercase tracking-wider"
+                style={{ backgroundColor: 'var(--color-surface-raised)', color: 'var(--color-text-secondary)' }}
+              >
                 <tr>
                   <th className="px-6 py-3">Status</th>
                   <th className="px-6 py-3">Product</th>
@@ -266,33 +297,40 @@ export function ProcessingQueue({ onClose }: ProcessingQueueProps) {
                   <th className="px-6 py-3">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-neutral-100">
-                {queueData?.items.map((item) => (
+              <tbody>
+                {queueData?.items.map((item, index) => (
                   <React.Fragment key={item.id}>
-                  <tr className="hover:bg-neutral-50">
+                  <tr
+                    style={{
+                      minHeight: 56,
+                      borderBottom: index < (queueData?.items.length ?? 0) - 1 ? '1px solid var(--color-border)' : undefined,
+                    }}
+                    onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-surface-raised)'; }}
+                    onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent'; }}
+                  >
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-2">
                         {statusIcons[item.status] || statusIcons.pending}
-                        <span className="text-sm capitalize">{item.status}</span>
+                        <span className="text-base capitalize" style={{ color: 'var(--color-text-primary)' }}>{item.status}</span>
                       </div>
                     </td>
                     <td className="px-6 py-4">
-                      <span className="text-sm font-medium text-neutral-900 truncate max-w-xs block">
+                      <span className="text-lg font-medium truncate max-w-xs block" style={{ color: 'var(--color-text-primary)' }}>
                         {item.product_name || `Product #${item.product_id}`}
                       </span>
                     </td>
                     <td className="px-6 py-4">
-                      <span className="text-sm text-neutral-600">
+                      <span className="text-base" style={{ color: 'var(--color-text-secondary)' }}>
                         {taskTypeLabels[item.task_type] || item.task_type}
                       </span>
                     </td>
                     <td className="px-6 py-4">
-                      <span className="text-sm text-neutral-500">
+                      <span className="text-base" style={{ color: 'var(--color-text-secondary)' }}>
                         {item.attempts}/{item.max_attempts}
                       </span>
                     </td>
                     <td className="px-6 py-4">
-                      <span className="text-sm text-neutral-500">
+                      <span className="text-base" style={{ color: 'var(--color-text-secondary)' }}>
                         {formatTime(item.created_at)}
                       </span>
                     </td>
@@ -302,8 +340,11 @@ export function ProcessingQueue({ onClose }: ProcessingQueueProps) {
                           <button
                             onClick={() => cancelMutation.mutate(item.id)}
                             disabled={cancelMutation.isPending}
-                            className="rounded p-1 text-neutral-400 hover:bg-red-50 hover:text-red-600"
+                            className="rounded p-1"
+                            style={{ color: 'var(--color-text-secondary)', minWidth: 44, minHeight: 44, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
                             title="Cancel"
+                            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = 'var(--color-danger, #dc2626)'; (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-surface-raised)'; }}
+                            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = 'var(--color-text-secondary)'; (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent'; }}
                           >
                             <Trash2 className="h-4 w-4" />
                           </button>
@@ -313,16 +354,22 @@ export function ProcessingQueue({ onClose }: ProcessingQueueProps) {
                             <button
                               onClick={() => retryMutation.mutate(item.id)}
                               disabled={retryMutation.isPending}
-                              className="rounded p-1 text-neutral-400 hover:bg-blue-50 hover:text-blue-600"
+                              className="rounded p-1"
+                              style={{ color: 'var(--color-text-secondary)', minWidth: 44, minHeight: 44, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
                               title="Retry"
+                              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = 'var(--color-accent)'; (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-surface-raised)'; }}
+                              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = 'var(--color-text-secondary)'; (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent'; }}
                             >
                               <RotateCcw className="h-4 w-4" />
                             </button>
                             <button
                               onClick={() => dismissMutation.mutate({ itemId: item.id, markAsArt: true })}
                               disabled={dismissMutation.isPending}
-                              className="rounded p-1 text-neutral-400 hover:bg-purple-50 hover:text-purple-600"
+                              className="rounded p-1"
+                              style={{ color: 'var(--color-text-secondary)', minWidth: 44, minHeight: 44, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
                               title="Dismiss & mark as Art/Maps"
+                              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = 'var(--color-accent)'; (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-surface-raised)'; }}
+                              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = 'var(--color-text-secondary)'; (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent'; }}
                             >
                               <ImageOff className="h-4 w-4" />
                             </button>
@@ -365,13 +412,19 @@ export function ProcessingQueue({ onClose }: ProcessingQueueProps) {
         </div>
 
         {/* Footer Actions */}
-        <footer className="flex items-center justify-between border-t border-neutral-200 px-6 py-4">
+        <footer
+          className="flex items-center justify-between border-t px-6 py-4"
+          style={{ borderColor: 'var(--color-border)' }}
+        >
           <div className="flex gap-2">
             {stats && stats.completed > 0 && (
               <button
                 onClick={() => clearMutation.mutate('completed')}
                 disabled={clearMutation.isPending}
-                className="inline-flex items-center gap-2 rounded-lg border border-neutral-300 px-3 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-50"
+                className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-base font-medium"
+                style={{ borderColor: 'var(--color-border)', color: 'var(--color-text-primary)', minHeight: 44 }}
+                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-surface-raised)'; }}
+                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent'; }}
               >
                 <Trash2 className="h-4 w-4" />
                 Clear Completed
@@ -382,7 +435,8 @@ export function ProcessingQueue({ onClose }: ProcessingQueueProps) {
                 <button
                   onClick={() => retryAllMutation.mutate()}
                   disabled={retryAllMutation.isPending}
-                  className="inline-flex items-center gap-2 rounded-lg border border-blue-300 px-3 py-2 text-sm font-medium text-blue-700 hover:bg-blue-50"
+                  className="inline-flex items-center gap-2 rounded-lg border border-blue-300 px-3 py-2 text-base font-medium text-blue-700 hover:bg-blue-50"
+                  style={{ minHeight: 44 }}
                 >
                   <RotateCcw className="h-4 w-4" />
                   Retry All Failed
@@ -390,7 +444,8 @@ export function ProcessingQueue({ onClose }: ProcessingQueueProps) {
                 <button
                   onClick={() => clearMutation.mutate('failed')}
                   disabled={clearMutation.isPending}
-                  className="inline-flex items-center gap-2 rounded-lg border border-red-300 px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-50"
+                  className="inline-flex items-center gap-2 rounded-lg border border-red-300 px-3 py-2 text-base font-medium text-red-700 hover:bg-red-50"
+                  style={{ minHeight: 44 }}
                 >
                   <Trash2 className="h-4 w-4" />
                   Clear Failed
@@ -403,7 +458,10 @@ export function ProcessingQueue({ onClose }: ProcessingQueueProps) {
               queryClient.invalidateQueries({ queryKey: ['queue-items'] });
               queryClient.invalidateQueries({ queryKey: ['queue-stats'] });
             }}
-            className="inline-flex items-center gap-2 rounded-lg bg-neutral-100 px-3 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-200"
+            className="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-base font-medium"
+            style={{ backgroundColor: 'var(--color-surface-raised)', color: 'var(--color-text-primary)', minHeight: 44 }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-border)'; }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-surface-raised)'; }}
           >
             <RefreshCw className="h-4 w-4" />
             Refresh
