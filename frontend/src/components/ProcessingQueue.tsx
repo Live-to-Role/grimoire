@@ -343,9 +343,7 @@ export function ProcessingQueue({ onClose }: ProcessingQueueProps) {
                     <tr>
                       <td colSpan={6} className="px-4 py-2 bg-red-50 border-b border-red-100">
                         <div className="flex items-start justify-between gap-2">
-                          <pre className="text-xs text-red-700 whitespace-pre-wrap font-mono flex-1">
-                            {item.error_message}
-                          </pre>
+                          <pre className="text-xs text-red-700 whitespace-pre-wrap font-mono flex-1">{item.error_message}</pre>
                           <button
                             onClick={() => {
                               navigator.clipboard.writeText(item.error_message || '');
