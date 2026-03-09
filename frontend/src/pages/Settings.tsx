@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Save, Database, Sparkles, Check, AlertCircle, FolderOpen, Plus, Trash2, Star, Copy, X } from 'lucide-react';
 import apiClient from '../api/client';
 import { FolderBrowserModal } from '../components/FolderBrowserModal';
+import { useThemeContext } from '../contexts/ThemeContext';
 
 interface CodexStatus {
   available: boolean;
@@ -67,6 +68,7 @@ interface DuplicatePreview {
 
 export function Settings() {
   const queryClient = useQueryClient();
+  const { theme, setTheme } = useThemeContext();
   const [settings, setSettings] = useState<SettingsData>({
     codex_api_key: '',
     codex_contribute_enabled: false,
@@ -217,19 +219,19 @@ export function Settings() {
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
-      <header className="border-b border-neutral-200 bg-white px-6 py-4">
-        <h1 className="text-2xl font-bold text-neutral-900">Settings</h1>
+      <header className="px-6 py-4" style={{ backgroundColor: 'var(--color-surface)', borderBottom: '1px solid var(--color-border)' }}>
+        <h1 className="text-2xl font-semibold" style={{ color: 'var(--color-text-primary)' }}>Settings</h1>
       </header>
 
-      <main className="flex-1 overflow-auto p-6">
+      <main className="flex-1 overflow-auto px-6 py-6">
         <div className="mx-auto max-w-2xl space-y-8">
           {/* Library Folders */}
-          <section className="rounded-xl border border-neutral-200 bg-white p-6">
+          <section className="rounded-lg p-6" style={{ backgroundColor: 'var(--color-surface)', border: '1px solid var(--color-border)' }}>
             <div className="mb-4 flex items-center gap-3">
               <FolderOpen className="h-6 w-6 text-amber-500" />
               <div>
-                <h2 className="text-lg font-semibold text-neutral-900">Library Folders</h2>
-                <p className="text-sm text-neutral-500">
+                <h2 className="text-xl font-semibold" style={{ color: 'var(--color-text-primary)' }}>Library Folders</h2>
+                <p className="text-base" style={{ color: 'var(--color-text-secondary)' }}>
                   Configure folders containing your PDF library
                 </p>
               </div>
@@ -241,19 +243,20 @@ export function Settings() {
                 watchedFolders.map((folder) => (
                   <div
                     key={folder.id}
-                    className={`flex items-center justify-between rounded-lg border p-3 ${
+                    className={`flex items-center justify-between rounded-lg p-3 ${
                       folder.is_source_of_truth
                         ? 'border-amber-300 bg-amber-50'
-                        : 'border-neutral-200 bg-neutral-50'
+                        : ''
                     }`}
+                    style={folder.is_source_of_truth ? { border: '1px solid' } : { backgroundColor: 'var(--color-surface-raised)', border: '1px solid var(--color-border)' }}
                   >
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
-                        <span className="font-medium text-neutral-900 truncate">
+                        <span className="font-medium truncate" style={{ color: 'var(--color-text-primary)' }}>
                           {folder.label || folder.path}
                         </span>
                         {folder.label && (
-                          <span className="text-xs text-neutral-500 truncate">
+                          <span className="text-base truncate" style={{ color: 'var(--color-text-secondary)' }}>
                             ({folder.path})
                           </span>
                         )}
@@ -264,7 +267,7 @@ export function Settings() {
                           </span>
                         )}
                       </div>
-                      <p className="text-xs text-neutral-500">
+                      <p className="text-base" style={{ color: 'var(--color-text-secondary)' }}>
                         {folder.product_count} products
                         {folder.last_scanned_at && (
                           <> · Last scanned {new Date(folder.last_scanned_at).toLocaleDateString()}</>
@@ -295,9 +298,10 @@ export function Settings() {
                           onChange={(e) =>
                             toggleFolderMutation.mutate({ id: folder.id, enabled: e.target.checked })
                           }
-                          className="h-4 w-4 rounded border-neutral-300 text-purple-600 focus:ring-purple-500"
+                          className="h-4 w-4 rounded"
+                          style={{ accentColor: 'var(--color-accent)' }}
                         />
-                        <span className="text-xs text-neutral-500">Enabled</span>
+                        <span className="text-base" style={{ color: 'var(--color-text-secondary)' }}>Enabled</span>
                       </label>
                       <button
                         onClick={() => {
@@ -314,16 +318,16 @@ export function Settings() {
                   </div>
                 ))
               ) : (
-                <div className="rounded-lg border border-dashed border-neutral-300 bg-neutral-50 p-4 text-center">
-                  <FolderOpen className="mx-auto h-8 w-8 text-neutral-300" />
-                  <p className="mt-2 text-sm text-neutral-500">No library folders configured</p>
+                <div className="rounded-lg border border-dashed p-4 text-center" style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-surface-raised)' }}>
+                  <FolderOpen className="mx-auto h-8 w-8" style={{ color: 'var(--color-text-secondary)' }} />
+                  <p className="mt-2 text-base" style={{ color: 'var(--color-text-secondary)' }}>No library folders configured</p>
                 </div>
               )}
             </div>
 
             {/* Add new folder */}
-            <div className="border-t border-neutral-200 pt-4">
-              <p className="mb-2 text-sm font-medium text-neutral-700">Add Library Folder</p>
+            <div className="pt-4" style={{ borderTop: '1px solid var(--color-border)' }}>
+              <p className="mb-2 text-lg font-medium" style={{ color: 'var(--color-text-primary)' }}>Add Library Folder</p>
               {folderError && (
                 <div className="mb-2 rounded-lg bg-red-50 p-2 text-sm text-red-600">
                   {folderError}
@@ -335,13 +339,14 @@ export function Settings() {
                   value={newFolderPath}
                   onChange={(e) => setNewFolderPath(e.target.value)}
                   placeholder="/path/to/pdfs"
-                  className="flex-1 rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500"
+                  className="input flex-1 rounded-lg px-3"
+                  style={{ height: '48px', fontSize: '18px', backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-border)', color: 'var(--color-text-primary)' }}
                 />
                 <button
                   onClick={() => setShowBrowseModal(true)}
                   type="button"
-                  className="inline-flex items-center gap-1 rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-50"
-                  title="Browse folders"
+                  className="inline-flex items-center gap-1 rounded-lg px-3 text-base font-medium"
+                  style={{ backgroundColor: 'var(--color-surface)', border: '1px solid var(--color-border)', color: 'var(--color-text-secondary)', minHeight: '44px' }}
                 >
                   <FolderOpen className="h-4 w-4" />
                   Browse
@@ -351,7 +356,8 @@ export function Settings() {
                   value={newFolderLabel}
                   onChange={(e) => setNewFolderLabel(e.target.value)}
                   placeholder="Label (optional)"
-                  className="w-40 rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500"
+                  className="input w-40 rounded-lg px-3"
+                  style={{ height: '48px', fontSize: '18px', backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-border)', color: 'var(--color-text-primary)' }}
                 />
                 <button
                   onClick={() => {
@@ -363,30 +369,34 @@ export function Settings() {
                     }
                   }}
                   disabled={!newFolderPath.trim() || addFolderMutation.isPending}
-                  className="inline-flex items-center gap-1 rounded-lg bg-purple-600 px-3 py-2 text-sm font-medium text-white hover:bg-purple-700 disabled:opacity-50"
+                  className="inline-flex items-center gap-1 rounded-lg px-3 text-base font-medium text-white disabled:opacity-50"
+                  style={{ backgroundColor: 'var(--color-accent)', minHeight: '44px' }}
+                  onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = 'var(--color-accent-hover)')}
+                  onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'var(--color-accent)')}
                 >
                   <Plus className="h-4 w-4" />
                   Add
                 </button>
               </div>
-              <p className="mt-2 text-xs text-neutral-500">
+              <p className="mt-2 text-base" style={{ color: 'var(--color-text-secondary)' }}>
                 Enter the path to a folder containing PDF files. The folder must be accessible to the application.
               </p>
             </div>
 
             {/* Duplicate Resolution */}
-            <div className="border-t border-neutral-200 pt-4">
+            <div className="pt-4" style={{ borderTop: '1px solid var(--color-border)' }}>
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm font-medium text-neutral-700">Duplicate Management</p>
-                  <p className="text-xs text-neutral-500">
+                  <p className="text-lg font-medium" style={{ color: 'var(--color-text-primary)' }}>Duplicate Management</p>
+                  <p className="text-base" style={{ color: 'var(--color-text-secondary)' }}>
                     Resolve duplicate files using source of truth rules
                   </p>
                 </div>
                 <button
                   onClick={loadDuplicatePreview}
                   disabled={isLoadingPreview}
-                  className="inline-flex items-center gap-2 rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-50 disabled:opacity-50"
+                  className="inline-flex items-center gap-2 rounded-lg px-3 text-base font-medium disabled:opacity-50"
+                  style={{ backgroundColor: 'var(--color-surface)', border: '1px solid var(--color-border)', color: 'var(--color-text-secondary)', minHeight: '44px' }}
                 >
                   <Copy className="h-4 w-4" />
                   {isLoadingPreview ? 'Loading...' : 'Resolve Duplicates'}
@@ -396,20 +406,20 @@ export function Settings() {
           </section>
 
           {/* Codex Settings */}
-          <section className="rounded-xl border border-neutral-200 bg-white p-6">
+          <section className="rounded-lg p-6" style={{ backgroundColor: 'var(--color-surface)', border: '1px solid var(--color-border)' }}>
             <div className="mb-4 flex items-center gap-3">
               <Database className="h-6 w-6 text-blue-500" />
               <div>
-                <h2 className="text-lg font-semibold text-neutral-900">Codex Integration</h2>
-                <p className="text-sm text-neutral-500">
+                <h2 className="text-xl font-semibold" style={{ color: 'var(--color-text-primary)' }}>Codex Integration</h2>
+                <p className="text-base" style={{ color: 'var(--color-text-secondary)' }}>
                   Connect to the community TTRPG metadata database
                 </p>
               </div>
             </div>
 
-            <div className="mb-4 rounded-lg border border-neutral-200 bg-neutral-50 p-3">
+            <div className="mb-4 rounded-lg p-3" style={{ backgroundColor: 'var(--color-surface-raised)', border: '1px solid var(--color-border)' }}>
               <div className="flex items-center justify-between">
-                <span className="text-sm text-neutral-600">Status</span>
+                <span className="text-base" style={{ color: 'var(--color-text-secondary)' }}>Status</span>
                 {codexStatus?.available ? (
                   <span className="inline-flex items-center gap-1 text-sm text-green-600">
                     <Check className="h-4 w-4" />
@@ -423,16 +433,16 @@ export function Settings() {
                 )}
               </div>
               {codexStatus?.base_url && (
-                <p className="mt-1 text-xs text-neutral-500">{codexStatus.base_url}</p>
+                <p className="mt-1 text-base" style={{ color: 'var(--color-text-secondary)' }}>{codexStatus.base_url}</p>
               )}
             </div>
 
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-neutral-700">
+                <label className="block text-lg font-medium" style={{ color: 'var(--color-text-primary)' }}>
                   Codex API Key
                 </label>
-                <p className="mb-1 text-xs text-neutral-500">
+                <p className="mb-1 text-base" style={{ color: 'var(--color-text-secondary)' }}>
                   Required to contribute identifications back to Codex
                 </p>
                 <input
@@ -440,7 +450,8 @@ export function Settings() {
                   value={settings.codex_api_key || ''}
                   onChange={(e) => setSettings({ ...settings, codex_api_key: e.target.value })}
                   placeholder="Enter your Codex API key"
-                  className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500"
+                  className="input w-full rounded-lg px-3"
+                  style={{ height: '48px', fontSize: '18px', backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-border)', color: 'var(--color-text-primary)' }}
                 />
               </div>
 
@@ -451,13 +462,14 @@ export function Settings() {
                   onChange={(e) =>
                     setSettings({ ...settings, codex_contribute_enabled: e.target.checked })
                   }
-                  className="h-4 w-4 rounded border-neutral-300 text-purple-600 focus:ring-purple-500"
+                  className="h-4 w-4 rounded"
+                  style={{ accentColor: 'var(--color-accent)' }}
                 />
                 <div>
-                  <span className="text-sm font-medium text-neutral-700">
+                  <span className="text-lg font-medium" style={{ color: 'var(--color-text-primary)' }}>
                     Contribute to Codex
                   </span>
-                  <p className="text-xs text-neutral-500">
+                  <p className="text-base" style={{ color: 'var(--color-text-secondary)' }}>
                     Share new product identifications with the community
                   </p>
                 </div>
@@ -466,19 +478,19 @@ export function Settings() {
           </section>
 
           {/* AI Settings */}
-          <section className="rounded-xl border border-neutral-200 bg-white p-6">
+          <section className="rounded-lg p-6" style={{ backgroundColor: 'var(--color-surface)', border: '1px solid var(--color-border)' }}>
             <div className="mb-4 flex items-center gap-3">
               <Sparkles className="h-6 w-6 text-purple-500" />
               <div>
-                <h2 className="text-lg font-semibold text-neutral-900">AI Providers</h2>
-                <p className="text-sm text-neutral-500">
+                <h2 className="text-xl font-semibold" style={{ color: 'var(--color-text-primary)' }}>AI Providers</h2>
+                <p className="text-base" style={{ color: 'var(--color-text-secondary)' }}>
                   Configure AI services for product identification
                 </p>
               </div>
             </div>
 
-            <div className="mb-4 rounded-lg border border-neutral-200 bg-neutral-50 p-3">
-              <p className="text-sm text-neutral-600">Available providers:</p>
+            <div className="mb-4 rounded-lg p-3" style={{ backgroundColor: 'var(--color-surface-raised)', border: '1px solid var(--color-border)' }}>
+              <p className="text-base" style={{ color: 'var(--color-text-secondary)' }}>Available providers:</p>
               <div className="mt-2 flex flex-wrap gap-2">
                 {aiProviders?.providers &&
                   Object.entries(aiProviders.providers).map(([provider, available]) => (
@@ -498,7 +510,7 @@ export function Settings() {
 
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-neutral-700">
+                <label className="block text-lg font-medium" style={{ color: 'var(--color-text-primary)' }}>
                   Default Provider
                 </label>
                 <select
@@ -506,7 +518,8 @@ export function Settings() {
                   onChange={(e) =>
                     setSettings({ ...settings, default_ai_provider: e.target.value })
                   }
-                  className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500"
+                  className="input mt-1 w-full rounded-lg px-3"
+                  style={{ height: '48px', fontSize: '18px', backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-border)', color: 'var(--color-text-primary)' }}
                 >
                   <option value="anthropic">Anthropic (Claude)</option>
                   <option value="openai">OpenAI (GPT)</option>
@@ -515,7 +528,7 @@ export function Settings() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-neutral-700">
+                <label className="block text-lg font-medium" style={{ color: 'var(--color-text-primary)' }}>
                   OpenAI API Key
                 </label>
                 <input
@@ -523,12 +536,13 @@ export function Settings() {
                   value={settings.openai_api_key || ''}
                   onChange={(e) => setSettings({ ...settings, openai_api_key: e.target.value })}
                   placeholder="sk-..."
-                  className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500"
+                  className="input mt-1 w-full rounded-lg px-3"
+                  style={{ height: '48px', fontSize: '18px', backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-border)', color: 'var(--color-text-primary)' }}
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-neutral-700">
+                <label className="block text-lg font-medium" style={{ color: 'var(--color-text-primary)' }}>
                   Anthropic API Key
                 </label>
                 <input
@@ -538,12 +552,13 @@ export function Settings() {
                     setSettings({ ...settings, anthropic_api_key: e.target.value })
                   }
                   placeholder="sk-ant-..."
-                  className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500"
+                  className="input mt-1 w-full rounded-lg px-3"
+                  style={{ height: '48px', fontSize: '18px', backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-border)', color: 'var(--color-text-primary)' }}
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-neutral-700">
+                <label className="block text-lg font-medium" style={{ color: 'var(--color-text-primary)' }}>
                   Ollama Base URL
                 </label>
                 <input
@@ -551,15 +566,40 @@ export function Settings() {
                   value={settings.ollama_base_url || ''}
                   onChange={(e) => setSettings({ ...settings, ollama_base_url: e.target.value })}
                   placeholder="http://localhost:11434"
-                  className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500"
+                  className="input mt-1 w-full rounded-lg px-3"
+                  style={{ height: '48px', fontSize: '18px', backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-border)', color: 'var(--color-text-primary)' }}
                 />
               </div>
+            </div>
+          </section>
+
+          {/* Appearance */}
+          <section className="rounded-lg p-6" style={{ backgroundColor: 'var(--color-surface)', border: '1px solid var(--color-border)' }}>
+            <div className="mb-4">
+              <h2 className="text-xl font-semibold" style={{ color: 'var(--color-text-primary)' }}>Appearance</h2>
+              <p className="text-base" style={{ color: 'var(--color-text-secondary)' }}>Choose your preferred color theme</p>
+            </div>
+            <div className="flex rounded-lg overflow-hidden" style={{ border: '1px solid var(--color-border)' }}>
+              {(['light', 'dark', 'system'] as const).map((t) => (
+                <button
+                  key={t}
+                  onClick={() => setTheme(t)}
+                  className="flex-1 px-4 py-3 text-base font-medium capitalize transition-colors"
+                  style={{
+                    backgroundColor: theme === t ? 'var(--color-accent-light)' : 'transparent',
+                    color: theme === t ? 'var(--color-accent)' : 'var(--color-text-secondary)',
+                    minHeight: '48px',
+                  }}
+                >
+                  {t}
+                </button>
+              ))}
             </div>
           </section>
         </div>
       </main>
 
-      <footer className="border-t border-neutral-200 bg-white px-6 py-4">
+      <footer className="px-6 py-4" style={{ backgroundColor: 'var(--color-surface)', borderTop: '1px solid var(--color-border)' }}>
         <div className="mx-auto flex max-w-2xl items-center justify-end gap-3">
           {saveStatus === 'saved' && (
             <span className="text-sm text-green-600">Settings saved!</span>
@@ -570,7 +610,10 @@ export function Settings() {
           <button
             onClick={handleSave}
             disabled={saveStatus === 'saving'}
-            className="inline-flex items-center gap-2 rounded-lg bg-purple-600 px-4 py-2 text-sm font-medium text-white hover:bg-purple-700 disabled:opacity-50"
+            className="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-base font-medium text-white disabled:opacity-50"
+            style={{ backgroundColor: 'var(--color-accent)', minHeight: '44px' }}
+            onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = 'var(--color-accent-hover)')}
+            onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'var(--color-accent)')}
           >
             <Save className="h-4 w-4" />
             {saveStatus === 'saving' ? 'Saving...' : 'Save Settings'}
@@ -588,15 +631,16 @@ export function Settings() {
       {/* Duplicate Resolution Modal */}
       {showDuplicateModal && duplicatePreview && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="mx-4 max-h-[80vh] w-full max-w-2xl overflow-hidden rounded-xl bg-white shadow-xl">
-            <div className="flex items-center justify-between border-b border-neutral-200 px-6 py-4">
-              <h2 className="text-lg font-semibold text-neutral-900">Resolve Duplicates</h2>
+          <div className="mx-4 max-h-[80vh] w-full max-w-2xl overflow-hidden rounded-lg shadow-xl" style={{ backgroundColor: 'var(--color-surface)' }}>
+            <div className="flex items-center justify-between px-6 py-4" style={{ borderBottom: '1px solid var(--color-border)' }}>
+              <h2 className="text-xl font-semibold" style={{ color: 'var(--color-text-primary)' }}>Resolve Duplicates</h2>
               <button
                 onClick={() => {
                   setShowDuplicateModal(false);
                   setDuplicatePreview(null);
                 }}
-                className="p-1 text-neutral-400 hover:text-neutral-600"
+                className="p-1"
+                style={{ color: 'var(--color-text-secondary)' }}
               >
                 <X className="h-5 w-5" />
               </button>
@@ -606,29 +650,29 @@ export function Settings() {
               {duplicatePreview.total_duplicates === 0 ? (
                 <div className="text-center py-8">
                   <Check className="mx-auto h-12 w-12 text-green-500" />
-                  <p className="mt-2 text-lg font-medium text-neutral-900">No duplicates found</p>
-                  <p className="text-sm text-neutral-500">Your library is clean!</p>
+                  <p className="mt-2 text-lg font-medium" style={{ color: 'var(--color-text-primary)' }}>No duplicates found</p>
+                  <p className="text-base" style={{ color: 'var(--color-text-secondary)' }}>Your library is clean!</p>
                 </div>
               ) : (
                 <>
                   {/* Summary */}
-                  <div className="mb-6 rounded-lg bg-neutral-50 p-4">
+                  <div className="mb-6 rounded-lg p-4" style={{ backgroundColor: 'var(--color-surface-raised)' }}>
                     <div className="grid grid-cols-3 gap-4 text-center">
                       <div>
-                        <p className="text-2xl font-bold text-neutral-900">{duplicatePreview.total_groups}</p>
-                        <p className="text-xs text-neutral-500">Duplicate Groups</p>
+                        <p className="text-2xl font-bold" style={{ color: 'var(--color-text-primary)' }}>{duplicatePreview.total_groups}</p>
+                        <p className="text-base" style={{ color: 'var(--color-text-secondary)' }}>Duplicate Groups</p>
                       </div>
                       <div>
-                        <p className="text-2xl font-bold text-neutral-900">{duplicatePreview.total_duplicates}</p>
-                        <p className="text-xs text-neutral-500">Files to Remove</p>
+                        <p className="text-2xl font-bold" style={{ color: 'var(--color-text-primary)' }}>{duplicatePreview.total_duplicates}</p>
+                        <p className="text-base" style={{ color: 'var(--color-text-secondary)' }}>Files to Remove</p>
                       </div>
                       <div>
                         <p className="text-2xl font-bold text-amber-600">{duplicatePreview.total_space_mb} MB</p>
-                        <p className="text-xs text-neutral-500">Space to Free</p>
+                        <p className="text-base" style={{ color: 'var(--color-text-secondary)' }}>Space to Free</p>
                       </div>
                     </div>
                     {duplicatePreview.has_source_of_truth && (
-                      <p className="mt-3 text-center text-sm text-neutral-600">
+                      <p className="mt-3 text-center text-base" style={{ color: 'var(--color-text-secondary)' }}>
                         Source of truth: <span className="font-medium">{duplicatePreview.source_of_truth_folder}</span>
                       </p>
                     )}
@@ -641,17 +685,17 @@ export function Settings() {
 
                   {/* Preview list */}
                   <div className="space-y-3">
-                    <p className="text-sm font-medium text-neutral-700">Preview (first 10 groups):</p>
+                    <p className="text-lg font-medium" style={{ color: 'var(--color-text-primary)' }}>Preview (first 10 groups):</p>
                     {duplicatePreview.groups.slice(0, 10).map((group) => (
-                      <div key={group.file_hash} className="rounded-lg border border-neutral-200 p-3">
+                      <div key={group.file_hash} className="rounded-lg p-3" style={{ border: '1px solid var(--color-border)' }}>
                         <div className="flex items-start justify-between">
                           <div className="flex-1 min-w-0">
-                            <p className="font-medium text-neutral-900 truncate">{group.keep.title}</p>
+                            <p className="font-medium truncate" style={{ color: 'var(--color-text-primary)' }}>{group.keep.title}</p>
                             <p className="text-xs text-green-600">
                               Keep ({group.keep_reason === 'source_of_truth' ? 'source of truth' : 'newest'})
                             </p>
                           </div>
-                          <span className="ml-2 text-xs text-neutral-500">
+                          <span className="ml-2 text-base" style={{ color: 'var(--color-text-secondary)' }}>
                             {Math.round(group.space_freed_bytes / 1024 / 1024)} MB freed
                           </span>
                         </div>
@@ -665,7 +709,7 @@ export function Settings() {
                       </div>
                     ))}
                     {duplicatePreview.groups.length > 10 && (
-                      <p className="text-center text-sm text-neutral-500">
+                      <p className="text-center text-base" style={{ color: 'var(--color-text-secondary)' }}>
                         ...and {duplicatePreview.groups.length - 10} more groups
                       </p>
                     )}
@@ -678,13 +722,14 @@ export function Settings() {
                         type="checkbox"
                         checked={deleteFiles}
                         onChange={(e) => setDeleteFiles(e.target.checked)}
-                        className="mt-0.5 h-4 w-4 rounded border-neutral-300 text-amber-600 focus:ring-amber-500"
+                        className="mt-0.5 h-4 w-4 rounded"
+                        style={{ accentColor: 'var(--color-accent)' }}
                       />
                       <div>
-                        <span className="text-sm font-medium text-amber-800">
+                        <span className="text-lg font-medium text-amber-800">
                           Also delete files from disk
                         </span>
-                        <p className="text-xs text-amber-700">
+                        <p className="text-base text-amber-700">
                           If unchecked, only database records will be removed. Files will remain on disk.
                         </p>
                       </div>
@@ -694,13 +739,14 @@ export function Settings() {
               )}
             </div>
 
-            <div className="flex items-center justify-end gap-3 border-t border-neutral-200 px-6 py-4">
+            <div className="flex items-center justify-end gap-3 px-6 py-4" style={{ borderTop: '1px solid var(--color-border)' }}>
               <button
                 onClick={() => {
                   setShowDuplicateModal(false);
                   setDuplicatePreview(null);
                 }}
-                className="rounded-lg border border-neutral-300 px-4 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-50"
+                className="rounded-lg px-4 py-2 text-base font-medium"
+                style={{ backgroundColor: 'var(--color-surface)', border: '1px solid var(--color-border)', color: 'var(--color-text-secondary)', minHeight: '44px' }}
               >
                 Cancel
               </button>
@@ -708,7 +754,8 @@ export function Settings() {
                 <button
                   onClick={executeDuplicateResolution}
                   disabled={isResolving}
-                  className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50"
+                  className="rounded-lg bg-red-600 px-4 py-2 text-base font-medium text-white hover:bg-red-700 disabled:opacity-50"
+                  style={{ minHeight: '44px' }}
                 >
                   {isResolving ? 'Resolving...' : `Remove ${duplicatePreview.total_duplicates} Duplicates`}
                 </button>
