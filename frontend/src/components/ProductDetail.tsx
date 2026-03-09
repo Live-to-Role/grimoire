@@ -587,31 +587,36 @@ export function ProductDetail({ product, onClose }: ProductDetailProps) {
     >
       <div 
         ref={focusTrapRef}
-        className="flex h-[90vh] w-full max-w-4xl flex-col overflow-hidden rounded-sm bg-codex-cream shadow-tome-lg"
+        className="flex max-h-[90vh] w-full max-w-4xl flex-col overflow-hidden rounded-lg shadow-lg"
+        style={{ backgroundColor: 'var(--color-surface)' }}
       >
-        <header className="flex items-center justify-between border-b border-codex-tan px-6 py-4">
-          <h2 id="product-detail-title" className="text-xl font-semibold font-display text-primary-800 truncate">{product.title}</h2>
+        <header className="flex items-center justify-between border-b px-6 py-4" style={{ borderColor: 'var(--color-border)' }}>
+          <h2 id="product-detail-title" className="text-2xl font-semibold font-display truncate" style={{ color: 'var(--color-text-primary)' }}>{product.title}</h2>
           <button
             onClick={onClose}
             aria-label="Close product details"
-            className="rounded-sm p-2 text-primary-600 hover:bg-primary-200"
+            className="flex items-center justify-center rounded-md transition-colors"
+            style={{ width: '44px', height: '44px', color: 'var(--color-text-secondary)' }}
+            onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = 'var(--color-surface-raised)')}
+            onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
           >
             <X className="h-5 w-5" aria-hidden="true" />
           </button>
         </header>
 
-        <div className="flex border-b border-codex-tan" role="tablist" aria-label="Product information tabs">
+        <div className="flex border-b" role="tablist" aria-label="Product information tabs" style={{ borderColor: 'var(--color-border)' }}>
           <button
             onClick={() => handleTabChange('info')}
             role="tab"
             aria-selected={activeTab === 'info'}
             aria-controls="panel-info"
             id="tab-info"
-            className={`px-6 py-3 text-sm font-medium ${
+            className={`px-6 py-3 text-lg font-medium min-h-[48px] ${
               activeTab === 'info'
-                ? 'border-b-2 border-codex-olive text-codex-dark'
-                : 'text-primary-600 hover:text-primary-800'
+                ? 'border-b-2'
+                : ''
             }`}
+            style={activeTab === 'info' ? { borderColor: 'var(--color-accent)', color: 'var(--color-accent)' } : { color: 'var(--color-text-secondary)' }}
           >
             Details
           </button>
@@ -621,11 +626,12 @@ export function ProductDetail({ product, onClose }: ProductDetailProps) {
             aria-selected={activeTab === 'text'}
             aria-controls="panel-text"
             id="tab-text"
-            className={`px-6 py-3 text-sm font-medium ${
+            className={`px-6 py-3 text-lg font-medium min-h-[48px] ${
               activeTab === 'text'
-                ? 'border-b-2 border-codex-olive text-codex-dark'
-                : 'text-primary-600 hover:text-primary-800'
+                ? 'border-b-2'
+                : ''
             }`}
+            style={activeTab === 'text' ? { borderColor: 'var(--color-accent)', color: 'var(--color-accent)' } : { color: 'var(--color-text-secondary)' }}
           >
             Extracted Text
           </button>
@@ -635,11 +641,12 @@ export function ProductDetail({ product, onClose }: ProductDetailProps) {
             aria-selected={activeTab === 'extract'}
             aria-controls="panel-extract"
             id="tab-extract"
-            className={`px-6 py-3 text-sm font-medium ${
+            className={`px-6 py-3 text-lg font-medium min-h-[48px] ${
               activeTab === 'extract'
-                ? 'border-b-2 border-codex-olive text-codex-dark'
-                : 'text-primary-600 hover:text-primary-800'
+                ? 'border-b-2'
+                : ''
             }`}
+            style={activeTab === 'extract' ? { borderColor: 'var(--color-accent)', color: 'var(--color-accent)' } : { color: 'var(--color-text-secondary)' }}
           >
             Extract Content
           </button>
@@ -649,11 +656,12 @@ export function ProductDetail({ product, onClose }: ProductDetailProps) {
             aria-selected={activeTab === 'export'}
             aria-controls="panel-export"
             id="tab-export"
-            className={`px-6 py-3 text-sm font-medium ${
+            className={`px-6 py-3 text-lg font-medium min-h-[48px] ${
               activeTab === 'export'
-                ? 'border-b-2 border-codex-olive text-codex-dark'
-                : 'text-primary-600 hover:text-primary-800'
+                ? 'border-b-2'
+                : ''
             }`}
+            style={activeTab === 'export' ? { borderColor: 'var(--color-accent)', color: 'var(--color-accent)' } : { color: 'var(--color-text-secondary)' }}
           >
             Export
           </button>
@@ -663,15 +671,16 @@ export function ProductDetail({ product, onClose }: ProductDetailProps) {
             aria-selected={activeTab === 'notes'}
             aria-controls="panel-notes"
             id="tab-notes"
-            className={`px-6 py-3 text-sm font-medium ${
+            className={`px-6 py-3 text-lg font-medium min-h-[48px] ${
               activeTab === 'notes'
-                ? 'border-b-2 border-codex-olive text-codex-dark'
-                : 'text-primary-600 hover:text-primary-800'
+                ? 'border-b-2'
+                : ''
             }`}
+            style={activeTab === 'notes' ? { borderColor: 'var(--color-accent)', color: 'var(--color-accent)' } : { color: 'var(--color-text-secondary)' }}
           >
             GM Notes
             {runNotes && runNotes.length > 0 && (
-              <span className="ml-1.5 rounded-sm bg-codex-olive/20 px-2 py-0.5 text-xs text-codex-dark">
+              <span className="ml-1.5 rounded-md px-2 py-0.5 text-xs" style={{ backgroundColor: 'var(--color-accent-light)', color: 'var(--color-accent)' }}>
                 {runNotes.length}
               </span>
             )}
@@ -690,7 +699,8 @@ export function ProductDetail({ product, onClose }: ProductDetailProps) {
                 <img
                   src={getCoverUrl(product.id)}
                   alt={product.title || 'Product cover'}
-                  className="h-64 w-44 rounded-lg object-cover shadow-lg"
+                  className="rounded-lg object-cover shadow-sm"
+                  style={{ width: '120px', height: '160px' }}
                   onError={(e) => {
                     (e.target as HTMLImageElement).src = '/placeholder-cover.png';
                   }}
@@ -702,71 +712,71 @@ export function ProductDetail({ product, onClose }: ProductDetailProps) {
                   <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-2">
                     {/* Basic Info */}
                     <div className="space-y-3">
-                      <h4 className="text-xs font-semibold uppercase tracking-wide text-primary-500">Basic Info</h4>
+                      <h4 className="text-base font-semibold uppercase tracking-wide" style={{ color: 'var(--color-text-secondary)' }}>Basic Info</h4>
                       <div>
-                        <label className="block text-sm font-medium text-primary-700">Title</label>
+                        <label className="block text-base font-medium" style={{ color: 'var(--color-text-secondary)' }}>Title</label>
                         <input
                           type="text"
                           value={editForm.title}
                           onChange={(e) => setEditForm({ ...editForm, title: e.target.value })}
-                          className="mt-1 w-full rounded-sm border border-codex-tan px-3 py-2 text-sm focus:border-codex-olive focus:outline-none focus:ring-1 focus:ring-codex-olive"
+                          className="mt-1 w-full rounded-md border px-3 py-2 text-lg focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500" style={{ borderColor: 'var(--color-border)', minHeight: '48px', fontSize: '18px' }}
                         />
                       </div>
                       <div>
-                        <label className="block text-sm font-medium text-primary-700">Description</label>
+                        <label className="block text-base font-medium" style={{ color: 'var(--color-text-secondary)' }}>Description</label>
                         <textarea
                           value={editForm.description}
                           onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
                           rows={3}
-                          className="mt-1 w-full rounded-sm border border-codex-tan px-3 py-2 text-sm focus:border-codex-olive focus:outline-none focus:ring-1 focus:ring-codex-olive"
+                          className="mt-1 w-full rounded-md border px-3 py-2 text-lg focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500" style={{ borderColor: 'var(--color-border)', minHeight: '48px', fontSize: '18px' }}
                           placeholder="Brief description of this product..."
                         />
                       </div>
                       <div className="grid grid-cols-2 gap-4">
                         <div>
-                          <label className="block text-sm font-medium text-primary-700">Author</label>
+                          <label className="block text-base font-medium" style={{ color: 'var(--color-text-secondary)' }}>Author</label>
                           <input
                             type="text"
                             value={editForm.author}
                             onChange={(e) => setEditForm({ ...editForm, author: e.target.value })}
-                            className="mt-1 w-full rounded-sm border border-codex-tan px-3 py-2 text-sm focus:border-codex-olive focus:outline-none focus:ring-1 focus:ring-codex-olive"
+                            className="mt-1 w-full rounded-md border px-3 py-2 text-lg focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500" style={{ borderColor: 'var(--color-border)', minHeight: '48px', fontSize: '18px' }}
                           />
                         </div>
                         <div>
-                          <label className="block text-sm font-medium text-primary-700">Publisher</label>
+                          <label className="block text-base font-medium" style={{ color: 'var(--color-text-secondary)' }}>Publisher</label>
                           <input
                             type="text"
                             value={editForm.publisher}
                             onChange={(e) => setEditForm({ ...editForm, publisher: e.target.value })}
-                            className="mt-1 w-full rounded-sm border border-codex-tan px-3 py-2 text-sm focus:border-codex-olive focus:outline-none focus:ring-1 focus:ring-codex-olive"
+                            className="mt-1 w-full rounded-md border px-3 py-2 text-lg focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500" style={{ borderColor: 'var(--color-border)', minHeight: '48px', fontSize: '18px' }}
                           />
                         </div>
                       </div>
                       <div className="grid grid-cols-3 gap-4">
                         <div>
-                          <label className="block text-sm font-medium text-primary-700">Year</label>
+                          <label className="block text-base font-medium" style={{ color: 'var(--color-text-secondary)' }}>Year</label>
                           <input
                             type="number"
                             value={editForm.publication_year}
                             onChange={(e) => setEditForm({ ...editForm, publication_year: e.target.value })}
-                            className="mt-1 w-full rounded-sm border border-codex-tan px-3 py-2 text-sm focus:border-codex-olive focus:outline-none focus:ring-1 focus:ring-codex-olive"
+                            className="mt-1 w-full rounded-md border px-3 py-2 text-lg focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500" style={{ borderColor: 'var(--color-border)', minHeight: '48px', fontSize: '18px' }}
                           />
                         </div>
                         <div>
-                          <label className="block text-sm font-medium text-primary-700">Page Count</label>
+                          <label className="block text-base font-medium" style={{ color: 'var(--color-text-secondary)' }}>Page Count</label>
                           <input
                             type="number"
                             value={editForm.page_count}
                             onChange={(e) => setEditForm({ ...editForm, page_count: e.target.value })}
-                            className="mt-1 w-full rounded-sm border border-codex-tan px-3 py-2 text-sm focus:border-codex-olive focus:outline-none focus:ring-1 focus:ring-codex-olive"
+                            className="mt-1 w-full rounded-md border px-3 py-2 text-lg focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500" style={{ borderColor: 'var(--color-border)', minHeight: '48px', fontSize: '18px' }}
                           />
                         </div>
                         <div>
-                          <label className="block text-sm font-medium text-primary-700">Format</label>
+                          <label className="block text-base font-medium" style={{ color: 'var(--color-text-secondary)' }}>Format</label>
                           <select
                             value={editForm.format}
                             onChange={(e) => setEditForm({ ...editForm, format: e.target.value })}
-                            className="mt-1 w-full rounded-sm border border-codex-tan px-3 py-2 text-sm focus:border-codex-olive focus:outline-none focus:ring-1 focus:ring-codex-olive"
+                            className="mt-1 w-full rounded-md border px-3 py-2 text-lg focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500" style={{ borderColor: 'var(--color-border)', minHeight: '48px', fontSize: '18px' }}
                           >
                             <option value="">Select...</option>
                             <option value="pdf">PDF</option>
@@ -778,11 +788,11 @@ export function ProductDetail({ product, onClose }: ProductDetailProps) {
                     </div>
 
                     {/* Classification */}
-                    <div className="space-y-3 border-t border-codex-tan pt-4">
-                      <h4 className="text-xs font-semibold uppercase tracking-wide text-primary-500">Classification</h4>
+                    <div className="space-y-3 border-t pt-4" style={{ borderColor: 'var(--color-border)' }}>
+                      <h4 className="text-base font-semibold uppercase tracking-wide" style={{ color: 'var(--color-text-secondary)' }}>Classification</h4>
                       <div className="grid grid-cols-2 gap-4">
                         <div>
-                          <label className="block text-sm font-medium text-primary-700">Game System</label>
+                          <label className="block text-base font-medium" style={{ color: 'var(--color-text-secondary)' }}>Game System</label>
                           <ComboboxWithAdd
                             value={editForm.game_system}
                             onChange={(value) => setEditForm({ ...editForm, game_system: value })}
@@ -792,11 +802,11 @@ export function ProductDetail({ product, onClose }: ProductDetailProps) {
                           />
                         </div>
                         <div>
-                          <label className="block text-sm font-medium text-primary-700">Product Type</label>
+                          <label className="block text-base font-medium" style={{ color: 'var(--color-text-secondary)' }}>Product Type</label>
                           <select
                             value={editForm.product_type}
                             onChange={(e) => setEditForm({ ...editForm, product_type: e.target.value })}
-                            className="mt-1 w-full rounded-sm border border-codex-tan px-3 py-2 text-sm focus:border-codex-olive focus:outline-none focus:ring-1 focus:ring-codex-olive"
+                            className="mt-1 w-full rounded-md border px-3 py-2 text-lg focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500" style={{ borderColor: 'var(--color-border)', minHeight: '48px', fontSize: '18px' }}
                           >
                             <option value="">Select...</option>
                             <option value="adventure">Adventure</option>
@@ -813,22 +823,22 @@ export function ProductDetail({ product, onClose }: ProductDetailProps) {
                       </div>
                       <div className="grid grid-cols-2 gap-4">
                         <div>
-                          <label className="block text-sm font-medium text-primary-700">Genre</label>
+                          <label className="block text-base font-medium" style={{ color: 'var(--color-text-secondary)' }}>Genre</label>
                           <input
                             type="text"
                             value={editForm.genre}
                             onChange={(e) => setEditForm({ ...editForm, genre: e.target.value })}
-                            className="mt-1 w-full rounded-sm border border-codex-tan px-3 py-2 text-sm focus:border-codex-olive focus:outline-none focus:ring-1 focus:ring-codex-olive"
+                            className="mt-1 w-full rounded-md border px-3 py-2 text-lg focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500" style={{ borderColor: 'var(--color-border)', minHeight: '48px', fontSize: '18px' }}
                             placeholder="e.g., Fantasy, Sci-Fi, Horror"
                           />
                         </div>
                         <div>
-                          <label className="block text-sm font-medium text-primary-700">Setting</label>
+                          <label className="block text-base font-medium" style={{ color: 'var(--color-text-secondary)' }}>Setting</label>
                           <input
                             type="text"
                             value={editForm.setting}
                             onChange={(e) => setEditForm({ ...editForm, setting: e.target.value })}
-                            className="mt-1 w-full rounded-sm border border-codex-tan px-3 py-2 text-sm focus:border-codex-olive focus:outline-none focus:ring-1 focus:ring-codex-olive"
+                            className="mt-1 w-full rounded-md border px-3 py-2 text-lg focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500" style={{ borderColor: 'var(--color-border)', minHeight: '48px', fontSize: '18px' }}
                             placeholder="e.g., Forgotten Realms, Eberron"
                           />
                         </div>
@@ -836,52 +846,52 @@ export function ProductDetail({ product, onClose }: ProductDetailProps) {
                     </div>
 
                     {/* Adventure Details */}
-                    <div className="space-y-3 border-t border-codex-tan pt-4">
-                      <h4 className="text-xs font-semibold uppercase tracking-wide text-primary-500">Adventure Details</h4>
+                    <div className="space-y-3 border-t pt-4" style={{ borderColor: 'var(--color-border)' }}>
+                      <h4 className="text-base font-semibold uppercase tracking-wide" style={{ color: 'var(--color-text-secondary)' }}>Adventure Details</h4>
                       <div className="grid grid-cols-4 gap-4">
                         <div>
-                          <label className="block text-sm font-medium text-primary-700">Min Level</label>
+                          <label className="block text-base font-medium" style={{ color: 'var(--color-text-secondary)' }}>Min Level</label>
                           <input
                             type="number"
                             value={editForm.level_range_min}
                             onChange={(e) => setEditForm({ ...editForm, level_range_min: e.target.value })}
-                            className="mt-1 w-full rounded-sm border border-codex-tan px-3 py-2 text-sm focus:border-codex-olive focus:outline-none focus:ring-1 focus:ring-codex-olive"
+                            className="mt-1 w-full rounded-md border px-3 py-2 text-lg focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500" style={{ borderColor: 'var(--color-border)', minHeight: '48px', fontSize: '18px' }}
                           />
                         </div>
                         <div>
-                          <label className="block text-sm font-medium text-primary-700">Max Level</label>
+                          <label className="block text-base font-medium" style={{ color: 'var(--color-text-secondary)' }}>Max Level</label>
                           <input
                             type="number"
                             value={editForm.level_range_max}
                             onChange={(e) => setEditForm({ ...editForm, level_range_max: e.target.value })}
-                            className="mt-1 w-full rounded-sm border border-codex-tan px-3 py-2 text-sm focus:border-codex-olive focus:outline-none focus:ring-1 focus:ring-codex-olive"
+                            className="mt-1 w-full rounded-md border px-3 py-2 text-lg focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500" style={{ borderColor: 'var(--color-border)', minHeight: '48px', fontSize: '18px' }}
                           />
                         </div>
                         <div>
-                          <label className="block text-sm font-medium text-primary-700">Min Party</label>
+                          <label className="block text-base font-medium" style={{ color: 'var(--color-text-secondary)' }}>Min Party</label>
                           <input
                             type="number"
                             value={editForm.party_size_min}
                             onChange={(e) => setEditForm({ ...editForm, party_size_min: e.target.value })}
-                            className="mt-1 w-full rounded-sm border border-codex-tan px-3 py-2 text-sm focus:border-codex-olive focus:outline-none focus:ring-1 focus:ring-codex-olive"
+                            className="mt-1 w-full rounded-md border px-3 py-2 text-lg focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500" style={{ borderColor: 'var(--color-border)', minHeight: '48px', fontSize: '18px' }}
                           />
                         </div>
                         <div>
-                          <label className="block text-sm font-medium text-primary-700">Max Party</label>
+                          <label className="block text-base font-medium" style={{ color: 'var(--color-text-secondary)' }}>Max Party</label>
                           <input
                             type="number"
                             value={editForm.party_size_max}
                             onChange={(e) => setEditForm({ ...editForm, party_size_max: e.target.value })}
-                            className="mt-1 w-full rounded-sm border border-codex-tan px-3 py-2 text-sm focus:border-codex-olive focus:outline-none focus:ring-1 focus:ring-codex-olive"
+                            className="mt-1 w-full rounded-md border px-3 py-2 text-lg focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500" style={{ borderColor: 'var(--color-border)', minHeight: '48px', fontSize: '18px' }}
                           />
                         </div>
                       </div>
                       <div>
-                        <label className="block text-sm font-medium text-primary-700">Estimated Runtime</label>
+                        <label className="block text-base font-medium" style={{ color: 'var(--color-text-secondary)' }}>Estimated Runtime</label>
                         <select
                           value={editForm.estimated_runtime}
                           onChange={(e) => setEditForm({ ...editForm, estimated_runtime: e.target.value })}
-                          className="mt-1 w-full rounded-sm border border-codex-tan px-3 py-2 text-sm focus:border-codex-olive focus:outline-none focus:ring-1 focus:ring-codex-olive"
+                          className="mt-1 w-full rounded-md border px-3 py-2 text-lg focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500" style={{ borderColor: 'var(--color-border)', minHeight: '48px', fontSize: '18px' }}
                         >
                           <option value="">Select...</option>
                           <option value="one-shot">One-shot (1 session)</option>
@@ -893,26 +903,26 @@ export function ProductDetail({ product, onClose }: ProductDetailProps) {
                     </div>
 
                     {/* Series Info */}
-                    <div className="space-y-3 border-t border-codex-tan pt-4">
-                      <h4 className="text-xs font-semibold uppercase tracking-wide text-primary-500">Series</h4>
+                    <div className="space-y-3 border-t pt-4" style={{ borderColor: 'var(--color-border)' }}>
+                      <h4 className="text-base font-semibold uppercase tracking-wide" style={{ color: 'var(--color-text-secondary)' }}>Series</h4>
                       <div className="grid grid-cols-2 gap-4">
                         <div>
-                          <label className="block text-sm font-medium text-primary-700">Series Name</label>
+                          <label className="block text-base font-medium" style={{ color: 'var(--color-text-secondary)' }}>Series Name</label>
                           <input
                             type="text"
                             value={editForm.series}
                             onChange={(e) => setEditForm({ ...editForm, series: e.target.value })}
-                            className="mt-1 w-full rounded-sm border border-codex-tan px-3 py-2 text-sm focus:border-codex-olive focus:outline-none focus:ring-1 focus:ring-codex-olive"
+                            className="mt-1 w-full rounded-md border px-3 py-2 text-lg focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500" style={{ borderColor: 'var(--color-border)', minHeight: '48px', fontSize: '18px' }}
                             placeholder="e.g., Slavers Series"
                           />
                         </div>
                         <div>
-                          <label className="block text-sm font-medium text-primary-700">Series Code/Order</label>
+                          <label className="block text-base font-medium" style={{ color: 'var(--color-text-secondary)' }}>Series Code/Order</label>
                           <input
                             type="text"
                             value={editForm.series_order}
                             onChange={(e) => setEditForm({ ...editForm, series_order: e.target.value })}
-                            className="mt-1 w-full rounded-sm border border-codex-tan px-3 py-2 text-sm focus:border-codex-olive focus:outline-none focus:ring-1 focus:ring-codex-olive"
+                            className="mt-1 w-full rounded-md border px-3 py-2 text-lg focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500" style={{ borderColor: 'var(--color-border)', minHeight: '48px', fontSize: '18px' }}
                             placeholder="e.g., A1, REF4, 1"
                           />
                         </div>
@@ -920,69 +930,72 @@ export function ProductDetail({ product, onClose }: ProductDetailProps) {
                     </div>
 
                     {/* Marketplace Links */}
-                    <div className="space-y-3 border-t border-codex-tan pt-4">
-                      <h4 className="text-xs font-semibold uppercase tracking-wide text-primary-500">Marketplace Links</h4>
+                    <div className="space-y-3 border-t pt-4" style={{ borderColor: 'var(--color-border)' }}>
+                      <h4 className="text-base font-semibold uppercase tracking-wide" style={{ color: 'var(--color-text-secondary)' }}>Marketplace Links</h4>
                       <div>
-                        <label className="block text-sm font-medium text-primary-700">DriveThruRPG URL</label>
+                        <label className="block text-base font-medium" style={{ color: 'var(--color-text-secondary)' }}>DriveThruRPG URL</label>
                         <input
                           type="url"
                           value={editForm.dtrpg_url}
                           onChange={(e) => setEditForm({ ...editForm, dtrpg_url: e.target.value })}
-                          className="mt-1 w-full rounded-sm border border-codex-tan px-3 py-2 text-sm focus:border-codex-olive focus:outline-none focus:ring-1 focus:ring-codex-olive"
+                          className="mt-1 w-full rounded-md border px-3 py-2 text-lg focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500" style={{ borderColor: 'var(--color-border)', minHeight: '48px', fontSize: '18px' }}
                           placeholder="https://www.drivethrurpg.com/product/..."
                         />
                       </div>
                       <div>
-                        <label className="block text-sm font-medium text-primary-700">Itch.io URL</label>
+                        <label className="block text-base font-medium" style={{ color: 'var(--color-text-secondary)' }}>Itch.io URL</label>
                         <input
                           type="url"
                           value={editForm.itch_url}
                           onChange={(e) => setEditForm({ ...editForm, itch_url: e.target.value })}
-                          className="mt-1 w-full rounded-sm border border-codex-tan px-3 py-2 text-sm focus:border-codex-olive focus:outline-none focus:ring-1 focus:ring-codex-olive"
+                          className="mt-1 w-full rounded-md border px-3 py-2 text-lg focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500" style={{ borderColor: 'var(--color-border)', minHeight: '48px', fontSize: '18px' }}
                           placeholder="https://example.itch.io/product"
                         />
                       </div>
                       <div>
-                        <label className="block text-sm font-medium text-primary-700">ISBN</label>
+                        <label className="block text-base font-medium" style={{ color: 'var(--color-text-secondary)' }}>ISBN</label>
                         <input
                           type="text"
                           value={editForm.isbn}
                           onChange={(e) => setEditForm({ ...editForm, isbn: e.target.value })}
-                          className="mt-1 w-full rounded-sm border border-codex-tan px-3 py-2 text-sm focus:border-codex-olive focus:outline-none focus:ring-1 focus:ring-codex-olive"
+                          className="mt-1 w-full rounded-md border px-3 py-2 text-lg focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500" style={{ borderColor: 'var(--color-border)', minHeight: '48px', fontSize: '18px' }}
                         />
                       </div>
                     </div>
 
                     {/* Metadata */}
-                    <div className="space-y-3 border-t border-codex-tan pt-4">
-                      <h4 className="text-xs font-semibold uppercase tracking-wide text-primary-500">Metadata</h4>
+                    <div className="space-y-3 border-t pt-4" style={{ borderColor: 'var(--color-border)' }}>
+                      <h4 className="text-base font-semibold uppercase tracking-wide" style={{ color: 'var(--color-text-secondary)' }}>Metadata</h4>
                       <div>
-                        <label className="block text-sm font-medium text-primary-700">Themes</label>
+                        <label className="block text-base font-medium" style={{ color: 'var(--color-text-secondary)' }}>Themes</label>
                         <input
                           type="text"
                           value={editForm.themes}
                           onChange={(e) => setEditForm({ ...editForm, themes: e.target.value })}
-                          className="mt-1 w-full rounded-sm border border-codex-tan px-3 py-2 text-sm focus:border-codex-olive focus:outline-none focus:ring-1 focus:ring-codex-olive"
+                          className="mt-1 w-full rounded-md border px-3 py-2 text-lg focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500" style={{ borderColor: 'var(--color-border)', minHeight: '48px', fontSize: '18px' }}
                           placeholder="horror, exploration, mystery (comma separated)"
                         />
                       </div>
                       <div>
-                        <label className="block text-sm font-medium text-primary-700">Content Warnings</label>
+                        <label className="block text-base font-medium" style={{ color: 'var(--color-text-secondary)' }}>Content Warnings</label>
                         <input
                           type="text"
                           value={editForm.content_warnings}
                           onChange={(e) => setEditForm({ ...editForm, content_warnings: e.target.value })}
-                          className="mt-1 w-full rounded-sm border border-codex-tan px-3 py-2 text-sm focus:border-codex-olive focus:outline-none focus:ring-1 focus:ring-codex-olive"
+                          className="mt-1 w-full rounded-md border px-3 py-2 text-lg focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500" style={{ borderColor: 'var(--color-border)', minHeight: '48px', fontSize: '18px' }}
                           placeholder="violence, body horror (comma separated)"
                         />
                       </div>
                     </div>
 
-                    <div className="flex flex-wrap gap-3 pt-4 border-t border-codex-tan">
+                    <div className="flex flex-wrap gap-3 pt-4 border-t" style={{ borderColor: 'var(--color-border)' }}>
                       <button
                         onClick={handleSaveEdit}
                         disabled={updateMutation.isPending || updateAndContributeMutation.isPending}
-                        className="inline-flex items-center gap-2 rounded-sm bg-codex-dark px-4 py-2 text-sm font-medium text-codex-cream hover:bg-codex-ink disabled:opacity-50"
+                        className="inline-flex items-center gap-2 rounded-md px-4 py-2 text-base font-medium disabled:opacity-50 transition-colors"
+                        style={{ backgroundColor: 'var(--color-accent)', color: '#fff' }}
+                        onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = 'var(--color-accent-hover)')}
+                        onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'var(--color-accent)')}
                       >
                         {updateMutation.isPending ? (
                           <Loader2 className="h-4 w-4 animate-spin" />
@@ -1007,7 +1020,10 @@ export function ProductDetail({ product, onClose }: ProductDetailProps) {
                       <button
                         onClick={handleCancelEdit}
                         disabled={updateMutation.isPending || updateAndContributeMutation.isPending}
-                        className="inline-flex items-center gap-2 rounded-sm border border-codex-tan bg-codex-cream px-4 py-2 text-sm font-medium text-primary-700 hover:bg-primary-100 disabled:opacity-50"
+                        className="inline-flex items-center gap-2 rounded-md border px-4 py-2 text-base font-medium disabled:opacity-50 transition-colors"
+                        style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-surface)', color: 'var(--color-text-secondary)' }}
+                        onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = 'var(--color-surface-raised)')}
+                        onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'var(--color-surface)')}
                       >
                         Cancel
                       </button>
@@ -1018,60 +1034,60 @@ export function ProductDetail({ product, onClose }: ProductDetailProps) {
                     <div className="grid grid-cols-2 gap-4">
                       {localProduct.game_system && (
                         <div className="flex items-center gap-2">
-                          <Book className="h-4 w-4 text-primary-400" />
+                          <Book className="h-4 w-4" style={{ color: 'var(--color-text-secondary)' }} />
                           <div>
-                            <p className="text-xs text-primary-600">Game System</p>
-                            <p className="font-medium">{localProduct.game_system}</p>
+                            <p className="text-base" style={{ color: 'var(--color-text-secondary)' }}>Game System</p>
+                            <p className="text-lg font-medium" style={{ color: 'var(--color-text-primary)' }}>{localProduct.game_system}</p>
                           </div>
                         </div>
                       )}
 
                       {localProduct.product_type && (
                         <div className="flex items-center gap-2">
-                          <FileText className="h-4 w-4 text-primary-400" />
+                          <FileText className="h-4 w-4" style={{ color: 'var(--color-text-secondary)' }} />
                           <div>
-                            <p className="text-xs text-primary-600">Type</p>
-                            <p className="font-medium">{localProduct.product_type}</p>
+                            <p className="text-base" style={{ color: 'var(--color-text-secondary)' }}>Type</p>
+                            <p className="text-lg font-medium" style={{ color: 'var(--color-text-primary)' }}>{localProduct.product_type}</p>
                           </div>
                         </div>
                       )}
 
                       {localProduct.publisher && (
                         <div className="flex items-center gap-2">
-                          <Users className="h-4 w-4 text-primary-400" />
+                          <Users className="h-4 w-4" style={{ color: 'var(--color-text-secondary)' }} />
                           <div>
-                            <p className="text-xs text-primary-600">Publisher</p>
-                            <p className="font-medium">{localProduct.publisher}</p>
+                            <p className="text-base" style={{ color: 'var(--color-text-secondary)' }}>Publisher</p>
+                            <p className="text-lg font-medium" style={{ color: 'var(--color-text-primary)' }}>{localProduct.publisher}</p>
                           </div>
                         </div>
                       )}
 
                       {localProduct.publication_year && (
                         <div className="flex items-center gap-2">
-                          <Calendar className="h-4 w-4 text-primary-400" />
+                          <Calendar className="h-4 w-4" style={{ color: 'var(--color-text-secondary)' }} />
                           <div>
-                            <p className="text-xs text-primary-600">Year</p>
-                            <p className="font-medium">{localProduct.publication_year}</p>
+                            <p className="text-base" style={{ color: 'var(--color-text-secondary)' }}>Year</p>
+                            <p className="text-lg font-medium" style={{ color: 'var(--color-text-primary)' }}>{localProduct.publication_year}</p>
                           </div>
                         </div>
                       )}
 
                       {localProduct.page_count && (
                         <div className="flex items-center gap-2">
-                          <FileText className="h-4 w-4 text-primary-400" />
+                          <FileText className="h-4 w-4" style={{ color: 'var(--color-text-secondary)' }} />
                           <div>
-                            <p className="text-xs text-primary-600">Pages</p>
-                            <p className="font-medium">{localProduct.page_count}</p>
+                            <p className="text-base" style={{ color: 'var(--color-text-secondary)' }}>Pages</p>
+                            <p className="text-lg font-medium" style={{ color: 'var(--color-text-primary)' }}>{localProduct.page_count}</p>
                           </div>
                         </div>
                       )}
 
                       {(localProduct.level_range_min || localProduct.level_range_max) && (
                         <div className="flex items-center gap-2">
-                          <Clock className="h-4 w-4 text-primary-400" />
+                          <Clock className="h-4 w-4" style={{ color: 'var(--color-text-secondary)' }} />
                           <div>
-                            <p className="text-xs text-primary-600">Level Range</p>
-                            <p className="font-medium">
+                            <p className="text-base" style={{ color: 'var(--color-text-secondary)' }}>Level Range</p>
+                            <p className="text-lg font-medium" style={{ color: 'var(--color-text-primary)' }}>
                               {localProduct.level_range_min || '?'} - {localProduct.level_range_max || '?'}
                             </p>
                           </div>
@@ -1102,21 +1118,30 @@ export function ProductDetail({ product, onClose }: ProductDetailProps) {
                     <div className="flex flex-wrap gap-3 pt-4">
                       <button
                         onClick={() => setShowPdfViewer(true)}
-                        className="inline-flex items-center gap-2 rounded-sm bg-codex-dark px-4 py-2 text-sm font-medium text-codex-cream hover:bg-codex-ink"
+                        className="inline-flex items-center gap-2 rounded-md px-4 py-2 text-base font-medium transition-colors"
+                        style={{ backgroundColor: 'var(--color-accent)', color: '#fff' }}
+                        onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = 'var(--color-accent-hover)')}
+                        onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'var(--color-accent)')}
                       >
                         <Eye className="h-4 w-4" />
                         View PDF
                       </button>
                       <button
                         onClick={openPdf}
-                        className="inline-flex items-center gap-2 rounded-sm border border-codex-tan bg-codex-cream px-4 py-2 text-sm font-medium text-primary-700 hover:bg-primary-100"
+                        className="inline-flex items-center gap-2 rounded-md border px-4 py-2 text-base font-medium transition-colors"
+                        style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-surface)', color: 'var(--color-text-secondary)' }}
+                        onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = 'var(--color-surface-raised)')}
+                        onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'var(--color-surface)')}
                       >
                         <ExternalLink className="h-4 w-4" />
                         Open in New Tab
                       </button>
                       <button
                         onClick={() => setIsEditing(true)}
-                        className="inline-flex items-center gap-2 rounded-sm border border-codex-tan bg-codex-cream px-4 py-2 text-sm font-medium text-primary-700 hover:bg-primary-100"
+                        className="inline-flex items-center gap-2 rounded-md border px-4 py-2 text-base font-medium transition-colors"
+                        style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-surface)', color: 'var(--color-text-secondary)' }}
+                        onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = 'var(--color-surface-raised)')}
+                        onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'var(--color-surface)')}
                       >
                         <Edit3 className="h-4 w-4" />
                         Edit
@@ -1167,7 +1192,10 @@ export function ProductDetail({ product, onClose }: ProductDetailProps) {
                       <div className="relative">
                         <button
                           onClick={() => setShowCampaignMenu(!showCampaignMenu)}
-                          className="inline-flex items-center gap-2 rounded-sm border border-codex-tan bg-codex-cream px-4 py-2 text-sm font-medium text-primary-700 hover:bg-primary-100"
+                          className="inline-flex items-center gap-2 rounded-md border px-4 py-2 text-base font-medium transition-colors"
+                          style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-surface)', color: 'var(--color-text-secondary)' }}
+                          onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = 'var(--color-surface-raised)')}
+                          onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'var(--color-surface)')}
                         >
                           <FolderPlus className="h-4 w-4" />
                           Add to Campaign
@@ -1175,7 +1203,7 @@ export function ProductDetail({ product, onClose }: ProductDetailProps) {
                         </button>
                         
                         {showCampaignMenu && (
-                          <div className="absolute right-0 top-full mt-1 w-64 rounded-sm border border-codex-tan bg-codex-cream shadow-tome z-10">
+                          <div className="absolute right-0 top-full mt-1 w-64 rounded-md border shadow-sm z-10" style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-surface)' }}>
                             <div className="p-2">
                               <button
                                 onClick={() => createCampaignWithProductMutation.mutate()}
@@ -1197,16 +1225,18 @@ export function ProductDetail({ product, onClose }: ProductDetailProps) {
                                       key={campaign.id}
                                       onClick={() => addToCampaignMutation.mutate(campaign.id)}
                                       disabled={addToCampaignMutation.isPending}
-                                      className="w-full flex items-center justify-between rounded-sm px-3 py-2 text-sm text-left hover:bg-primary-100"
+                                      className="w-full flex items-center justify-between rounded-md px-3 py-2 text-sm text-left transition-colors" style={{ color: 'var(--color-text-primary)' }}
+                                      onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = 'var(--color-surface-raised)')}
+                                      onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
                                     >
                                       <div>
-                                        <p className="font-medium text-primary-800">{campaign.name}</p>
+                                        <p className="font-medium" style={{ color: 'var(--color-text-primary)' }}>{campaign.name}</p>
                                         {campaign.game_system && (
-                                          <p className="text-xs text-primary-600">{campaign.game_system}</p>
+                                          <p className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>{campaign.game_system}</p>
                                         )}
                                       </div>
                                       {addToCampaignMutation.isPending && addToCampaignMutation.variables === campaign.id && (
-                                        <Loader2 className="h-4 w-4 animate-spin text-codex-olive" />
+                                        <Loader2 className="h-4 w-4 animate-spin" style={{ color: 'var(--color-accent)' }} />
                                       )}
                                     </button>
                                   ))}
@@ -1226,7 +1256,10 @@ export function ProductDetail({ product, onClose }: ProductDetailProps) {
                       <div className="relative">
                         <button
                           onClick={() => setShowCollectionMenu(!showCollectionMenu)}
-                          className="inline-flex items-center gap-2 rounded-sm border border-codex-tan bg-codex-cream px-4 py-2 text-sm font-medium text-primary-700 hover:bg-primary-100"
+                          className="inline-flex items-center gap-2 rounded-md border px-4 py-2 text-base font-medium transition-colors"
+                          style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-surface)', color: 'var(--color-text-secondary)' }}
+                          onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = 'var(--color-surface-raised)')}
+                          onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'var(--color-surface)')}
                         >
                           <FolderPlus className="h-4 w-4" />
                           Collections
@@ -1234,7 +1267,7 @@ export function ProductDetail({ product, onClose }: ProductDetailProps) {
                         </button>
                         
                         {showCollectionMenu && (
-                          <div className="absolute right-0 top-full mt-1 w-64 rounded-sm border border-codex-tan bg-codex-cream shadow-tome z-10">
+                          <div className="absolute right-0 top-full mt-1 w-64 rounded-md border shadow-sm z-10" style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-surface)' }}>
                             {collectionsData && collectionsData.length > 0 ? (
                               <div className="max-h-64 overflow-y-auto p-2">
                                 {collectionsData.map((collection) => {
@@ -1244,7 +1277,9 @@ export function ProductDetail({ product, onClose }: ProductDetailProps) {
                                       key={collection.id}
                                       onClick={() => handleToggleCollection(collection)}
                                       disabled={addToCollectionMutation.isPending || removeFromCollectionMutation.isPending}
-                                      className="w-full flex items-center justify-between rounded-sm px-3 py-2 text-sm text-left hover:bg-primary-100"
+                                      className="w-full flex items-center justify-between rounded-md px-3 py-2 text-sm text-left transition-colors" style={{ color: 'var(--color-text-primary)' }}
+                                      onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = 'var(--color-surface-raised)')}
+                                      onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
                                     >
                                       <div className="flex items-center gap-2">
                                         <FolderPlus
@@ -1273,7 +1308,10 @@ export function ProductDetail({ product, onClose }: ProductDetailProps) {
                       <div className="relative">
                         <button
                           onClick={() => setShowTagMenu(!showTagMenu)}
-                          className="inline-flex items-center gap-2 rounded-sm border border-codex-tan bg-codex-cream px-4 py-2 text-sm font-medium text-primary-700 hover:bg-primary-100"
+                          className="inline-flex items-center gap-2 rounded-md border px-4 py-2 text-base font-medium transition-colors"
+                          style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-surface)', color: 'var(--color-text-secondary)' }}
+                          onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = 'var(--color-surface-raised)')}
+                          onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'var(--color-surface)')}
                         >
                           <Tag className="h-4 w-4" />
                           Tags
@@ -1281,7 +1319,7 @@ export function ProductDetail({ product, onClose }: ProductDetailProps) {
                         </button>
                         
                         {showTagMenu && (
-                          <div className="absolute right-0 top-full mt-1 w-72 rounded-sm border border-codex-tan bg-codex-cream shadow-tome z-10">
+                          <div className="absolute right-0 top-full mt-1 w-72 rounded-md border shadow-sm z-10" style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-surface)' }}>
                             {/* Current tags */}
                             {localProduct.tags && localProduct.tags.length > 0 && (
                               <div className="p-3 border-b border-neutral-100">
@@ -1385,7 +1423,7 @@ export function ProductDetail({ product, onClose }: ProductDetailProps) {
                         </button>
 
                         {showRunStatusMenu && (
-                          <div className="absolute right-0 top-full mt-1 w-72 rounded-sm border border-codex-tan bg-codex-cream shadow-tome z-10">
+                          <div className="absolute right-0 top-full mt-1 w-72 rounded-md border shadow-sm z-10" style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-surface)' }}>
                             <div className="p-2 space-y-1">
                               <p className="px-2 py-1 text-xs text-neutral-500 uppercase tracking-wide">Status</p>
                               <button
@@ -1598,8 +1636,8 @@ export function ProductDetail({ product, onClose }: ProductDetailProps) {
                   )}
                 </div>
               ) : textContent ? (
-                <div className="prose prose-sm max-w-none">
-                  <pre className="whitespace-pre-wrap font-sans text-sm leading-relaxed text-neutral-700">
+                <div className="prose max-w-prose mx-auto">
+                  <pre className="whitespace-pre-wrap text-lg leading-relaxed" style={{ fontFamily: 'var(--font-serif)', color: 'var(--color-text-primary)' }}>
                     {textContent}
                   </pre>
                 </div>
@@ -1613,14 +1651,17 @@ export function ProductDetail({ product, onClose }: ProductDetailProps) {
               className="p-6"
             >
               <div className="mb-6">
-                <h3 className="text-lg font-semibold text-primary-800 mb-2">Extract Structured Content</h3>
-                <p className="text-sm text-primary-600 mb-4">
+                <h3 className="text-lg font-semibold mb-2" style={{ color: 'var(--color-text-primary)' }}>Extract Structured Content</h3>
+                <p className="text-sm mb-4" style={{ color: 'var(--color-text-secondary)' }}>
                   Use AI to extract monsters, spells, magic items, and NPCs from this product.
                 </p>
                 <button
                   onClick={() => extractMutation.mutate({ monsters: true, spells: true, items: true, npcs: true })}
                   disabled={extractMutation.isPending || !localProduct.processing_status?.text_extracted}
-                  className="inline-flex items-center gap-2 rounded-sm bg-codex-dark px-4 py-2 text-sm font-medium text-codex-cream hover:bg-codex-ink disabled:opacity-50"
+                  className="inline-flex items-center gap-2 rounded-md px-4 py-2 text-base font-medium disabled:opacity-50 transition-colors"
+                  style={{ backgroundColor: 'var(--color-accent)', color: '#fff' }}
+                  onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = 'var(--color-accent-hover)')}
+                  onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'var(--color-accent)')}
                 >
                   {extractMutation.isPending ? (
                     <Loader2 className="h-4 w-4 animate-spin" />
@@ -1645,7 +1686,7 @@ export function ProductDetail({ product, onClose }: ProductDetailProps) {
               {extractedContent && (
                 <div className="space-y-4">
                   {extractedContent.monsters && (extractedContent.monsters as unknown[]).length > 0 && (
-                    <div className="rounded-sm border border-codex-tan p-4">
+                    <div className="rounded-md border p-4" style={{ borderColor: 'var(--color-border)' }}>
                       <h4 className="font-medium text-neutral-900 mb-2">
                         Monsters ({(extractedContent.monsters as unknown[]).length})
                       </h4>
@@ -1663,7 +1704,7 @@ export function ProductDetail({ product, onClose }: ProductDetailProps) {
                   )}
 
                   {extractedContent.spells && (extractedContent.spells as unknown[]).length > 0 && (
-                    <div className="rounded-sm border border-codex-tan p-4">
+                    <div className="rounded-md border p-4" style={{ borderColor: 'var(--color-border)' }}>
                       <h4 className="font-medium text-neutral-900 mb-2">
                         Spells ({(extractedContent.spells as unknown[]).length})
                       </h4>
@@ -1681,7 +1722,7 @@ export function ProductDetail({ product, onClose }: ProductDetailProps) {
                   )}
 
                   {extractedContent.magic_items && (extractedContent.magic_items as unknown[]).length > 0 && (
-                    <div className="rounded-sm border border-codex-tan p-4">
+                    <div className="rounded-md border p-4" style={{ borderColor: 'var(--color-border)' }}>
                       <h4 className="font-medium text-neutral-900 mb-2">
                         Magic Items ({(extractedContent.magic_items as unknown[]).length})
                       </h4>
@@ -1699,7 +1740,7 @@ export function ProductDetail({ product, onClose }: ProductDetailProps) {
                   )}
 
                   {extractedContent.npcs && (extractedContent.npcs as unknown[]).length > 0 && (
-                    <div className="rounded-sm border border-codex-tan p-4">
+                    <div className="rounded-md border p-4" style={{ borderColor: 'var(--color-border)' }}>
                       <h4 className="font-medium text-neutral-900 mb-2">
                         NPCs ({(extractedContent.npcs as unknown[]).length})
                       </h4>
@@ -1725,15 +1766,15 @@ export function ProductDetail({ product, onClose }: ProductDetailProps) {
               aria-labelledby="tab-export"
               className="p-6"
             >
-              <h3 className="text-lg font-semibold text-primary-800 mb-2">Export Content</h3>
-              <p className="text-sm text-primary-600 mb-6">
+              <h3 className="text-lg font-semibold mb-2" style={{ color: 'var(--color-text-primary)' }}>Export Content</h3>
+              <p className="text-sm mb-6" style={{ color: 'var(--color-text-secondary)' }}>
                 Export extracted content to various formats for use in other tools.
               </p>
 
               <div className="grid gap-4 md:grid-cols-2">
-                <div className="rounded-sm border border-codex-tan p-4">
-                  <h4 className="font-medium text-primary-800 mb-1">Foundry VTT</h4>
-                  <p className="text-sm text-primary-600 mb-3">
+                <div className="rounded-md border p-4" style={{ borderColor: 'var(--color-border)' }}>
+                  <h4 className="font-medium mb-1" style={{ color: 'var(--color-text-primary)' }}>Foundry VTT</h4>
+                  <p className="text-sm mb-3" style={{ color: 'var(--color-text-secondary)' }}>
                     Export monsters, spells, and items to Foundry VTT compendium format.
                   </p>
                   <button
@@ -1750,15 +1791,18 @@ export function ProductDetail({ product, onClose }: ProductDetailProps) {
                   </button>
                 </div>
 
-                <div className="rounded-sm border border-codex-tan p-4">
-                  <h4 className="font-medium text-primary-800 mb-1">Obsidian Markdown</h4>
-                  <p className="text-sm text-primary-600 mb-3">
+                <div className="rounded-md border p-4" style={{ borderColor: 'var(--color-border)' }}>
+                  <h4 className="font-medium mb-1" style={{ color: 'var(--color-text-primary)' }}>Obsidian Markdown</h4>
+                  <p className="text-sm mb-3" style={{ color: 'var(--color-text-secondary)' }}>
                     Export content as Obsidian-compatible markdown with YAML frontmatter.
                   </p>
                   <button
                     onClick={() => exportObsidianMutation.mutate()}
                     disabled={exportObsidianMutation.isPending || !product.processing_status?.text_extracted}
-                    className="inline-flex items-center gap-2 rounded-sm bg-codex-dark px-4 py-2 text-sm font-medium text-codex-cream hover:bg-codex-ink disabled:opacity-50"
+                    className="inline-flex items-center gap-2 rounded-md px-4 py-2 text-base font-medium disabled:opacity-50 transition-colors"
+                    style={{ backgroundColor: 'var(--color-accent)', color: '#fff' }}
+                    onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = 'var(--color-accent-hover)')}
+                    onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'var(--color-accent)')}
                   >
                     {exportObsidianMutation.isPending ? (
                       <Loader2 className="h-4 w-4 animate-spin" />
@@ -1790,17 +1834,20 @@ export function ProductDetail({ product, onClose }: ProductDetailProps) {
               className="p-6"
             >
               <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-semibold text-primary-800">GM Notes</h3>
+                <h3 className="text-lg font-semibold" style={{ color: 'var(--color-text-primary)' }}>GM Notes</h3>
                 <button
                   onClick={() => openNoteEditor()}
-                  className="inline-flex items-center gap-2 rounded-sm bg-codex-dark px-4 py-2 text-sm font-medium text-codex-cream hover:bg-codex-ink"
+                  className="inline-flex items-center gap-2 rounded-md px-4 py-2 text-base font-medium transition-colors"
+                  style={{ backgroundColor: 'var(--color-accent)', color: '#fff' }}
+                  onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = 'var(--color-accent-hover)')}
+                  onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'var(--color-accent)')}
                 >
                   <Plus className="h-4 w-4" />
                   Add Note
                 </button>
               </div>
 
-              <p className="text-sm text-primary-600 mb-6">
+              <p className="text-sm mb-6" style={{ color: 'var(--color-text-secondary)' }}>
                 Record your prep tips, modifications, warnings, and reviews for this adventure.
               </p>
 
@@ -1852,7 +1899,7 @@ export function ProductDetail({ product, onClose }: ProductDetailProps) {
                           </button>
                         </div>
                       </div>
-                      <h4 className="font-medium text-primary-800 mb-1">{note.title}</h4>
+                      <h4 className="font-medium mb-1" style={{ color: 'var(--color-text-primary)' }}>{note.title}</h4>
                       <p className="text-sm text-neutral-600 whitespace-pre-wrap">{note.content}</p>
                       <p className="text-xs text-neutral-400 mt-2">
                         {new Date(note.created_at).toLocaleDateString()}
@@ -1873,7 +1920,7 @@ export function ProductDetail({ product, onClose }: ProductDetailProps) {
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
                   <div className="w-full max-w-lg rounded-xl bg-white p-6 shadow-xl max-h-[90vh] overflow-y-auto">
                     <div className="flex items-center justify-between mb-4">
-                      <h3 className="text-lg font-semibold text-primary-800">
+                      <h3 className="text-lg font-semibold" style={{ color: 'var(--color-text-primary)' }}>
                         {editingNote ? 'Edit Note' : 'Add Note'}
                       </h3>
                       <button

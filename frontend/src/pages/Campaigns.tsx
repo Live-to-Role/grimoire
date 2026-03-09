@@ -347,18 +347,19 @@ export function Campaigns() {
   return (
     <div className="flex h-full">
       {/* Campaign List */}
-      <div className="w-80 border-r border-neutral-200 bg-white flex flex-col">
-        <div className="border-b border-neutral-200 p-4">
+      <div className="w-80 border-r flex flex-col" style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-surface)' }}>
+        <div className="border-b p-4" style={{ borderColor: 'var(--color-border)' }}>
           <div className="flex items-center justify-between mb-2">
-            <h2 className="text-lg font-semibold text-neutral-900">Campaigns</h2>
+            <h2 className="text-lg font-semibold" style={{ color: 'var(--color-text-primary)' }}>Campaigns</h2>
             <button
               onClick={() => setShowCreateModal(true)}
-              className="rounded-lg bg-purple-600 p-2 text-white hover:bg-purple-700"
+              className="rounded-md p-2 text-white"
+              style={{ backgroundColor: 'var(--color-accent)', minHeight: '44px', minWidth: '44px' }}
             >
               <Plus className="h-4 w-4" />
             </button>
           </div>
-          <p className="text-sm text-neutral-500">
+          <p className="text-base" style={{ color: 'var(--color-text-secondary)' }}>
             {campaigns.length} campaign{campaigns.length !== 1 ? 's' : ''}
           </p>
         </div>
@@ -366,15 +367,16 @@ export function Campaigns() {
         <div className="flex-1 overflow-y-auto p-2">
           {isLoading ? (
             <div className="flex items-center justify-center py-8">
-              <div className="h-6 w-6 animate-spin rounded-full border-2 border-purple-600 border-t-transparent" />
+              <div className="h-6 w-6 animate-spin rounded-full border-2 border-t-transparent" style={{ borderColor: 'var(--color-accent)', borderTopColor: 'transparent' }} />
             </div>
           ) : campaigns.length === 0 ? (
             <div className="text-center py-8">
-              <BookOpen className="mx-auto h-12 w-12 text-neutral-300" />
-              <p className="mt-2 text-sm text-neutral-500">No campaigns yet</p>
+              <BookOpen className="mx-auto h-12 w-12" style={{ color: 'var(--color-text-secondary)' }} />
+              <p className="mt-2 text-base" style={{ color: 'var(--color-text-secondary)' }}>No campaigns yet</p>
               <button
                 onClick={() => setShowCreateModal(true)}
-                className="mt-2 text-sm text-purple-600 hover:text-purple-700"
+                className="mt-2 text-base"
+                style={{ color: 'var(--color-accent)' }}
               >
                 Create your first campaign
               </button>
@@ -385,19 +387,34 @@ export function Campaigns() {
                 <button
                   key={campaign.id}
                   onClick={() => setSelectedCampaign(campaign)}
-                  className={`w-full rounded-lg p-3 text-left transition-colors ${
+                  className={`w-full rounded-md p-4 text-left transition-colors border ${
                     selectedCampaign?.id === campaign.id
-                      ? 'bg-purple-100 border border-purple-200'
-                      : 'hover:bg-neutral-50 border border-transparent'
+                      ? ''
+                      : 'border-transparent'
                   }`}
+                  style={
+                    selectedCampaign?.id === campaign.id
+                      ? { backgroundColor: 'var(--color-accent-light)', borderColor: 'var(--color-accent)' }
+                      : {}
+                  }
+                  onMouseEnter={(e) => {
+                    if (selectedCampaign?.id !== campaign.id) {
+                      (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-surface-raised)';
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    if (selectedCampaign?.id !== campaign.id) {
+                      (e.currentTarget as HTMLElement).style.backgroundColor = '';
+                    }
+                  }}
                 >
                   <div className="flex items-start justify-between">
                     <div className="flex-1 min-w-0">
-                      <h3 className="font-medium text-neutral-900 truncate">
+                      <h3 className="text-lg font-medium truncate" style={{ color: 'var(--color-text-primary)' }}>
                         {campaign.name}
                       </h3>
                       {campaign.game_system && (
-                        <p className="text-xs text-neutral-500 mt-0.5">
+                        <p className="text-base mt-0.5" style={{ color: 'var(--color-text-secondary)' }}>
                           {campaign.game_system}
                         </p>
                       )}
@@ -408,13 +425,18 @@ export function Campaigns() {
                           ? 'bg-green-100 text-green-700'
                           : campaign.status === 'completed'
                           ? 'bg-blue-100 text-blue-700'
-                          : 'bg-neutral-100 text-neutral-600'
+                          : ''
                       }`}
+                      style={
+                        campaign.status !== 'active' && campaign.status !== 'completed'
+                          ? { backgroundColor: 'var(--color-surface-raised)', color: 'var(--color-text-secondary)' }
+                          : {}
+                      }
                     >
                       {campaign.status}
                     </span>
                   </div>
-                  <div className="mt-2 flex items-center gap-3 text-xs text-neutral-500">
+                  <div className="mt-2 flex items-center gap-3 text-base" style={{ color: 'var(--color-text-secondary)' }}>
                     <span className="flex items-center gap-1">
                       <Calendar className="h-3 w-3" />
                       {campaign.session_count} sessions
@@ -434,22 +456,25 @@ export function Campaigns() {
       </div>
 
       {/* Campaign Detail */}
-      <div className="flex-1 bg-neutral-50 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto" style={{ backgroundColor: 'var(--color-surface-raised)' }}>
         {selectedCampaign ? (
           <div className="p-6">
             <div className="mb-6 flex items-start justify-between">
               <div>
-                <h1 className="text-2xl font-bold text-neutral-900">
+                <h1 className="text-2xl font-semibold" style={{ color: 'var(--color-text-primary)' }}>
                   {selectedCampaign.name}
                 </h1>
                 {selectedCampaign.game_system && (
-                  <p className="text-neutral-500">{selectedCampaign.game_system}</p>
+                  <p className="text-base" style={{ color: 'var(--color-text-secondary)' }}>{selectedCampaign.game_system}</p>
                 )}
               </div>
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => openEditModal(selectedCampaign)}
-                  className="rounded-lg border border-neutral-200 bg-white p-2 text-neutral-600 hover:bg-neutral-50"
+                  className="rounded-md border p-2"
+                  style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-surface)', color: 'var(--color-text-secondary)', minHeight: '44px', minWidth: '44px' }}
+                  onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-surface-raised)'; }}
+                  onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-surface)'; }}
                 >
                   <Edit2 className="h-4 w-4" />
                 </button>
@@ -459,7 +484,8 @@ export function Campaigns() {
                       deleteMutation.mutate(selectedCampaign.id);
                     }
                   }}
-                  className="rounded-lg border border-neutral-200 bg-white p-2 text-red-600 hover:bg-red-50"
+                  className="rounded-md border p-2 text-red-600 hover:bg-red-50"
+                  style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-surface)', minHeight: '44px', minWidth: '44px' }}
                 >
                   <Trash2 className="h-4 w-4" />
                 </button>
@@ -467,42 +493,45 @@ export function Campaigns() {
             </div>
 
             {selectedCampaign.description && (
-              <p className="mb-6 text-neutral-600">{selectedCampaign.description}</p>
+              <p className="mb-6 text-base" style={{ color: 'var(--color-text-secondary)' }}>{selectedCampaign.description}</p>
             )}
 
             <div className="grid grid-cols-3 gap-4 mb-8">
-              <div className="rounded-lg border border-neutral-200 bg-white p-4">
-                <p className="text-sm text-neutral-500">Status</p>
-                <p className="text-lg font-semibold text-neutral-900 capitalize">
+              <div className="rounded-md border p-4" style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-surface)' }}>
+                <p className="text-base" style={{ color: 'var(--color-text-secondary)' }}>Status</p>
+                <p className="text-lg font-semibold capitalize" style={{ color: 'var(--color-text-primary)' }}>
                   {selectedCampaign.status}
                 </p>
               </div>
-              <div className="rounded-lg border border-neutral-200 bg-white p-4">
-                <p className="text-sm text-neutral-500">Sessions</p>
-                <p className="text-lg font-semibold text-neutral-900">
+              <div className="rounded-md border p-4" style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-surface)' }}>
+                <p className="text-base" style={{ color: 'var(--color-text-secondary)' }}>Sessions</p>
+                <p className="text-lg font-semibold" style={{ color: 'var(--color-text-primary)' }}>
                   {selectedCampaign.session_count}
                 </p>
               </div>
-              <div className="rounded-lg border border-neutral-200 bg-white p-4">
-                <p className="text-sm text-neutral-500">Players</p>
-                <p className="text-lg font-semibold text-neutral-900">
-                  {selectedCampaign.player_count || '—'}
+              <div className="rounded-md border p-4" style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-surface)' }}>
+                <p className="text-base" style={{ color: 'var(--color-text-secondary)' }}>Players</p>
+                <p className="text-lg font-semibold" style={{ color: 'var(--color-text-primary)' }}>
+                  {selectedCampaign.player_count || '\u2014'}
                 </p>
               </div>
             </div>
 
             {/* Products Section */}
-            <div className="rounded-xl border border-neutral-200 bg-white mb-6">
-              <div className="border-b border-neutral-200 px-4 py-3 flex items-center justify-between">
-                <h2 className="font-semibold text-neutral-900">
+            <div className="rounded-xl border mb-6" style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-surface)' }}>
+              <div className="border-b px-4 py-3 flex items-center justify-between" style={{ borderColor: 'var(--color-border)' }}>
+                <h2 className="text-lg font-semibold" style={{ color: 'var(--color-text-primary)' }}>
                   Products ({campaignDetail?.products?.length || 0})
                 </h2>
                 <div className="flex items-center gap-2">
                   {campaignDetail?.products && campaignDetail.products.length > 0 && (
                     <button
                       onClick={openAllCampaignPdfs}
-                      className="rounded-lg border border-neutral-300 bg-white px-3 py-1.5 text-sm text-neutral-700 hover:bg-neutral-50"
+                      className="rounded-md border px-3 py-1.5 text-base"
+                      style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-surface)', color: 'var(--color-text-secondary)', minHeight: '44px' }}
                       title="Open all PDFs in new tabs"
+                      onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-surface-raised)'; }}
+                      onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-surface)'; }}
                     >
                       <ExternalLink className="h-4 w-4 inline mr-1" />
                       Open All
@@ -510,25 +539,31 @@ export function Campaigns() {
                   )}
                   <button
                     onClick={() => setShowProductPicker(true)}
-                    className="rounded-lg bg-purple-600 px-3 py-1.5 text-sm text-white hover:bg-purple-700"
+                    className="rounded-md px-3 py-1.5 text-base text-white"
+                    style={{ backgroundColor: 'var(--color-accent)', minHeight: '44px' }}
+                    onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-accent-hover)'; }}
+                    onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-accent)'; }}
                   >
                     <Plus className="h-4 w-4 inline mr-1" />
                     Add Product
                   </button>
                 </div>
               </div>
-              <div className="divide-y divide-neutral-100">
+              <div className="divide-y" style={{ borderColor: 'var(--color-border)' }}>
                 {campaignDetail?.products && campaignDetail.products.length > 0 ? (
                   campaignDetail.products.map((product: CampaignProduct) => (
                     <div
                       key={product.id}
-                      className="px-4 py-3 flex items-center justify-between hover:bg-neutral-50 group"
+                      className="px-4 py-3 flex items-center justify-between group"
+                      style={{ borderColor: 'var(--color-border)' }}
+                      onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-surface-raised)'; }}
+                      onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = ''; }}
                     >
                       <div className="flex-1 min-w-0">
-                        <p className="font-medium text-neutral-900 truncate">
+                        <p className="text-lg font-medium truncate" style={{ color: 'var(--color-text-primary)' }}>
                           {product.title}
                         </p>
-                        <div className="flex items-center gap-2 mt-0.5 text-sm text-neutral-500">
+                        <div className="flex items-center gap-2 mt-0.5 text-base" style={{ color: 'var(--color-text-secondary)' }}>
                           {product.game_system && (
                             <span>{product.game_system}</span>
                           )}
@@ -540,14 +575,18 @@ export function Campaigns() {
                       <div className="flex items-center gap-1">
                         <button
                           onClick={() => openProductPdf(product.id)}
-                          className="p-1 text-neutral-400 hover:text-purple-600 opacity-0 group-hover:opacity-100 transition-opacity"
+                          className="p-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                          style={{ color: 'var(--color-text-secondary)' }}
                           title="Open PDF"
+                          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = 'var(--color-accent)'; }}
+                          onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = 'var(--color-text-secondary)'; }}
                         >
                           <ExternalLink className="h-4 w-4" />
                         </button>
                         <button
                           onClick={() => handleRemoveProduct(product.id)}
-                          className="p-1 text-neutral-400 hover:text-red-600"
+                          className="p-1 hover:text-red-600"
+                          style={{ color: 'var(--color-text-secondary)' }}
                           title="Remove from campaign"
                         >
                           <X className="h-4 w-4" />
@@ -556,12 +595,13 @@ export function Campaigns() {
                     </div>
                   ))
                 ) : (
-                  <div className="px-4 py-8 text-center text-neutral-500">
-                    <BookOpen className="mx-auto h-8 w-8 text-neutral-300 mb-2" />
-                    <p>No products linked yet</p>
+                  <div className="px-4 py-8 text-center" style={{ color: 'var(--color-text-secondary)' }}>
+                    <BookOpen className="mx-auto h-8 w-8 mb-2" style={{ color: 'var(--color-text-secondary)' }} />
+                    <p className="text-base">No products linked yet</p>
                     <button
                       onClick={() => setShowProductPicker(true)}
-                      className="mt-2 text-sm text-purple-600 hover:text-purple-700"
+                      className="mt-2 text-base"
+                      style={{ color: 'var(--color-accent)' }}
                     >
                       Add your first product
                     </button>
@@ -571,29 +611,35 @@ export function Campaigns() {
             </div>
 
             {/* Sessions Section */}
-            <div className="rounded-xl border border-neutral-200 bg-white">
-              <div className="border-b border-neutral-200 px-4 py-3 flex items-center justify-between">
-                <h2 className="font-semibold text-neutral-900">Sessions</h2>
+            <div className="rounded-xl border" style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-surface)' }}>
+              <div className="border-b px-4 py-3 flex items-center justify-between" style={{ borderColor: 'var(--color-border)' }}>
+                <h2 className="text-lg font-semibold" style={{ color: 'var(--color-text-primary)' }}>Sessions</h2>
                 <button
                   onClick={() => selectedCampaign && createSessionMutation.mutate(selectedCampaign.id)}
                   disabled={createSessionMutation.isPending}
-                  className="rounded-lg bg-purple-600 px-3 py-1.5 text-sm text-white hover:bg-purple-700 disabled:opacity-50"
+                  className="rounded-md px-3 py-1.5 text-base text-white disabled:opacity-50"
+                  style={{ backgroundColor: 'var(--color-accent)', minHeight: '44px' }}
+                  onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-accent-hover)'; }}
+                  onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-accent)'; }}
                 >
                   <Plus className="h-4 w-4 inline mr-1" />
                   {createSessionMutation.isPending ? 'Adding...' : 'Add Session'}
                 </button>
               </div>
-              <div className="divide-y divide-neutral-100">
+              <div className="divide-y" style={{ borderColor: 'var(--color-border)' }}>
                 {campaignDetail?.sessions && campaignDetail.sessions.length > 0 ? (
                   campaignDetail.sessions.map((session: Session) => (
                     <button
                       key={session.id}
                       onClick={() => openSessionModal(session)}
-                      className="w-full px-4 py-3 flex items-center justify-between hover:bg-neutral-50 text-left"
+                      className="w-full px-4 py-3 flex items-center justify-between text-left"
+                      style={{ borderColor: 'var(--color-border)' }}
+                      onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-surface-raised)'; }}
+                      onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = ''; }}
                     >
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2">
-                          <p className="font-medium text-neutral-900">
+                          <p className="text-base font-medium" style={{ color: 'var(--color-text-primary)' }}>
                             Session {session.session_number}
                             {session.title && `: ${session.title}`}
                           </p>
@@ -609,7 +655,7 @@ export function Campaigns() {
                             {session.status}
                           </span>
                         </div>
-                        <div className="flex items-center gap-3 mt-1 text-sm text-neutral-500">
+                        <div className="flex items-center gap-3 mt-1 text-base" style={{ color: 'var(--color-text-secondary)' }}>
                           {session.scheduled_date && (
                             <span className="flex items-center gap-1">
                               <Calendar className="h-3 w-3" />
@@ -630,11 +676,11 @@ export function Campaigns() {
                           )}
                         </div>
                       </div>
-                      <ChevronRight className="h-4 w-4 text-neutral-400 flex-shrink-0" />
+                      <ChevronRight className="h-4 w-4 flex-shrink-0" style={{ color: 'var(--color-text-secondary)' }} />
                     </button>
                   ))
                 ) : (
-                  <div className="px-4 py-8 text-center text-neutral-500">
+                  <div className="px-4 py-8 text-center text-base" style={{ color: 'var(--color-text-secondary)' }}>
                     No sessions yet
                   </div>
                 )}
@@ -644,8 +690,8 @@ export function Campaigns() {
         ) : (
           <div className="flex h-full items-center justify-center">
             <div className="text-center">
-              <BookOpen className="mx-auto h-16 w-16 text-neutral-300" />
-              <p className="mt-4 text-neutral-500">Select a campaign to view details</p>
+              <BookOpen className="mx-auto h-16 w-16" style={{ color: 'var(--color-text-secondary)' }} />
+              <p className="mt-4 text-base" style={{ color: 'var(--color-text-secondary)' }}>Select a campaign to view details</p>
             </div>
           </div>
         )}
@@ -654,9 +700,9 @@ export function Campaigns() {
       {/* Create/Edit Modal */}
       {(showCreateModal || editingCampaign) && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-xl">
+          <div className="w-full max-w-md rounded-xl p-6 shadow-xl" style={{ backgroundColor: 'var(--color-surface)' }}>
             <div className="mb-4 flex items-center justify-between">
-              <h2 className="text-lg font-semibold text-neutral-900">
+              <h2 className="text-lg font-semibold" style={{ color: 'var(--color-text-primary)' }}>
                 {editingCampaign ? 'Edit Campaign' : 'New Campaign'}
               </h2>
               <button
@@ -665,7 +711,7 @@ export function Campaigns() {
                   setEditingCampaign(null);
                   resetForm();
                 }}
-                className="text-neutral-400 hover:text-neutral-600"
+                style={{ color: 'var(--color-text-secondary)' }}
               >
                 <X className="h-5 w-5" />
               </button>
@@ -673,7 +719,7 @@ export function Campaigns() {
 
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-neutral-700">
+                <label className="block text-lg font-medium" style={{ color: 'var(--color-text-primary)' }}>
                   Campaign Name *
                 </label>
                 <input
@@ -681,46 +727,50 @@ export function Campaigns() {
                   value={formData.name}
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                   required
-                  className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500"
+                  className="mt-1 w-full rounded-md border px-3 py-2 text-base focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-surface)', color: 'var(--color-text-primary)', height: '48px', fontSize: '18px' }}
                   placeholder="e.g., Curse of Strahd"
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-neutral-700">
+                <label className="block text-lg font-medium" style={{ color: 'var(--color-text-primary)' }}>
                   Game System
                 </label>
                 <input
                   type="text"
                   value={formData.game_system}
                   onChange={(e) => setFormData({ ...formData, game_system: e.target.value })}
-                  className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500"
+                  className="mt-1 w-full rounded-md border px-3 py-2 text-base focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-surface)', color: 'var(--color-text-primary)', height: '48px', fontSize: '18px' }}
                   placeholder="e.g., D&D 5e"
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-neutral-700">
+                <label className="block text-lg font-medium" style={{ color: 'var(--color-text-primary)' }}>
                   Description
                 </label>
                 <textarea
                   value={formData.description}
                   onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                   rows={3}
-                  className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500"
+                  className="mt-1 w-full rounded-md border px-3 py-2 text-base focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-surface)', color: 'var(--color-text-primary)', fontSize: '18px' }}
                   placeholder="Brief description of the campaign..."
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-neutral-700">
+                  <label className="block text-lg font-medium" style={{ color: 'var(--color-text-primary)' }}>
                     Status
                   </label>
                   <select
                     value={formData.status}
                     onChange={(e) => setFormData({ ...formData, status: e.target.value })}
-                    className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500"
+                    className="mt-1 w-full rounded-md border px-3 py-2 text-base focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-surface)', color: 'var(--color-text-primary)', height: '48px', fontSize: '18px' }}
                   >
                     <option value="planning">Planning</option>
                     <option value="active">Active</option>
@@ -730,7 +780,7 @@ export function Campaigns() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-neutral-700">
+                  <label className="block text-lg font-medium" style={{ color: 'var(--color-text-primary)' }}>
                     Player Count
                   </label>
                   <input
@@ -743,7 +793,8 @@ export function Campaigns() {
                       })
                     }
                     min={1}
-                    className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500"
+                    className="mt-1 w-full rounded-md border px-3 py-2 text-base focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-surface)', color: 'var(--color-text-primary)', height: '48px', fontSize: '18px' }}
                   />
                 </div>
               </div>
@@ -756,14 +807,20 @@ export function Campaigns() {
                     setEditingCampaign(null);
                     resetForm();
                   }}
-                  className="rounded-lg border border-neutral-300 px-4 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-50"
+                  className="rounded-md border px-4 py-2 text-base font-medium"
+                  style={{ borderColor: 'var(--color-border)', color: 'var(--color-text-secondary)', minHeight: '44px' }}
+                  onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-surface-raised)'; }}
+                  onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = ''; }}
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={createMutation.isPending || updateMutation.isPending}
-                  className="rounded-lg bg-purple-600 px-4 py-2 text-sm font-medium text-white hover:bg-purple-700 disabled:opacity-50"
+                  className="rounded-md px-4 py-2 text-base font-medium text-white disabled:opacity-50"
+                  style={{ backgroundColor: 'var(--color-accent)', minHeight: '44px' }}
+                  onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-accent-hover)'; }}
+                  onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-accent)'; }}
                 >
                   {editingCampaign ? 'Save Changes' : 'Create Campaign'}
                 </button>
@@ -776,9 +833,9 @@ export function Campaigns() {
       {/* Session Edit Modal */}
       {editingSession && selectedCampaign && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="w-full max-w-2xl rounded-xl bg-white p-6 shadow-xl max-h-[90vh] overflow-y-auto">
+          <div className="w-full max-w-2xl rounded-xl p-6 shadow-xl max-h-[90vh] overflow-y-auto" style={{ backgroundColor: 'var(--color-surface)' }}>
             <div className="mb-4 flex items-center justify-between">
-              <h2 className="text-lg font-semibold text-neutral-900">
+              <h2 className="text-lg font-semibold" style={{ color: 'var(--color-text-primary)' }}>
                 Edit Session {editingSession.session_number}
               </h2>
               <button
@@ -786,7 +843,7 @@ export function Campaigns() {
                   setEditingSession(null);
                   resetSessionForm();
                 }}
-                className="text-neutral-400 hover:text-neutral-600"
+                style={{ color: 'var(--color-text-secondary)' }}
               >
                 <X className="h-5 w-5" />
               </button>
@@ -797,14 +854,14 @@ export function Campaigns() {
               const prevSession = getPreviousSession(editingSession);
               if (prevSession && prevSession.summary) {
                 return (
-                  <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-4">
+                  <div className="mb-4 rounded-md border border-amber-200 bg-amber-50 p-4">
                     <div className="flex items-center gap-2 mb-2">
                       <History className="h-4 w-4 text-amber-600" />
-                      <h3 className="text-sm font-medium text-amber-800">
+                      <h3 className="text-base font-medium text-amber-800">
                         Previous Session: {prevSession.title || `Session ${prevSession.session_number}`}
                       </h3>
                     </div>
-                    <p className="text-sm text-amber-700 whitespace-pre-wrap">
+                    <p className="text-base text-amber-700 whitespace-pre-wrap">
                       {prevSession.summary}
                     </p>
                   </div>
@@ -815,46 +872,49 @@ export function Campaigns() {
 
             <form onSubmit={handleSessionSubmit} className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-neutral-700">
+                <label className="block text-lg font-medium" style={{ color: 'var(--color-text-primary)' }}>
                   Session Title
                 </label>
                 <input
                   type="text"
                   value={sessionFormData.title}
                   onChange={(e) => setSessionFormData({ ...sessionFormData, title: e.target.value })}
-                  className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500"
+                  className="mt-1 w-full rounded-md border px-3 py-2 text-base focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-surface)', color: 'var(--color-text-primary)', height: '48px', fontSize: '18px' }}
                   placeholder="e.g., The Goblin Ambush"
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-neutral-700">
+                  <label className="block text-lg font-medium" style={{ color: 'var(--color-text-primary)' }}>
                     Scheduled Date
                   </label>
                   <input
                     type="date"
                     value={sessionFormData.scheduled_date}
                     onChange={(e) => setSessionFormData({ ...sessionFormData, scheduled_date: e.target.value })}
-                    className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500"
+                    className="mt-1 w-full rounded-md border px-3 py-2 text-base focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-surface)', color: 'var(--color-text-primary)', height: '48px', fontSize: '18px' }}
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-neutral-700">
+                  <label className="block text-lg font-medium" style={{ color: 'var(--color-text-primary)' }}>
                     Actual Date
                   </label>
                   <input
                     type="date"
                     value={sessionFormData.actual_date}
                     onChange={(e) => setSessionFormData({ ...sessionFormData, actual_date: e.target.value })}
-                    className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500"
+                    className="mt-1 w-full rounded-md border px-3 py-2 text-base focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-surface)', color: 'var(--color-text-primary)', height: '48px', fontSize: '18px' }}
                   />
                 </div>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-neutral-700">
+                  <label className="block text-lg font-medium" style={{ color: 'var(--color-text-primary)' }}>
                     Duration (minutes)
                   </label>
                   <input
@@ -865,18 +925,20 @@ export function Campaigns() {
                       duration_minutes: e.target.value ? parseInt(e.target.value) : null,
                     })}
                     min={0}
-                    className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500"
+                    className="mt-1 w-full rounded-md border px-3 py-2 text-base focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-surface)', color: 'var(--color-text-primary)', height: '48px', fontSize: '18px' }}
                     placeholder="e.g., 180"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-neutral-700">
+                  <label className="block text-lg font-medium" style={{ color: 'var(--color-text-primary)' }}>
                     Status
                   </label>
                   <select
                     value={sessionFormData.status}
                     onChange={(e) => setSessionFormData({ ...sessionFormData, status: e.target.value })}
-                    className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500"
+                    className="mt-1 w-full rounded-md border px-3 py-2 text-base focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-surface)', color: 'var(--color-text-primary)', height: '48px', fontSize: '18px' }}
                   >
                     <option value="planned">Planned</option>
                     <option value="completed">Completed</option>
@@ -886,27 +948,29 @@ export function Campaigns() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-neutral-700">
+                <label className="block text-lg font-medium" style={{ color: 'var(--color-text-primary)' }}>
                   Summary
                 </label>
                 <textarea
                   value={sessionFormData.summary}
                   onChange={(e) => setSessionFormData({ ...sessionFormData, summary: e.target.value })}
                   rows={3}
-                  className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500"
+                  className="mt-1 w-full rounded-md border px-3 py-2 text-base focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-surface)', color: 'var(--color-text-primary)', fontSize: '18px' }}
                   placeholder="What happened in this session..."
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-neutral-700">
+                <label className="block text-lg font-medium" style={{ color: 'var(--color-text-primary)' }}>
                   Notes
                 </label>
                 <textarea
                   value={sessionFormData.notes}
                   onChange={(e) => setSessionFormData({ ...sessionFormData, notes: e.target.value })}
                   rows={4}
-                  className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500"
+                  className="mt-1 w-full rounded-md border px-3 py-2 text-base focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-surface)', color: 'var(--color-text-primary)', fontSize: '18px' }}
                   placeholder="Prep notes, reminders, follow-ups..."
                 />
               </div>
@@ -923,7 +987,8 @@ export function Campaigns() {
                     }
                   }}
                   disabled={deleteSessionMutation.isPending}
-                  className="rounded-lg border border-red-300 px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50 disabled:opacity-50"
+                  className="rounded-md border border-red-300 px-4 py-2 text-base font-medium text-red-600 hover:bg-red-50 disabled:opacity-50"
+                  style={{ minHeight: '44px' }}
                 >
                   {deleteSessionMutation.isPending ? 'Deleting...' : 'Delete Session'}
                 </button>
@@ -934,14 +999,20 @@ export function Campaigns() {
                       setEditingSession(null);
                       resetSessionForm();
                     }}
-                    className="rounded-lg border border-neutral-300 px-4 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-50"
+                    className="rounded-md border px-4 py-2 text-base font-medium"
+                    style={{ borderColor: 'var(--color-border)', color: 'var(--color-text-secondary)', minHeight: '44px' }}
+                    onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-surface-raised)'; }}
+                    onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = ''; }}
                   >
                     Cancel
                   </button>
                   <button
                     type="submit"
                     disabled={updateSessionMutation.isPending}
-                    className="rounded-lg bg-purple-600 px-4 py-2 text-sm font-medium text-white hover:bg-purple-700 disabled:opacity-50"
+                    className="rounded-md px-4 py-2 text-base font-medium text-white disabled:opacity-50"
+                    style={{ backgroundColor: 'var(--color-accent)', minHeight: '44px' }}
+                    onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-accent-hover)'; }}
+                    onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-accent)'; }}
                   >
                     {updateSessionMutation.isPending ? 'Saving...' : 'Save Changes'}
                   </button>
@@ -955,9 +1026,9 @@ export function Campaigns() {
       {/* Product Picker Modal */}
       {showProductPicker && selectedCampaign && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="w-full max-w-lg rounded-xl bg-white p-6 shadow-xl max-h-[80vh] flex flex-col">
+          <div className="w-full max-w-lg rounded-xl p-6 shadow-xl max-h-[80vh] flex flex-col" style={{ backgroundColor: 'var(--color-surface)' }}>
             <div className="mb-4 flex items-center justify-between">
-              <h2 className="text-lg font-semibold text-neutral-900">
+              <h2 className="text-lg font-semibold" style={{ color: 'var(--color-text-primary)' }}>
                 Add Products to Campaign
               </h2>
               <button
@@ -965,39 +1036,53 @@ export function Campaigns() {
                   setShowProductPicker(false);
                   setProductSearch('');
                 }}
-                className="text-neutral-400 hover:text-neutral-600"
+                style={{ color: 'var(--color-text-secondary)' }}
               >
                 <X className="h-5 w-5" />
               </button>
             </div>
 
             <div className="relative mb-4">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-neutral-400" />
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4" style={{ color: 'var(--color-text-secondary)' }} />
               <input
                 type="text"
                 value={productSearch}
                 onChange={(e) => setProductSearch(e.target.value)}
                 placeholder="Search products..."
-                className="w-full rounded-lg border border-neutral-300 pl-10 pr-3 py-2 text-sm focus:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500"
+                className="w-full rounded-md border pl-10 pr-3 py-2 text-base focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-surface)', color: 'var(--color-text-primary)', height: '48px', fontSize: '18px' }}
               />
             </div>
 
-            <div className="flex-1 overflow-y-auto divide-y divide-neutral-100 border border-neutral-200 rounded-lg">
+            <div className="flex-1 overflow-y-auto divide-y border rounded-md" style={{ borderColor: 'var(--color-border)' }}>
               {searchResults && searchResults.length > 0 ? (
                 searchResults.map((product) => {
                   const inCampaign = isProductInCampaign(product.id);
                   return (
                     <div
                       key={product.id}
-                      className={`px-4 py-3 flex items-center justify-between ${
-                        inCampaign ? 'bg-purple-50' : 'hover:bg-neutral-50'
-                      }`}
+                      className="px-4 py-3 flex items-center justify-between"
+                      style={
+                        inCampaign
+                          ? { backgroundColor: 'var(--color-accent-light)' }
+                          : {}
+                      }
+                      onMouseEnter={(e) => {
+                        if (!inCampaign) {
+                          (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-surface-raised)';
+                        }
+                      }}
+                      onMouseLeave={(e) => {
+                        if (!inCampaign) {
+                          (e.currentTarget as HTMLElement).style.backgroundColor = '';
+                        }
+                      }}
                     >
                       <div className="flex-1 min-w-0">
-                        <p className="font-medium text-neutral-900 truncate">
+                        <p className="text-lg font-medium truncate" style={{ color: 'var(--color-text-primary)' }}>
                           {product.title || product.file_name}
                         </p>
-                        <div className="flex items-center gap-2 mt-0.5 text-sm text-neutral-500">
+                        <div className="flex items-center gap-2 mt-0.5 text-base" style={{ color: 'var(--color-text-secondary)' }}>
                           {product.game_system && (
                             <span>{product.game_system}</span>
                           )}
@@ -1009,7 +1094,8 @@ export function Campaigns() {
                       {inCampaign ? (
                         <button
                           onClick={() => handleRemoveProduct(product.id)}
-                          className="ml-2 flex items-center gap-1 rounded-lg bg-purple-100 px-3 py-1.5 text-sm font-medium text-purple-700"
+                          className="ml-2 flex items-center gap-1 rounded-md px-3 py-1.5 text-base font-medium"
+                          style={{ backgroundColor: 'var(--color-accent-light)', color: 'var(--color-accent)', minHeight: '44px' }}
                         >
                           <Check className="h-4 w-4" />
                           Added
@@ -1018,7 +1104,10 @@ export function Campaigns() {
                         <button
                           onClick={() => handleAddProduct(product.id)}
                           disabled={addProductMutation.isPending}
-                          className="ml-2 rounded-lg bg-purple-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-purple-700 disabled:opacity-50"
+                          className="ml-2 rounded-md px-3 py-1.5 text-base font-medium text-white disabled:opacity-50"
+                          style={{ backgroundColor: 'var(--color-accent)', minHeight: '44px' }}
+                          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-accent-hover)'; }}
+                          onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-accent)'; }}
                         >
                           Add
                         </button>
@@ -1027,7 +1116,7 @@ export function Campaigns() {
                   );
                 })
               ) : (
-                <div className="px-4 py-8 text-center text-neutral-500">
+                <div className="px-4 py-8 text-center text-base" style={{ color: 'var(--color-text-secondary)' }}>
                   {productSearch ? 'No products found' : 'Search for products to add'}
                 </div>
               )}
@@ -1039,7 +1128,8 @@ export function Campaigns() {
                   setShowProductPicker(false);
                   setProductSearch('');
                 }}
-                className="rounded-lg bg-neutral-100 px-4 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-200"
+                className="rounded-md px-4 py-2 text-base font-medium"
+                style={{ backgroundColor: 'var(--color-surface-raised)', color: 'var(--color-text-secondary)', minHeight: '44px' }}
               >
                 Done
               </button>
