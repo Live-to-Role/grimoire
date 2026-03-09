@@ -2,7 +2,7 @@
 
 from collections.abc import AsyncGenerator
 
-from sqlalchemy import event
+from sqlalchemy import event, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase
 
@@ -72,11 +72,45 @@ def get_db_session():
     return async_session_maker()
 
 
+async def _ensure_fts_table(conn) -> None:
+    """Create the FTS5 virtual table and sync triggers if they don't exist."""
+    result = await conn.execute(
+        text("SELECT name FROM sqlite_master WHERE type='table' AND name='products_fts'")
+    )
+    if result.fetchone() is not None:
+        return
+
+    await conn.execute(text("""
+        CREATE VIRTUAL TABLE products_fts USING fts5(
+            title, file_name, publisher, game_system, product_type, extracted_text
+        )
+    """))
+    await conn.execute(text("""
+        CREATE TRIGGER IF NOT EXISTS products_fts_insert AFTER INSERT ON products BEGIN
+            INSERT INTO products_fts(rowid, title, file_name, publisher, game_system, product_type)
+            VALUES (new.id, new.title, new.file_name, new.publisher, new.game_system, new.product_type);
+        END
+    """))
+    await conn.execute(text("""
+        CREATE TRIGGER IF NOT EXISTS products_fts_update AFTER UPDATE ON products BEGIN
+            DELETE FROM products_fts WHERE rowid = old.id;
+            INSERT INTO products_fts(rowid, title, file_name, publisher, game_system, product_type)
+            VALUES (new.id, new.title, new.file_name, new.publisher, new.game_system, new.product_type);
+        END
+    """))
+    await conn.execute(text("""
+        CREATE TRIGGER IF NOT EXISTS products_fts_delete AFTER DELETE ON products BEGIN
+            DELETE FROM products_fts WHERE rowid = old.id;
+        END
+    """))
+
+
 async def init_db() -> None:
     """Initialize database tables and seed default data."""
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-    
+        await _ensure_fts_table(conn)
+
     # Seed default exclusion rules
     from grimoire.services.exclusion_service import seed_default_rules
     async with async_session_maker() as session:
