@@ -160,10 +160,10 @@ def estimate_batch_cost(
     }
 
 
-IDENTIFICATION_PROMPT = """Analyze this RPG PDF text and return a JSON object with these fields:
+IDENTIFICATION_PROMPT = """Analyze this RPG PDF and return a JSON object with these fields:
 - game_system: e.g. "Dungeons & Dragons 5th Edition", "Pathfinder 2nd Edition", "Dungeon Crawl Classics", "Old-School Essentials", or null
 - genre: one of "Fantasy", "Horror", "Science Fiction", "Modern", "Historical", or null
-- product_type: e.g. "Adventure", "Supplement", "Core Rulebook", "Bestiary", "Setting", "Zine", or null  
+- product_type: e.g. "Adventure", "Supplement", "Core Rulebook", "Bestiary", "Setting", "Zine", or null
 - publisher: publisher name or null
 - author: primary author/writer name(s) or null
 - title: product title or null
@@ -172,7 +172,7 @@ IDENTIFICATION_PROMPT = """Analyze this RPG PDF text and return a JSON object wi
 - level_range_max: maximum character level or null
 - description: 1-2 sentence description or null
 - confidence: "high", "medium", or "low"
-
+{filename_section}
 Text to analyze:
 {text}
 
@@ -196,7 +196,16 @@ Text to analyze:
 Return ONLY the JSON object, nothing else."""
 
 
-async def identify_with_openai(text: str, api_key: str, model: str = "gpt-4o-mini") -> dict[str, Any]:
+def _format_prompt(text: str, filename: str | None = None) -> str:
+    """Format the identification prompt with optional filename hint."""
+    if filename:
+        filename_section = f"\nFilename (use as a hint for game system, title, publisher): {filename}\n"
+    else:
+        filename_section = ""
+    return IDENTIFICATION_PROMPT.format(text=text, filename_section=filename_section)
+
+
+async def identify_with_openai(text: str, api_key: str, model: str = "gpt-4o-mini", filename: str | None = None) -> dict[str, Any]:
     """Use OpenAI API for identification."""
     async with httpx.AsyncClient(timeout=60.0) as client:
         response = await client.post(
@@ -208,7 +217,7 @@ async def identify_with_openai(text: str, api_key: str, model: str = "gpt-4o-min
             json={
                 "model": model,
                 "messages": [
-                    {"role": "user", "content": IDENTIFICATION_PROMPT.format(text=text)}
+                    {"role": "user", "content": _format_prompt(text, filename)}
                 ],
                 "temperature": 0.1,
                 "response_format": {"type": "json_object"},
@@ -220,7 +229,7 @@ async def identify_with_openai(text: str, api_key: str, model: str = "gpt-4o-min
         return json.loads(content)
 
 
-async def identify_with_anthropic(text: str, api_key: str, model: str = "claude-3-haiku-20240307") -> dict[str, Any]:
+async def identify_with_anthropic(text: str, api_key: str, model: str = "claude-3-haiku-20240307", filename: str | None = None) -> dict[str, Any]:
     """Use Anthropic API for identification."""
     async with httpx.AsyncClient(timeout=60.0) as client:
         response = await client.post(
@@ -234,7 +243,7 @@ async def identify_with_anthropic(text: str, api_key: str, model: str = "claude-
                 "model": model,
                 "max_tokens": 1024,
                 "messages": [
-                    {"role": "user", "content": IDENTIFICATION_PROMPT.format(text=text)}
+                    {"role": "user", "content": _format_prompt(text, filename)}
                 ],
             },
         )
@@ -254,14 +263,14 @@ async def identify_with_anthropic(text: str, api_key: str, model: str = "claude-
         return json.loads(content)
 
 
-async def identify_with_ollama(text: str, base_url: str, model: str = "gemma3:12b") -> dict[str, Any]:
+async def identify_with_ollama(text: str, base_url: str, model: str = "gemma3:12b", filename: str | None = None) -> dict[str, Any]:
     """Use Ollama for local identification."""
     async with httpx.AsyncClient(timeout=120.0) as client:
         response = await client.post(
             f"{base_url}/api/generate",
             json={
                 "model": model,
-                "prompt": IDENTIFICATION_PROMPT.format(text=text),
+                "prompt": _format_prompt(text, filename),
                 "stream": False,
                 "format": "json",
             },
@@ -303,15 +312,17 @@ async def identify_product(
     text: str,
     provider: str | None = None,
     model: str | None = None,
+    filename: str | None = None,
 ) -> dict[str, Any]:
     """
     Identify product metadata using AI.
-    
+
     Args:
         text: Extracted text from the PDF
         provider: AI provider to use ("openai", "anthropic", "ollama", or None for auto)
         model: Specific model to use (optional)
-    
+        filename: Original filename (used as hint for game system, title, etc.)
+
     Returns:
         Dictionary with identified metadata
     """
@@ -340,23 +351,26 @@ async def identify_product(
                 if not openai_key:
                     return {"error": "OpenAI API key not configured"}
                 result = await identify_with_openai(
-                    truncated_text, 
-                    openai_key, 
-                    model or "gpt-4o-mini"
+                    truncated_text,
+                    openai_key,
+                    model or "gpt-4o-mini",
+                    filename=filename,
                 )
             elif provider == "anthropic":
                 if not anthropic_key:
                     return {"error": "Anthropic API key not configured"}
                 result = await identify_with_anthropic(
-                    truncated_text, 
+                    truncated_text,
                     anthropic_key,
-                    model or "claude-3-haiku-20240307"
+                    model or "claude-3-haiku-20240307",
+                    filename=filename,
                 )
             elif provider == "ollama":
                 result = await identify_with_ollama(
-                    truncated_text, 
-                    ollama_url, 
-                    model or "gemma3:12b"
+                    truncated_text,
+                    ollama_url,
+                    model or "gemma3:12b",
+                    filename=filename,
                 )
             else:
                 return {"error": f"Unknown provider: {provider}"}

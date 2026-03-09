@@ -16,8 +16,8 @@ if ! command -v node &> /dev/null; then
     exit 1
 fi
 
-# Create data directories
-mkdir -p data/covers
+# Create data directories (inside backend/ where the database lives)
+mkdir -p backend/data/covers
 
 # Install backend dependencies if needed
 if [ ! -d "backend/.venv" ]; then

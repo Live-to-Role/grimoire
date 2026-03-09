@@ -6,7 +6,7 @@ import { ProductGrid } from '../components/ProductGrid';
 import { ProductDetail } from '../components/ProductDetail';
 import { searchProducts } from '../api/search';
 import { useDebounce } from '../hooks/useDebounce';
-import type { Product } from '../types/product';
+import type { Product, ProductListResponse } from '../types/product';
 import type { ProductFilters } from '../api/products';
 
 interface LibraryProps {
@@ -17,7 +17,6 @@ interface LibraryProps {
 
 export function Library({ selectedCollection, selectedTag, sidebarFilters = {} }: LibraryProps) {
   const [filters, setFilters] = useState<ProductFilters>({
-    page: 1,
     per_page: 24,
     sort: 'title',
     order: 'asc',
@@ -45,11 +44,11 @@ export function Library({ selectedCollection, selectedTag, sidebarFilters = {} }
   // Live title search: update filters when debounced input changes
   useEffect(() => {
     if (!searchContent) {
-      setFilters(prev => ({ ...prev, search: debouncedSearch || undefined, page: 1 }));
+      setFilters(prev => ({ ...prev, search: debouncedSearch || undefined }));
     }
   }, [debouncedSearch, searchContent]);
 
-  const { data, isLoading, error, refetch, isFetching } = useProducts(effectiveFilters);
+  const { data, isLoading, error, refetch, isFetching, fetchNextPage, hasNextPage, isFetchingNextPage } = useProducts(effectiveFilters);
 
   // Content search query
   const {
@@ -73,7 +72,7 @@ export function Library({ selectedCollection, selectedTag, sidebarFilters = {} }
     if (searchContent) {
       setActiveSearch(searchInput);
     } else {
-      setFilters((prev) => ({ ...prev, search: searchInput, page: 1 }));
+      setFilters((prev) => ({ ...prev, search: searchInput }));
       setActiveSearch('');
     }
   };
@@ -81,12 +80,19 @@ export function Library({ selectedCollection, selectedTag, sidebarFilters = {} }
   const clearSearch = () => {
     setSearchInput('');
     setActiveSearch('');
-    setFilters((prev) => ({ ...prev, search: undefined, page: 1 }));
+    setFilters((prev) => ({ ...prev, search: undefined }));
   };
+
+  // Flatten infinite query pages into a single array
+  const allProducts = useMemo(
+    () => data?.pages.flatMap((page: ProductListResponse) => page.items) ?? [],
+    [data]
+  );
+  const totalCount = data?.pages[0]?.total ?? 0;
 
   // Determine which products to show
   const isSearching = activeSearch.length > 0;
-  const displayProducts = isSearching ? (searchData?.results || []) : (data?.items || []);
+  const displayProducts = isSearching ? (searchData?.results || []) : allProducts;
   const displayLoading = isSearching ? searchLoading : isLoading;
   const displayError = isSearching ? searchError : error;
 
@@ -189,7 +195,7 @@ export function Library({ selectedCollection, selectedTag, sidebarFilters = {} }
                     </>
                   ) : (
                     <>
-                      {data?.total || 0} product{data?.total !== 1 ? 's' : ''}
+                      {totalCount} product{totalCount !== 1 ? 's' : ''}
                       {sidebarFilterCount > 0 && ' (filtered)'}
                     </>
                   )}
@@ -207,6 +213,9 @@ export function Library({ selectedCollection, selectedTag, sidebarFilters = {} }
                 products={displayProducts}
                 onProductClick={handleProductClick}
                 viewMode={viewMode}
+                hasNextPage={!isSearching && hasNextPage}
+                isFetchingNextPage={isFetchingNextPage}
+                fetchNextPage={fetchNextPage}
               />
             </>
           ) : null}

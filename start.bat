@@ -16,8 +16,8 @@ if errorlevel 1 (
     exit /b 1
 )
 
-REM Create data directories
-if not exist "data\covers" mkdir data\covers
+REM Create data directories (inside backend/ where the database lives)
+if not exist "backend\data\covers" mkdir backend\data\covers
 
 REM Set up Python venv if needed
 if not exist "backend\.venv" (

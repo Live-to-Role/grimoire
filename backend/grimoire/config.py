@@ -7,6 +7,11 @@ from typing import Literal
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+# Resolve paths relative to the backend directory (parent of grimoire package)
+# so the database is always in the same place regardless of working directory.
+_BACKEND_DIR = Path(__file__).resolve().parent.parent
+_DEFAULT_DATA_DIR = _BACKEND_DIR / "data"
+
 
 class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
@@ -25,15 +30,15 @@ class Settings(BaseSettings):
     debug: bool = False
 
     # Database
-    database_url: str = "sqlite+aiosqlite:///./data/grimoire.db"
-    
+    database_url: str = f"sqlite+aiosqlite:///{_DEFAULT_DATA_DIR / 'grimoire.db'}"
+
     # Redis
     redis_url: str = "redis://localhost:6379/0"
 
     # Paths
-    data_dir: Path = Path("./data")
+    data_dir: Path = _DEFAULT_DATA_DIR
     library_path: Path = Path("./pdfs")
-    covers_dir: Path = Path("./data/covers")
+    covers_dir: Path = _DEFAULT_DATA_DIR / "covers"
 
     # Processing
     max_concurrent_processing: int = 3

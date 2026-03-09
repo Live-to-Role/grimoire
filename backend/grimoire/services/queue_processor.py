@@ -342,8 +342,8 @@ async def handle_ai_identify_task(db: AsyncSession, product: Product) -> bool:
     if not text or len(text) < 100:
         raise TaskError(f"Insufficient text for AI identification ({len(text) if text else 0} chars)")
 
-    # Call AI identifier
-    identification = await identify_product(text, provider=provider)
+    # Call AI identifier with filename as hint
+    identification = await identify_product(text, provider=provider, filename=product.file_name)
 
     if "error" in identification:
         raise TaskError(f"AI identify ({provider}): {identification['error']}")

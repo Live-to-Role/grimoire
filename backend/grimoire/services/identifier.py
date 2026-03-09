@@ -233,6 +233,7 @@ async def identify_product(
                 text=extracted_text,
                 provider=config.ai_provider or "anthropic",
                 model=config.ai_model,
+                filename=filename,
             )
             
             if ai_result and "error" not in ai_result:

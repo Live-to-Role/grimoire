@@ -312,7 +312,7 @@ async def identify_batch(
             failed += 1
             continue
 
-        identification = await ai_identify(text, request.provider, request.model)
+        identification = await ai_identify(text, request.provider, request.model, filename=product.file_name)
 
         if "error" in identification:
             results.append({
@@ -481,7 +481,7 @@ async def identify_all(
                 ProcessingQueue.product_id == product.id,
                 ProcessingQueue.task_type == "ai_identify",
                 ProcessingQueue.status.in_(["pending", "processing"])
-            )
+            ).limit(1)
         )
         if existing.scalar_one_or_none():
             already_queued += 1
