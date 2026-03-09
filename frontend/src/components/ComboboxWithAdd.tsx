@@ -94,7 +94,12 @@ export function ComboboxWithAdd({
   return (
     <div ref={containerRef} className={`relative ${className}`}>
       <div
-        className="flex items-center gap-1 rounded-sm border border-codex-tan bg-white px-3 py-2 text-sm focus-within:border-codex-olive focus-within:ring-1 focus-within:ring-codex-olive cursor-text"
+        className="flex items-center gap-1 rounded-md px-3 py-2 text-base cursor-text"
+        style={{
+          backgroundColor: 'var(--color-surface)',
+          border: '1px solid var(--color-border)',
+          minHeight: '48px',
+        }}
         onClick={() => {
           setIsOpen(true);
           inputRef.current?.focus();
@@ -112,16 +117,25 @@ export function ComboboxWithAdd({
           onKeyDown={handleKeyDown}
           placeholder={value || placeholder}
           className="flex-1 outline-none bg-transparent min-w-0"
+          style={{ color: 'var(--color-text-primary)' }}
         />
         <ChevronDown
-          className={`h-4 w-4 text-primary-400 shrink-0 transition-transform ${isOpen ? 'rotate-180' : ''}`}
+          className={`shrink-0 transition-transform ${isOpen ? 'rotate-180' : ''}`}
+          size={16}
+          style={{ color: 'var(--color-text-secondary)' }}
         />
       </div>
 
       {isOpen && (
-        <div className="absolute z-50 mt-1 w-full rounded-sm border border-codex-tan bg-white shadow-lg max-h-60 overflow-auto">
+        <div
+          className="absolute z-50 mt-1 w-full rounded-md shadow-lg max-h-60 overflow-auto"
+          style={{
+            backgroundColor: 'var(--color-surface)',
+            border: '1px solid var(--color-border)',
+          }}
+        >
           {allOptions.length === 0 && !showAddOption ? (
-            <div className="px-3 py-2 text-sm text-primary-500">
+            <div className="px-3 py-2 text-base" style={{ color: 'var(--color-text-secondary)' }}>
               No options found
             </div>
           ) : (
@@ -131,17 +145,19 @@ export function ComboboxWithAdd({
                   key={option.type === 'add' ? `add-${option.value}` : option.value}
                   role="option"
                   aria-selected={value === option.value}
-                  className={`flex items-center gap-2 px-3 py-2 text-sm cursor-pointer ${
-                    highlightedIndex === index
-                      ? 'bg-codex-olive/20'
-                      : 'hover:bg-primary-100'
-                  } ${value === option.value ? 'font-medium' : ''}`}
+                  className={`flex items-center gap-2 px-3 py-2 text-base cursor-pointer ${
+                    value === option.value ? 'font-medium' : ''
+                  }`}
+                  style={{
+                    backgroundColor: highlightedIndex === index ? 'var(--color-accent-light)' : 'transparent',
+                    color: 'var(--color-text-primary)',
+                  }}
                   onClick={() => handleSelect(option.value)}
                   onMouseEnter={() => setHighlightedIndex(index)}
                 >
                   {option.type === 'add' ? (
                     <>
-                      <Plus className="h-4 w-4 text-codex-olive" />
+                      <Plus size={16} style={{ color: 'var(--color-accent)' }} />
                       <span>
                         Add "<span className="font-medium">{option.value}</span>"
                       </span>
@@ -149,7 +165,7 @@ export function ComboboxWithAdd({
                   ) : (
                     <>
                       {value === option.value ? (
-                        <Check className="h-4 w-4 text-codex-olive" />
+                        <Check size={16} style={{ color: 'var(--color-accent)' }} />
                       ) : (
                         <span className="w-4" />
                       )}
