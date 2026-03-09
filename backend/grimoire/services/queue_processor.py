@@ -358,7 +358,11 @@ async def handle_ai_identify_task(db: AsyncSession, product: Product) -> bool:
     if identification.get("publisher"):
         product.publisher = identification["publisher"]
     if identification.get("author"):
-        product.author = identification["author"]
+        author = identification["author"]
+        # AI may return a list of authors; join into a comma-separated string
+        if isinstance(author, list):
+            author = ", ".join(str(a) for a in author)
+        product.author = author
     if identification.get("title"):
         product.title = identification["title"]
     if identification.get("publication_year"):

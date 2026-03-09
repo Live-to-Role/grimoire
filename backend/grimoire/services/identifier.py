@@ -128,7 +128,7 @@ class IdentificationResult:
             confidence=confidence,
             needs_confirmation=confidence < 0.9,
             title=ai_data.get("title"),
-            author=ai_data.get("author"),
+            author=", ".join(str(a) for a in ai_data["author"]) if isinstance(ai_data.get("author"), list) else ai_data.get("author"),
             publisher=ai_data.get("publisher"),
             game_system=ai_data.get("game_system"),
             genre=ai_data.get("genre"),
