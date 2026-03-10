@@ -26,13 +26,24 @@ class BulkCollectionRequest(BaseModel):
 
 
 class BulkUpdateRequest(BaseModel):
-    """Request to update fields on multiple products."""
+    """Request to update fields on multiple products.
+
+    Fields set to a string value will be applied.
+    Fields set to empty string "" will clear the value (set to None).
+    Fields not included in the request are left unchanged.
+    """
 
     product_ids: list[int] = Field(..., min_length=1)
     game_system: str | None = None
     product_type: str | None = None
     publisher: str | None = None
+    author: str | None = None
+    genre: str | None = None
     publication_year: int | None = None
+    setting: str | None = None
+    series: str | None = None
+    estimated_runtime: str | None = None
+    format: str | None = None
 
 
 class BulkDeleteRequest(BaseModel):
@@ -184,21 +195,34 @@ async def bulk_update_products(db: DbSession, request: BulkUpdateRequest) -> Bul
     affected = 0
     filter_fields_updated = False
 
+    # Fields that trigger filter cache invalidation
+    filter_relevant = {"game_system", "product_type", "publisher", "author", "genre"}
+
+    # All updatable string fields
+    string_fields = [
+        "game_system", "product_type", "publisher", "author", "genre",
+        "setting", "series", "estimated_runtime", "format",
+    ]
+
+    # Only update fields that were explicitly included in the request
+    provided_fields = request.model_fields_set - {"product_ids"}
+
+    if not provided_fields:
+        return BulkResponse(message="No fields to update", affected=0)
+
     for product in products:
         updated = False
-        if request.game_system is not None:
-            product.game_system = request.game_system
-            updated = True
-            filter_fields_updated = True
-        if request.product_type is not None:
-            product.product_type = request.product_type
-            updated = True
-            filter_fields_updated = True
-        if request.publisher is not None:
-            product.publisher = request.publisher
-            updated = True
-            filter_fields_updated = True
-        if request.publication_year is not None:
+
+        for field in string_fields:
+            if field in provided_fields:
+                value = getattr(request, field)
+                # Empty string means "clear the field"
+                setattr(product, field, value if value != "" else None)
+                updated = True
+                if field in filter_relevant:
+                    filter_fields_updated = True
+
+        if "publication_year" in provided_fields:
             product.publication_year = request.publication_year
             updated = True
 
@@ -206,7 +230,7 @@ async def bulk_update_products(db: DbSession, request: BulkUpdateRequest) -> Bul
             affected += 1
 
     await db.commit()
-    
+
     # Invalidate filter cache if filter-relevant fields were updated
     if filter_fields_updated:
         from grimoire.services.cache_service import get_cache_service
