@@ -9,9 +9,12 @@ interface ProductCardProps {
   product: Product;
   onClick?: (product: Product) => void;
   viewMode?: 'grid' | 'list';
+  selectable?: boolean;
+  selected?: boolean;
+  onSelectionChange?: (productId: number, selected: boolean) => void;
 }
 
-export function ProductCard({ product, onClick, viewMode = 'grid' }: ProductCardProps) {
+export function ProductCard({ product, onClick, viewMode = 'grid', selectable, selected, onSelectionChange }: ProductCardProps) {
   const [queued, setQueued] = useState(false);
   const [coverError, setCoverError] = useState(false);
 
@@ -60,6 +63,20 @@ export function ProductCard({ product, onClick, viewMode = 'grid' }: ProductCard
         tabIndex={0}
         onKeyDown={(e) => e.key === 'Enter' && handleClick()}
       >
+        {selectable && (
+          <div className="flex-shrink-0">
+            <input
+              type="checkbox"
+              checked={selected}
+              onChange={(e) => {
+                e.stopPropagation();
+                onSelectionChange?.(product.id, e.target.checked);
+              }}
+              onClick={(e) => e.stopPropagation()}
+              className="h-5 w-5 rounded cursor-pointer accent-[var(--color-accent)]"
+            />
+          </div>
+        )}
         <div
           className="flex-shrink-0 overflow-hidden rounded-md"
           style={{
@@ -156,6 +173,22 @@ export function ProductCard({ product, onClick, viewMode = 'grid' }: ProductCard
         className="aspect-[3/4] w-full overflow-hidden rounded-t-md relative"
         style={{ backgroundColor: 'var(--color-surface-raised)' }}
       >
+        {selectable && (
+          <div
+            className={`absolute top-2 left-2 z-10 transition-opacity ${selected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
+          >
+            <input
+              type="checkbox"
+              checked={selected}
+              onChange={(e) => {
+                e.stopPropagation();
+                onSelectionChange?.(product.id, e.target.checked);
+              }}
+              onClick={(e) => e.stopPropagation()}
+              className="h-5 w-5 rounded cursor-pointer accent-[var(--color-accent)]"
+            />
+          </div>
+        )}
         {product.cover_url && !coverError ? (
           <img
             src={getCoverUrl(product.id, 'thumbnail')}
