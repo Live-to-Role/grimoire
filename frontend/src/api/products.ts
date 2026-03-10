@@ -90,6 +90,36 @@ export async function getContributionStatus(productId: number): Promise<Contribu
   return response.data;
 }
 
+export interface BulkUpdateFields {
+  game_system?: string | null;
+  product_type?: string | null;
+  genre?: string | null;
+  publisher?: string | null;
+  author?: string | null;
+  publication_year?: number | null;
+  setting?: string | null;
+  series?: string | null;
+  estimated_runtime?: string | null;
+  format?: string | null;
+}
+
+export interface BulkResponse {
+  message: string;
+  affected: number;
+  errors: string[];
+}
+
+export async function bulkUpdateProducts(
+  productIds: number[],
+  fields: BulkUpdateFields,
+): Promise<BulkResponse> {
+  const response = await api.post<BulkResponse>('/bulk/update', {
+    product_ids: productIds,
+    ...fields,
+  });
+  return response.data;
+}
+
 export async function updateProductAndContribute(
   id: number,
   data: Partial<Product>,
