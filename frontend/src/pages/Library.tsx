@@ -400,7 +400,13 @@ export function Library({
       {showBulkEdit && (
         <BulkEditModal
           selectedProducts={displayProducts.filter(p => selectedIds.has(p.id))}
-          onClose={() => setShowBulkEdit(false)}
+          onClose={() => {
+            setShowBulkEdit(false);
+            if (queuePaused) {
+              resumeQueue();
+              setQueuePaused(false);
+            }
+          }}
           onComplete={clearSelection}
         />
       )}
