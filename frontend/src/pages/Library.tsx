@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import { Search, Grid, List, RefreshCw, X, SlidersHorizontal } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { useProducts } from '../hooks/useProducts';
@@ -46,6 +46,8 @@ export function Library({
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [searchContent, setSearchContent] = useState(false);
   const [activeSearch, setActiveSearch] = useState('');
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [showBulkEdit, setShowBulkEdit] = useState(false);
 
   const debouncedSearch = useDebounce(searchInput, 300);
 
@@ -102,6 +104,30 @@ export function Library({
   const handleProductClick = (product: Product) => {
     setSelectedProduct(product);
   };
+
+  const handleSelectionChange = useCallback((productId: number, selected: boolean) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (selected) {
+        next.add(productId);
+      } else {
+        next.delete(productId);
+      }
+      return next;
+    });
+  }, []);
+
+  const handleSelectAll = useCallback(() => {
+    if (selectedIds.size === displayProducts.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(displayProducts.map(p => p.id)));
+    }
+  }, [displayProducts, selectedIds.size]);
+
+  const clearSelection = useCallback(() => {
+    setSelectedIds(new Set());
+  }, []);
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
@@ -264,6 +290,17 @@ export function Library({
           ) : displayProducts.length > 0 || data ? (
             <>
               <div className="mb-4 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <input
+                    type="checkbox"
+                    checked={displayProducts.length > 0 && selectedIds.size === displayProducts.length}
+                    ref={(el) => {
+                      if (el) el.indeterminate = selectedIds.size > 0 && selectedIds.size < displayProducts.length;
+                    }}
+                    onChange={handleSelectAll}
+                    className="h-5 w-5 rounded cursor-pointer accent-[var(--color-accent)]"
+                    title="Select all"
+                  />
                 <p className="text-base" style={{ color: 'var(--color-text-secondary)' }}>
                   {isSearching ? (
                     <>
@@ -277,6 +314,7 @@ export function Library({
                     </>
                   )}
                 </p>
+                </div>
                 {isSearching && (
                   <button
                     onClick={clearSearch}
@@ -294,11 +332,46 @@ export function Library({
                 hasNextPage={!isSearching && hasNextPage}
                 isFetchingNextPage={isFetchingNextPage}
                 fetchNextPage={fetchNextPage}
+                selectable={true}
+                selectedIds={selectedIds}
+                onSelectionChange={handleSelectionChange}
               />
             </>
           ) : null}
         </div>
       </main>
+
+      {/* Floating bulk action toolbar */}
+      {selectedIds.size > 0 && (
+        <div
+          className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-4 rounded-lg px-6 py-3 shadow-xl"
+          style={{
+            backgroundColor: 'var(--color-surface)',
+            border: '1px solid var(--color-border)',
+          }}
+        >
+          <span className="text-base font-medium" style={{ color: 'var(--color-text-primary)' }}>
+            {selectedIds.size} selected
+          </span>
+          <button
+            onClick={() => setShowBulkEdit(true)}
+            className="rounded-md px-4 py-2 text-sm font-medium text-white"
+            style={{ backgroundColor: 'var(--color-accent)' }}
+          >
+            Edit Selected
+          </button>
+          <button
+            onClick={clearSelection}
+            className="rounded-md px-4 py-2 text-sm font-medium"
+            style={{
+              color: 'var(--color-text-secondary)',
+              border: '1px solid var(--color-border)',
+            }}
+          >
+            Clear
+          </button>
+        </div>
+      )}
 
       {selectedProduct && (
         <ProductDetail
