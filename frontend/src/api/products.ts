@@ -127,3 +127,13 @@ export async function updateProductAndContribute(
   const response = await api.patch<Product>(`/products/${id}?send_to_codex=true`, data);
   return response.data;
 }
+
+export async function pauseQueue(): Promise<{ paused: boolean }> {
+  const response = await api.post<{ paused: boolean }>('/queue/pause');
+  return response.data;
+}
+
+export async function resumeQueue(): Promise<{ paused: boolean }> {
+  const response = await api.post<{ paused: boolean }>('/queue/resume');
+  return response.data;
+}
