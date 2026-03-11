@@ -9,6 +9,7 @@ import { searchProducts } from '../api/search';
 import { useDebounce } from '../hooks/useDebounce';
 import type { Product, ProductListResponse } from '../types/product';
 import type { ProductFilters } from '../api/products';
+import { pauseQueue, resumeQueue } from '../api/products';
 
 interface LibraryProps {
   selectedCollection?: number | null;
@@ -49,6 +50,7 @@ export function Library({
   const [activeSearch, setActiveSearch] = useState('');
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [showBulkEdit, setShowBulkEdit] = useState(false);
+  const [queuePaused, setQueuePaused] = useState(false);
 
   const debouncedSearch = useDebounce(searchInput, 300);
 
@@ -129,6 +131,16 @@ export function Library({
   const clearSelection = useCallback(() => {
     setSelectedIds(new Set());
   }, []);
+
+  const handleTogglePause = useCallback(async () => {
+    if (queuePaused) {
+      await resumeQueue();
+      setQueuePaused(false);
+    } else {
+      await pauseQueue();
+      setQueuePaused(true);
+    }
+  }, [queuePaused]);
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
@@ -354,6 +366,17 @@ export function Library({
           <span className="text-base font-medium" style={{ color: 'var(--color-text-primary)' }}>
             {selectedIds.size} selected
           </span>
+          <button
+            onClick={handleTogglePause}
+            className="rounded-md px-4 py-2 text-sm font-medium"
+            style={{
+              backgroundColor: queuePaused ? 'var(--color-warning)' : 'var(--color-surface-raised)',
+              color: queuePaused ? 'white' : 'var(--color-text-secondary)',
+              border: queuePaused ? 'none' : '1px solid var(--color-border)',
+            }}
+          >
+            {queuePaused ? 'Queue Paused' : 'Pause Queue'}
+          </button>
           <button
             onClick={() => setShowBulkEdit(true)}
             className="rounded-md px-4 py-2 text-sm font-medium text-white"
