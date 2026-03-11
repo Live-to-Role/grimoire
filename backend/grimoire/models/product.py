@@ -91,6 +91,11 @@ class Product(Base):
     deep_indexed: Mapped[bool] = mapped_column(Boolean, default=False)
     ai_identified: Mapped[bool] = mapped_column(Boolean, default=False)
 
+    # Image content (maps, stock art)
+    is_image_content: Mapped[bool] = mapped_column(Boolean, default=False)
+    images_extracted: Mapped[bool] = mapped_column(Boolean, default=False)
+    image_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
     # AI confidence scores
     identification_confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
     system_detection_confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
