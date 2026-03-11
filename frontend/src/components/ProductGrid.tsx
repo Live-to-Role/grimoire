@@ -9,9 +9,12 @@ interface ProductGridProps {
   hasNextPage?: boolean;
   isFetchingNextPage?: boolean;
   fetchNextPage?: () => void;
+  selectable?: boolean;
+  selectedIds?: Set<number>;
+  onSelectionChange?: (productId: number, selected: boolean) => void;
 }
 
-export function ProductGrid({ products, onProductClick, viewMode = 'grid', hasNextPage, isFetchingNextPage, fetchNextPage }: ProductGridProps) {
+export function ProductGrid({ products, onProductClick, viewMode = 'grid', hasNextPage, isFetchingNextPage, fetchNextPage, selectable, selectedIds, onSelectionChange }: ProductGridProps) {
   const sentinelRef = useRef<HTMLDivElement>(null);
 
   // Trigger fetch when the sentinel becomes visible in the nearest scrollable ancestor
@@ -92,6 +95,9 @@ export function ProductGrid({ products, onProductClick, viewMode = 'grid', hasNe
             product={product}
             onClick={onProductClick}
             viewMode={viewMode}
+            selectable={selectable}
+            selected={selectedIds?.has(product.id)}
+            onSelectionChange={onSelectionChange}
           />
         ))}
       </div>
