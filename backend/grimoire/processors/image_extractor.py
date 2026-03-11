@@ -4,14 +4,28 @@ Extracts images, detects maps, and provides metadata.
 """
 
 import io
+import json
+import logging
 import os
 import hashlib
 from dataclasses import dataclass, field
+from io import BytesIO
 from pathlib import Path
 from typing import Any
 
-import fitz  # PyMuPDF
-from PIL import Image
+try:
+    import fitz  # PyMuPDF
+    PYMUPDF_AVAILABLE = True
+except ImportError:
+    PYMUPDF_AVAILABLE = False
+
+try:
+    from PIL import Image
+    PIL_AVAILABLE = True
+except ImportError:
+    PIL_AVAILABLE = False
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -239,6 +253,135 @@ def save_images_to_directory(
 def images_to_json(images: list[ExtractedImage], include_data: bool = False) -> list[dict]:
     """Convert images to JSON-serializable format."""
     return [img.to_dict(include_data) for img in images]
+
+
+def extract_images(pdf_path: Path, output_dir: Path) -> dict:
+    """
+    Extract embedded images from a PDF and save to output directory.
+
+    Creates a manifest.json with image metadata. Used by the gallery feature.
+
+    Args:
+        pdf_path: Path to the PDF file
+        output_dir: Directory to save extracted images
+
+    Returns:
+        Dict with image_count, total_pages, and images list
+    """
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    if not PYMUPDF_AVAILABLE:
+        logger.error("PyMuPDF not available for image extraction")
+        manifest = {"images": [], "image_count": 0, "total_pages": 0}
+        _write_manifest(output_dir, manifest)
+        return manifest
+
+    doc = fitz.open(str(pdf_path))
+    total_pages = len(doc)
+    images = []
+    image_index = 0
+
+    for page_num, page in enumerate(doc):
+        page_images = page.get_images(full=True)
+
+        if page_images:
+            for img_info in page_images:
+                xref = img_info[0]
+                try:
+                    extracted = _extract_image_by_xref(doc, xref, output_dir, image_index)
+                    if extracted:
+                        extracted["page"] = page_num + 1
+                        images.append(extracted)
+                        image_index += 1
+                except Exception as e:
+                    logger.warning(f"Failed to extract image xref {xref} from page {page_num + 1}: {e}")
+        else:
+            extracted = _render_page(page, output_dir, image_index, page_num)
+            if extracted:
+                images.append(extracted)
+                image_index += 1
+
+    doc.close()
+
+    manifest = {
+        "images": images,
+        "image_count": len(images),
+        "total_pages": total_pages,
+    }
+    _write_manifest(output_dir, manifest)
+    return manifest
+
+
+def _extract_image_by_xref(doc, xref: int, output_dir: Path, index: int) -> dict | None:
+    """Extract a single image by its xref and save as WebP."""
+    base_image = doc.extract_image(xref)
+    if not base_image or not base_image.get("image"):
+        return None
+
+    image_bytes = base_image["image"]
+    width = base_image.get("width", 0)
+    height = base_image.get("height", 0)
+    original_ext = base_image.get("ext", "png")
+
+    filename = f"{index + 1:03d}.webp"
+    output_path = output_dir / filename
+
+    if PIL_AVAILABLE:
+        try:
+            img = Image.open(BytesIO(image_bytes))
+            img.save(str(output_path), "WEBP", quality=85)
+        except Exception:
+            filename = f"{index + 1:03d}.{original_ext}"
+            output_path = output_dir / filename
+            output_path.write_bytes(image_bytes)
+    else:
+        filename = f"{index + 1:03d}.{original_ext}"
+        output_path = output_dir / filename
+        output_path.write_bytes(image_bytes)
+
+    return {
+        "filename": filename,
+        "width": width,
+        "height": height,
+        "original_format": original_ext,
+        "file_size": output_path.stat().st_size,
+    }
+
+
+def _render_page(page, output_dir: Path, index: int, page_num: int) -> dict | None:
+    """Render a page as an image (fallback when no embedded images found)."""
+    try:
+        mat = fitz.Matrix(2, 2)
+        pix = page.get_pixmap(matrix=mat)
+        filename = f"{index + 1:03d}.webp"
+        output_path = output_dir / filename
+
+        if PIL_AVAILABLE:
+            img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+            img.save(str(output_path), "WEBP", quality=85)
+        else:
+            filename = f"{index + 1:03d}.png"
+            output_path = output_dir / filename
+            pix.save(str(output_path))
+
+        return {
+            "filename": filename,
+            "page": page_num + 1,
+            "width": pix.width,
+            "height": pix.height,
+            "original_format": "rendered",
+            "file_size": output_path.stat().st_size,
+        }
+    except Exception as e:
+        logger.warning(f"Failed to render page {page_num + 1}: {e}")
+        return None
+
+
+def _write_manifest(output_dir: Path, manifest: dict) -> None:
+    """Write the image manifest JSON file."""
+    manifest_path = output_dir / "manifest.json"
+    with open(manifest_path, "w", encoding="utf-8") as f:
+        json.dump(manifest, f, ensure_ascii=False, indent=2)
 
 
 def get_image_stats(images: list[ExtractedImage]) -> dict:
