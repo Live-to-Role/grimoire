@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useProducts } from '../hooks/useProducts';
 import { ProductGrid } from '../components/ProductGrid';
 import { ProductDetail } from '../components/ProductDetail';
+import { BulkEditModal } from '../components/BulkEditModal';
 import { searchProducts } from '../api/search';
 import { useDebounce } from '../hooks/useDebounce';
 import type { Product, ProductListResponse } from '../types/product';
@@ -371,6 +372,14 @@ export function Library({
             Clear
           </button>
         </div>
+      )}
+
+      {showBulkEdit && (
+        <BulkEditModal
+          selectedProducts={displayProducts.filter(p => selectedIds.has(p.id))}
+          onClose={() => setShowBulkEdit(false)}
+          onComplete={clearSelection}
+        />
       )}
 
       {selectedProduct && (
