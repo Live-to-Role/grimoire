@@ -115,3 +115,8 @@ async def init_db() -> None:
     from grimoire.services.exclusion_service import seed_default_rules
     async with async_session_maker() as session:
         await seed_default_rules(session)
+
+    # Seed built-in tags
+    from grimoire.services.tag_service import seed_builtin_tags
+    async with async_session_maker() as session:
+        await seed_builtin_tags(session)

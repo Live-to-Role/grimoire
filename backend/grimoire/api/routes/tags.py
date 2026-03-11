@@ -36,6 +36,7 @@ async def list_tags(
                 name=tag.name,
                 category=tag.category,
                 color=tag.color,
+                is_builtin=tag.is_builtin or False,
                 created_at=tag.created_at,
                 product_count=product_count,
             )
@@ -65,6 +66,7 @@ async def create_tag(db: DbSession, data: TagCreate) -> TagResponse:
         name=tag.name,
         category=tag.category,
         color=tag.color,
+        is_builtin=tag.is_builtin or False,
         created_at=tag.created_at,
         product_count=0,
     )
@@ -89,6 +91,7 @@ async def get_tag(db: DbSession, tag_id: int) -> TagResponse:
         name=tag.name,
         category=tag.category,
         color=tag.color,
+        is_builtin=tag.is_builtin or False,
         created_at=tag.created_at,
         product_count=product_count,
     )
@@ -126,6 +129,7 @@ async def update_tag(db: DbSession, tag_id: int, data: TagUpdate) -> TagResponse
         name=tag.name,
         category=tag.category,
         color=tag.color,
+        is_builtin=tag.is_builtin or False,
         created_at=tag.created_at,
         product_count=product_count,
     )
@@ -140,6 +144,9 @@ async def delete_tag(db: DbSession, tag_id: int) -> Response:
 
     if not tag:
         raise HTTPException(status_code=404, detail="Tag not found")
+
+    if tag.is_builtin:
+        raise HTTPException(status_code=403, detail="Cannot delete built-in tag")
 
     await db.delete(tag)
     await db.commit()

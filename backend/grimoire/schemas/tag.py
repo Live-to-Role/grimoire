@@ -31,6 +31,7 @@ class TagResponse(TagBase):
     """Schema for tag response."""
 
     id: int
+    is_builtin: bool = False
     created_at: datetime
     product_count: int = 0
 
