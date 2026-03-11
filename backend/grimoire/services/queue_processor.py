@@ -17,6 +17,25 @@ logger = logging.getLogger(__name__)
 # Task type handlers
 TASK_HANDLERS = {}
 
+# Pause control — set = running, clear = paused
+_pause_event = asyncio.Event()
+_pause_event.set()  # Start unpaused
+
+
+def pause_queue():
+    """Pause the queue worker (finishes in-flight tasks, stops fetching new ones)."""
+    _pause_event.clear()
+
+
+def resume_queue():
+    """Resume the queue worker."""
+    _pause_event.set()
+
+
+def is_queue_paused() -> bool:
+    """Check if the queue is currently paused."""
+    return not _pause_event.is_set()
+
 
 def register_handler(task_type: str):
     """Decorator to register a task handler."""
@@ -591,6 +610,12 @@ async def run_queue_worker(
         if stop_event and stop_event.is_set():
             logger.info("Queue worker stopping")
             break
+
+        # Wait if paused (check every second so we can still stop)
+        while not _pause_event.is_set():
+            if stop_event and stop_event.is_set():
+                break
+            await asyncio.sleep(1.0)
 
         try:
             async with async_session_maker() as db:
