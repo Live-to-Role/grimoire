@@ -23,6 +23,22 @@ from grimoire.processors.ai_identifier import (
 router = APIRouter()
 
 
+async def check_provider_available(provider: str) -> bool:
+    """Check if a specific embedding provider is available."""
+    if provider == "none":
+        return False
+    providers = await _get_embedding_providers()
+    return providers.get(provider, False)
+
+
+async def _count_embedded_products(db) -> int:
+    """Count products that have embeddings."""
+    result = await db.execute(
+        select(ProductEmbedding.product_id).distinct()
+    )
+    return len(result.scalars().all())
+
+
 async def _get_embedding_providers() -> dict[str, bool]:
     """Check embedding provider availability from env vars AND database settings."""
     import os
@@ -72,6 +88,38 @@ async def get_embedding_providers() -> dict:
     """Get available embedding providers."""
     return {
         "providers": await _get_embedding_providers(),
+    }
+
+
+@router.get("/search-status")
+async def semantic_search_status(db: DbSession) -> dict:
+    """Lightweight status check for the Library search bar."""
+    import json
+    from grimoire.models import Setting
+
+    # Read semantic_search_provider setting
+    result = await db.execute(
+        select(Setting).where(Setting.key == "semantic_search_provider")
+    )
+    setting = result.scalar_one_or_none()
+    provider = json.loads(setting.value) if setting else "none"
+
+    if provider == "none":
+        return {
+            "enabled": False,
+            "provider": "none",
+            "has_embeddings": False,
+            "embedded_count": 0,
+        }
+
+    available = await check_provider_available(provider)
+    embedded_count = await _count_embedded_products(db)
+
+    return {
+        "enabled": available and embedded_count > 0,
+        "provider": provider,
+        "has_embeddings": embedded_count > 0,
+        "embedded_count": embedded_count,
     }
 
 

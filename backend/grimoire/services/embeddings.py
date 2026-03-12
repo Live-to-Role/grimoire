@@ -251,6 +251,45 @@ def chunk_text(text: str, chunk_size: int = 500, overlap: int = 50) -> list[str]
     return [c for c in chunks if c]
 
 
+# In-memory cache for product search vectors
+_vector_cache: dict[int, list[float]] | None = None
+
+
+def invalidate_vector_cache():
+    """Call when embeddings are added/removed."""
+    global _vector_cache
+    _vector_cache = None
+
+
+def search_product_vectors(
+    query: list[float],
+    product_vectors: dict[int, list[float]],
+    top_k: int = 10,
+    threshold: float = 0.0,
+) -> list[tuple[int, float]]:
+    """Fast cosine similarity search using numpy batch computation."""
+    if not product_vectors:
+        return []
+
+    product_ids = list(product_vectors.keys())
+    matrix = np.array([product_vectors[pid] for pid in product_ids], dtype=np.float32)
+    query_vec = np.array(query, dtype=np.float32)
+
+    # Batch cosine similarity
+    norms = np.linalg.norm(matrix, axis=1) * np.linalg.norm(query_vec)
+    norms[norms == 0] = 1e-10  # avoid division by zero
+    similarities = np.dot(matrix, query_vec) / norms
+
+    # Filter and sort
+    results = [
+        (product_ids[i], float(similarities[i]))
+        for i in range(len(product_ids))
+        if similarities[i] >= threshold
+    ]
+    results.sort(key=lambda x: x[1], reverse=True)
+    return results[:top_k]
+
+
 def get_available_providers() -> dict[str, bool]:
     """Check which embedding providers are available."""
     return {

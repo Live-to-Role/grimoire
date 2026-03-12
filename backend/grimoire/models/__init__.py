@@ -13,6 +13,7 @@ from grimoire.models.run_note import RunNote
 from grimoire.models.exclusion import ExclusionRule, ExclusionRuleType, DEFAULT_EXCLUSION_RULES
 from grimoire.models.scan_job import ScanJob, ScanJobStatus
 from grimoire.models.deleted_duplicate import DeletedDuplicate
+from grimoire.models.product_search_vector import ProductSearchVector
 
 __all__ = [
     "Product",
@@ -35,4 +36,5 @@ __all__ = [
     "ScanJob",
     "ScanJobStatus",
     "DeletedDuplicate",
+    "ProductSearchVector",
 ]
