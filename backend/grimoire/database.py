@@ -105,11 +105,27 @@ async def _ensure_fts_table(conn) -> None:
     """))
 
 
+async def _ensure_columns(conn) -> None:
+    """Add columns that may be missing from older databases."""
+    migrations = [
+        ("tags", "is_builtin", "BOOLEAN DEFAULT 0"),
+        ("products", "is_image_content", "BOOLEAN DEFAULT 0"),
+        ("products", "images_extracted", "BOOLEAN DEFAULT 0"),
+        ("products", "image_count", "INTEGER"),
+    ]
+    for table, column, col_type in migrations:
+        try:
+            await conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {col_type}"))
+        except Exception:
+            pass  # Column already exists
+
+
 async def init_db() -> None:
     """Initialize database tables and seed default data."""
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
         await _ensure_fts_table(conn)
+        await _ensure_columns(conn)
 
     # Seed default exclusion rules
     from grimoire.services.exclusion_service import seed_default_rules

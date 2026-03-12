@@ -162,11 +162,15 @@ async def list_products(
                 (Product.title.ilike(search_term)) | (Product.file_name.ilike(search_term))
             )
 
+    def _multi_value_filter(column, value: str):
+        """Filter that matches exact value or as part of a comma-separated list."""
+        if value == "Unknown":
+            return column.is_(None)
+        # Match exact value OR as part of a comma-separated list
+        return (column == value) | column.like(f"{value}, %") | column.like(f"%, {value}") | column.like(f"%, {value}, %")
+
     if game_system:
-        if game_system == "Unknown":
-            conditions.append(Product.game_system.is_(None))
-        else:
-            conditions.append(Product.game_system == game_system)
+        conditions.append(_multi_value_filter(Product.game_system, game_system))
 
     if product_type:
         if product_type == "Unknown":
@@ -175,10 +179,7 @@ async def list_products(
             conditions.append(Product.product_type == product_type)
 
     if genre:
-        if genre == "Unknown":
-            conditions.append(Product.genre.is_(None))
-        else:
-            conditions.append(Product.genre == genre)
+        conditions.append(_multi_value_filter(Product.genre, genre))
 
     if publisher:
         if publisher == "Unknown":
@@ -187,10 +188,7 @@ async def list_products(
             conditions.append(Product.publisher == publisher)
 
     if author:
-        if author == "Unknown":
-            conditions.append(Product.author.is_(None))
-        else:
-            conditions.append(Product.author == author)
+        conditions.append(_multi_value_filter(Product.author, author))
 
     if has_cover is not None:
         conditions.append(Product.cover_extracted == has_cover)
@@ -605,6 +603,59 @@ async def get_product_text(db: DbSession, product_id: int) -> dict:
         "markdown": text,
         "char_count": len(text),
     }
+
+
+@router.get("/{product_id}/images")
+async def list_product_images(db: DbSession, product_id: int):
+    """List extracted images for a product."""
+    query = select(Product).where(Product.id == product_id)
+    result = await db.execute(query)
+    product = result.scalar_one_or_none()
+
+    if not product:
+        raise HTTPException(status_code=404, detail="Product not found")
+
+    if not product.images_extracted:
+        return {"images": [], "image_count": 0, "total_pages": 0}
+
+    manifest_path = settings.data_dir / "images" / str(product.id) / "manifest.json"
+    if not manifest_path.exists():
+        return {"images": [], "image_count": 0, "total_pages": 0}
+
+    import json
+    with open(manifest_path, "r", encoding="utf-8") as f:
+        manifest = json.load(f)
+
+    # Add URLs to each image
+    for img in manifest.get("images", []):
+        img["url"] = f"/api/v1/products/{product_id}/images/{img['filename']}"
+
+    return manifest
+
+
+@router.get("/{product_id}/images/{filename}")
+async def get_product_image(product_id: int, filename: str):
+    """Serve a specific extracted image."""
+    import re
+
+    # Validate filename (prevent path traversal)
+    if not re.match(r"^\d{3}\.(webp|jpg|jpeg|png)$", filename):
+        raise HTTPException(status_code=400, detail="Invalid filename")
+
+    image_path = settings.data_dir / "images" / str(product_id) / filename
+    if not image_path.exists():
+        raise HTTPException(status_code=404, detail="Image not found")
+
+    # Determine media type
+    suffix = image_path.suffix.lower()
+    media_types = {".webp": "image/webp", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png"}
+    media_type = media_types.get(suffix, "application/octet-stream")
+
+    return FileResponse(
+        path=str(image_path),
+        media_type=media_type,
+        headers={"Cache-Control": "public, max-age=86400"},
+    )
 
 
 @router.post("/{product_id}/extract")

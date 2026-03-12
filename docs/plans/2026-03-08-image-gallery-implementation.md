@@ -8,6 +8,26 @@
 
 **Tech Stack:** PyMuPDF (fitz), FastAPI, SQLAlchemy 2.x async, React 18, TypeScript, React Query v5
 
+**Branch:** `feat/image-gallery`
+
+## Progress
+
+- [x] Task 1: Add `is_image_content` fields to Product model
+- [x] Task 2: Add `is_builtin` field to Tag model and seed built-in tags
+- [x] Task 3: Create image extractor service
+- [x] Task 4: Add image classification heuristics and queue handler
+- [x] Task 5: Add image serving API routes
+- [x] Task 6: Add gallery API endpoint
+- [x] Task 7: Create frontend gallery API client
+- [x] Task 8: Create Gallery page component
+- [x] Task 9: Update frontend Tag API types for `is_builtin`
+- [x] Task 10: End-to-end verification
+
+### Implementation Notes
+- Task 1: Test uses `not p.is_image_content` (falsy) instead of `is False` because SQLAlchemy `default=False` is DDL-level, not Python constructor-level.
+- Task 2: `test_cannot_delete_builtin_tag` queries for existing "Map" tag from seed test (session-scoped DB), avoids duplicate insert.
+- Task 3: Extended existing `image_extractor.py` with new `extract_images()` function rather than replacing it. Changed top-level imports to conditional (`PYMUPDF_AVAILABLE`, `PIL_AVAILABLE`).
+
 ---
 
 ### Task 1: Add `is_image_content` fields to Product model

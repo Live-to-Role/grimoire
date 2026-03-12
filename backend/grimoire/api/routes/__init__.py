@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter
 
-from grimoire.api.routes import products, collections, tags, folders, search, settings, health, bulk, ai, contributions, queue, extraction, semantic, structured, export, campaigns, duplicates, exclusions, library, run_notes, filters
+from grimoire.api.routes import products, collections, tags, folders, search, settings, health, bulk, ai, contributions, queue, extraction, semantic, structured, export, campaigns, duplicates, exclusions, library, run_notes, filters, gallery
 
 api_router = APIRouter()
 
@@ -27,3 +27,4 @@ api_router.include_router(duplicates.router, prefix="/duplicates", tags=["Duplic
 api_router.include_router(exclusions.router, prefix="/exclusions", tags=["Exclusions"])
 api_router.include_router(library.router, prefix="/library", tags=["Library"])
 api_router.include_router(run_notes.router, tags=["Run Notes"])
+api_router.include_router(gallery.router, prefix="/gallery", tags=["Gallery"])

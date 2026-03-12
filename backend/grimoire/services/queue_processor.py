@@ -143,17 +143,44 @@ async def handle_text_task(db: AsyncSession, product: Product) -> bool:
         # detect_needs_ocr opens PDF with fitz — run in thread
         detection = await asyncio.to_thread(detect_needs_ocr, pdf_path)
         if detection["needs_ocr"]:
-            # Queue OCR task instead
-            ocr_item = ProcessingQueue(
+            # Classify as image content (maps, stock art, etc.)
+            from grimoire.processors.image_classifier import classify_image_content
+            classification = classify_image_content(product.file_name, product.file_path)
+
+            product.is_image_content = True
+            product.product_type = classification
+
+            # Auto-tag with built-in tag
+            from grimoire.models import Tag, ProductTag
+            tag_result = await db.execute(
+                select(Tag).where(Tag.name == classification, Tag.is_builtin == True)
+            )
+            tag = tag_result.scalar_one_or_none()
+            if tag:
+                existing_pt = await db.execute(
+                    select(ProductTag).where(
+                        ProductTag.product_id == product.id,
+                        ProductTag.tag_id == tag.id,
+                    )
+                )
+                if not existing_pt.scalar_one_or_none():
+                    db.add(ProductTag(
+                        product_id=product.id,
+                        tag_id=tag.id,
+                        source="auto",
+                    ))
+
+            # Queue image extraction instead of OCR
+            img_item = ProcessingQueue(
                 product_id=product.id,
-                task_type="ocr_text",
-                priority=1,  # Lower priority - OCR is slow
+                task_type="extract_images",
+                priority=2,
                 status="pending",
             )
-            db.add(ocr_item)
+            db.add(img_item)
             await db.commit()
-            logger.info(f"Product {product.id} needs OCR: {detection['reason']}")
-            return True  # Successfully queued OCR task
+            logger.info(f"Product {product.id} classified as '{classification}': {detection['reason']}")
+            return True
 
     # Run sync extraction in thread pool
     success = await asyncio.to_thread(process_text_extraction_sync, product, False)
@@ -237,6 +264,28 @@ async def handle_ocr_text_task(db: AsyncSession, product: Product) -> bool:
     except Exception as e:
         logger.error(f"OCR extraction failed for product {product.id}: {e}")
         return False
+
+
+@register_handler("extract_images")
+async def handle_extract_images_task(db: AsyncSession, product: Product) -> bool:
+    """Handle image extraction task for maps/stock art PDFs."""
+    from grimoire.processors.image_extractor import extract_images
+    from grimoire.config import settings
+
+    pdf_path = Path(product.file_path)
+    if not pdf_path.exists():
+        return False
+
+    output_dir = settings.data_dir / "images" / str(product.id)
+
+    result = await asyncio.to_thread(extract_images, pdf_path, output_dir)
+
+    product.images_extracted = True
+    product.image_count = result["image_count"]
+    await db.commit()
+
+    logger.info(f"Extracted {result['image_count']} images from product {product.id}")
+    return True
 
 
 class TaskError(Exception):
@@ -369,21 +418,35 @@ async def handle_ai_identify_task(db: AsyncSession, product: Product) -> bool:
 
     # Apply identification results
     if identification.get("game_system"):
-        product.game_system = identification["game_system"]
+        game_system = identification["game_system"]
+        if isinstance(game_system, list):
+            game_system = ", ".join(str(g) for g in game_system)
+        product.game_system = game_system
     if identification.get("genre"):
-        product.genre = identification["genre"]
+        genre = identification["genre"]
+        if isinstance(genre, list):
+            genre = ", ".join(str(g) for g in genre)
+        product.genre = genre
     if identification.get("product_type"):
-        product.product_type = identification["product_type"]
+        product_type = identification["product_type"]
+        if isinstance(product_type, list):
+            product_type = ", ".join(str(p) for p in product_type)
+        product.product_type = product_type
     if identification.get("publisher"):
-        product.publisher = identification["publisher"]
+        publisher = identification["publisher"]
+        if isinstance(publisher, list):
+            publisher = ", ".join(str(p) for p in publisher)
+        product.publisher = publisher
     if identification.get("author"):
         author = identification["author"]
-        # AI may return a list of authors; join into a comma-separated string
         if isinstance(author, list):
             author = ", ".join(str(a) for a in author)
         product.author = author
     if identification.get("title"):
-        product.title = identification["title"]
+        title = identification["title"]
+        if isinstance(title, list):
+            title = ", ".join(str(t) for t in title)
+        product.title = title
     if identification.get("publication_year"):
         product.publication_year = identification["publication_year"]
     if identification.get("level_range_min"):
@@ -564,6 +627,81 @@ async def get_pending_batch(db: AsyncSession, batch_size: int) -> list[Processin
     return list(result.scalars().all())
 
 
+async def _auto_requeue_embeddings(db: AsyncSession, batch_size: int = 100) -> int:
+    """
+    Auto-queue more products for embedding if none are pending/processing.
+
+    Called by the worker loop to ensure continuous embedding progress
+    without requiring manual button clicks.
+
+    Returns the number of newly queued items.
+    """
+    from grimoire.models import ProductEmbedding
+    from grimoire.services.embeddings import SENTENCE_TRANSFORMERS_AVAILABLE
+    from grimoire.processors.ai_identifier import get_setting_from_db, check_ollama_available, get_ollama_url
+    import os
+
+    # Check if any embedding provider is available
+    openai_available = bool(os.getenv("OPENAI_API_KEY")) or bool(await get_setting_from_db("openai_api_key"))
+    ollama_url = await get_ollama_url()
+    ollama_available = check_ollama_available(ollama_url)
+    if not (openai_available or ollama_available or SENTENCE_TRANSFORMERS_AVAILABLE):
+        return 0
+
+    # Only requeue if there are no pending/processing embed tasks
+    pending_query = select(ProcessingQueue.id).where(
+        ProcessingQueue.task_type == "embed",
+        ProcessingQueue.status.in_(["pending", "processing"]),
+    ).limit(1)
+    pending_result = await db.execute(pending_query)
+    if pending_result.scalar_one_or_none() is not None:
+        return 0
+
+    # Find products with extracted text but no embeddings
+    embedded_query = select(ProductEmbedding.product_id).distinct()
+    embedded_result = await db.execute(embedded_query)
+    embedded_ids = set(embedded_result.scalars().all())
+
+    products_query = select(Product).where(Product.text_extracted == True)
+    if embedded_ids:
+        products_query = products_query.where(Product.id.notin_(embedded_ids))
+    products_query = products_query.limit(batch_size)
+
+    result = await db.execute(products_query)
+    products = list(result.scalars().all())
+
+    if not products:
+        return 0
+
+    queued = 0
+    for product in products:
+        # Skip if already has a recent failed entry (avoid retry loops)
+        existing = await db.execute(
+            select(ProcessingQueue).where(
+                ProcessingQueue.product_id == product.id,
+                ProcessingQueue.task_type == "embed",
+                ProcessingQueue.status == "failed",
+            )
+        )
+        if existing.scalar_one_or_none():
+            continue
+
+        item = ProcessingQueue(
+            product_id=product.id,
+            task_type="embed",
+            priority=9,
+            status="pending",
+        )
+        db.add(item)
+        queued += 1
+
+    if queued > 0:
+        await db.commit()
+        logger.info(f"Auto-queued {queued} products for embedding generation")
+
+    return queued
+
+
 async def run_queue_worker(
     poll_interval: float = 2.0,
     batch_size: int = 10,
@@ -622,6 +760,9 @@ async def run_queue_worker(
                 items = await get_pending_batch(db, batch_size)
 
             if not items:
+                # Auto-queue embeddings when queue is idle
+                async with async_session_maker() as requeue_db:
+                    await _auto_requeue_embeddings(requeue_db)
                 await asyncio.sleep(poll_interval)
                 continue
 

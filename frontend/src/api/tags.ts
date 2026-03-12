@@ -5,6 +5,7 @@ export interface Tag {
   name: string;
   category: string | null;
   color: string | null;
+  is_builtin: boolean;
   created_at: string;
   product_count: number;
 }

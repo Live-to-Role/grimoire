@@ -4,6 +4,7 @@ import { ThemeProvider } from './contexts/ThemeContext';
 import { Library } from './pages/Library';
 import { Settings } from './pages/Settings';
 import { Campaigns } from './pages/Campaigns';
+import { Gallery } from './pages/Gallery';
 import { LibraryManagement } from './pages/LibraryManagement';
 import { NavRail, NavBottomBar } from './components/NavRail';
 import { FilterDrawer } from './components/FilterDrawer';
@@ -63,6 +64,8 @@ function App() {
               <MaintenanceTools onClose={() => setActiveView('library')} />
             ) : activeView === 'campaigns' ? (
               <Campaigns />
+            ) : activeView === 'gallery' ? (
+              <Gallery />
             ) : activeView === 'library-management' ? (
               <LibraryManagement />
             ) : (
