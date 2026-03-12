@@ -121,9 +121,10 @@ async def rebuild_fts_index():
         
         # Repopulate from products table
         await conn.execute(text("""
-            INSERT INTO products_fts(rowid, title, file_name, publisher, game_system, product_type)
-            SELECT id, COALESCE(title, ''), COALESCE(file_name, ''), 
-                   COALESCE(publisher, ''), COALESCE(game_system, ''), COALESCE(product_type, '')
+            INSERT INTO products_fts(rowid, title, file_name, publisher, game_system, product_type, description)
+            SELECT id, COALESCE(title, ''), COALESCE(file_name, ''),
+                   COALESCE(publisher, ''), COALESCE(game_system, ''),
+                   COALESCE(product_type, ''), COALESCE(description, '')
             FROM products
         """))
         

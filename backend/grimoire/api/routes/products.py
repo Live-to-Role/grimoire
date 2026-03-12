@@ -136,6 +136,12 @@ async def list_products(
     conditions = [Product.is_duplicate == False, Product.is_missing == False]
 
     if search:
+        search_term = f"%{search}%"
+        ilike_condition = (
+            (Product.title.ilike(search_term))
+            | (Product.file_name.ilike(search_term))
+            | (Product.description.ilike(search_term))
+        )
         try:
             if await check_fts_available(db):
                 terms = search.strip().split()
@@ -150,17 +156,12 @@ async def list_products(
                     if fts_product_ids:
                         conditions.append(Product.id.in_(fts_product_ids))
                     else:
-                        conditions.append(Product.id == -1)
+                        # FTS returned nothing — fall back to ILIKE
+                        conditions.append(ilike_condition)
             else:
-                search_term = f"%{search}%"
-                conditions.append(
-                    (Product.title.ilike(search_term)) | (Product.file_name.ilike(search_term))
-                )
+                conditions.append(ilike_condition)
         except Exception:
-            search_term = f"%{search}%"
-            conditions.append(
-                (Product.title.ilike(search_term)) | (Product.file_name.ilike(search_term))
-            )
+            conditions.append(ilike_condition)
 
     def _multi_value_filter(column, value: str):
         """Filter that matches exact value or as part of a comma-separated list."""

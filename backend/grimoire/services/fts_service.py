@@ -50,8 +50,8 @@ async def update_search_vector(db: AsyncSession, product: Product) -> bool:
         
         await db.execute(
             text("""
-                INSERT INTO products_fts(rowid, title, file_name, publisher, game_system, product_type, extracted_text)
-                VALUES (:product_id, :title, :file_name, :publisher, :game_system, :product_type, :extracted_text)
+                INSERT INTO products_fts(rowid, title, file_name, publisher, game_system, product_type, description, extracted_text)
+                VALUES (:product_id, :title, :file_name, :publisher, :game_system, :product_type, :description, :extracted_text)
             """),
             {
                 "product_id": product.id,
@@ -60,6 +60,7 @@ async def update_search_vector(db: AsyncSession, product: Product) -> bool:
                 "publisher": product.publisher or "",
                 "game_system": product.game_system or "",
                 "product_type": product.product_type or "",
+                "description": product.description or "",
                 "extracted_text": extracted_text,
             }
         )
@@ -150,7 +151,7 @@ async def search_fts(
         SELECT 
             fts.rowid as product_id,
             bm25(products_fts) as rank,
-            snippet(products_fts, 5, '<mark>', '</mark>', '...', 32) as snippet
+            snippet(products_fts, 6, '<mark>', '</mark>', '...', 32) as snippet
         FROM products_fts fts
         JOIN products p ON p.id = fts.rowid
         WHERE products_fts MATCH :query

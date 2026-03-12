@@ -73,35 +73,71 @@ def get_db_session():
 
 
 async def _ensure_fts_table(conn) -> None:
-    """Create the FTS5 virtual table and sync triggers if they don't exist."""
+    """Create the FTS5 virtual table and sync triggers if they don't exist.
+
+    Also backfills any products missing from the index (e.g. products that
+    existed before the FTS table was created).
+    """
+    created_new = False
     result = await conn.execute(
         text("SELECT name FROM sqlite_master WHERE type='table' AND name='products_fts'")
     )
-    if result.fetchone() is not None:
-        return
+    if result.fetchone() is None:
+        created_new = True
+        await conn.execute(text("""
+            CREATE VIRTUAL TABLE products_fts USING fts5(
+                title, file_name, publisher, game_system, product_type,
+                description, extracted_text
+            )
+        """))
+    else:
+        # Check if description column exists in FTS table by trying a query
+        try:
+            await conn.execute(text(
+                "SELECT description FROM products_fts LIMIT 0"
+            ))
+        except Exception:
+            # Rebuild FTS table with description column
+            await conn.execute(text("DROP TABLE IF EXISTS products_fts"))
+            await conn.execute(text("""
+                CREATE VIRTUAL TABLE products_fts USING fts5(
+                    title, file_name, publisher, game_system, product_type,
+                    description, extracted_text
+                )
+            """))
+            # Drop old triggers so they get recreated with description
+            await conn.execute(text("DROP TRIGGER IF EXISTS products_fts_insert"))
+            await conn.execute(text("DROP TRIGGER IF EXISTS products_fts_update"))
+            await conn.execute(text("DROP TRIGGER IF EXISTS products_fts_delete"))
+            created_new = True
 
     await conn.execute(text("""
-        CREATE VIRTUAL TABLE products_fts USING fts5(
-            title, file_name, publisher, game_system, product_type, extracted_text
-        )
-    """))
-    await conn.execute(text("""
         CREATE TRIGGER IF NOT EXISTS products_fts_insert AFTER INSERT ON products BEGIN
-            INSERT INTO products_fts(rowid, title, file_name, publisher, game_system, product_type)
-            VALUES (new.id, new.title, new.file_name, new.publisher, new.game_system, new.product_type);
+            INSERT INTO products_fts(rowid, title, file_name, publisher, game_system, product_type, description)
+            VALUES (new.id, new.title, new.file_name, new.publisher, new.game_system, new.product_type, new.description);
         END
     """))
     await conn.execute(text("""
         CREATE TRIGGER IF NOT EXISTS products_fts_update AFTER UPDATE ON products BEGIN
             DELETE FROM products_fts WHERE rowid = old.id;
-            INSERT INTO products_fts(rowid, title, file_name, publisher, game_system, product_type)
-            VALUES (new.id, new.title, new.file_name, new.publisher, new.game_system, new.product_type);
+            INSERT INTO products_fts(rowid, title, file_name, publisher, game_system, product_type, description)
+            VALUES (new.id, new.title, new.file_name, new.publisher, new.game_system, new.product_type, new.description);
         END
     """))
     await conn.execute(text("""
         CREATE TRIGGER IF NOT EXISTS products_fts_delete AFTER DELETE ON products BEGIN
             DELETE FROM products_fts WHERE rowid = old.id;
         END
+    """))
+
+    # Backfill: insert any products not yet in the FTS index
+    result = await conn.execute(text("""
+        INSERT INTO products_fts(rowid, title, file_name, publisher, game_system, product_type, description)
+        SELECT p.id, COALESCE(p.title, ''), COALESCE(p.file_name, ''),
+               COALESCE(p.publisher, ''), COALESCE(p.game_system, ''),
+               COALESCE(p.product_type, ''), COALESCE(p.description, '')
+        FROM products p
+        WHERE p.id NOT IN (SELECT rowid FROM products_fts)
     """))
 
 

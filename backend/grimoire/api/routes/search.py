@@ -113,6 +113,7 @@ async def search_products(
                 Product.title.ilike(search_term),
                 Product.file_name.ilike(search_term),
                 Product.publisher.ilike(search_term),
+                Product.description.ilike(search_term),
             )
         )
         .options(selectinload(Product.product_tags).selectinload(ProductTag.tag))
