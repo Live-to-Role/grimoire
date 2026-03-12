@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
 import { Search, Grid, List, RefreshCw, X, SlidersHorizontal } from 'lucide-react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation } from '@tanstack/react-query';
 import { useProducts } from '../hooks/useProducts';
 import { ProductGrid } from '../components/ProductGrid';
 import { ProductDetail } from '../components/ProductDetail';
@@ -9,7 +9,7 @@ import { searchProducts } from '../api/search';
 import { useDebounce } from '../hooks/useDebounce';
 import type { Product, ProductListResponse } from '../types/product';
 import type { ProductFilters } from '../api/products';
-import { pauseQueue, resumeQueue } from '../api/products';
+import { pauseQueue, resumeQueue, contributeProduct } from '../api/products';
 
 interface LibraryProps {
   selectedCollection?: number | null;
@@ -141,6 +141,23 @@ export function Library({
       setQueuePaused(true);
     }
   }, [queuePaused]);
+
+  const contributeMutation = useMutation({
+    mutationFn: async (productIds: number[]) => {
+      const results = await Promise.allSettled(
+        productIds.map(id => contributeProduct(id))
+      );
+      const succeeded = results.filter(r => r.status === 'fulfilled').length;
+      const failed = results.length - succeeded;
+      return { succeeded, failed };
+    },
+    onSuccess: ({ succeeded, failed }) => {
+      clearSelection();
+      if (failed > 0) {
+        console.warn(`Codex: ${succeeded} sent, ${failed} failed`);
+      }
+    },
+  });
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
@@ -383,6 +400,15 @@ export function Library({
             style={{ backgroundColor: 'var(--color-accent)' }}
           >
             Edit Selected
+          </button>
+          <button
+            onClick={() => contributeMutation.mutate(Array.from(selectedIds))}
+            disabled={contributeMutation.isPending}
+            className="rounded-md px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+            style={{ backgroundColor: 'var(--color-success)' }}
+            title="Send selected products to the Codex community database"
+          >
+            {contributeMutation.isPending ? 'Sending...' : 'Send to Codex'}
           </button>
           <button
             onClick={clearSelection}

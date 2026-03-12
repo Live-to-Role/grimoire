@@ -82,7 +82,7 @@ export function ProductDetail({ product, onClose }: ProductDetailProps) {
   const { data: failedQueueItems } = useQuery({
     queryKey: ['queue-errors', product.id],
     queryFn: async () => {
-      const response = await apiClient.get('/queue/items', {
+      const response = await apiClient.get('/queue', {
         params: { status: 'failed', limit: 10 },
       });
       // Filter to this product's items client-side

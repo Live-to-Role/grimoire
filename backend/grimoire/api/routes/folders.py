@@ -338,25 +338,40 @@ async def get_library_stats(db: DbSession) -> LibraryStats:
     size_result = await db.execute(size_query)
     total_size = size_result.scalar() or 0
 
+    def _split_facets(rows: list, split: bool = False) -> dict[str, int]:
+        """Build facet counts, optionally splitting comma-separated values."""
+        counts: dict[str, int] = {}
+        for raw_value, count in rows:
+            if raw_value is None:
+                counts["Unknown"] = counts.get("Unknown", 0) + count
+            elif split and ", " in raw_value:
+                for part in raw_value.split(", "):
+                    part = part.strip()
+                    if part:
+                        counts[part] = counts.get(part, 0) + count
+            else:
+                counts[raw_value] = counts.get(raw_value, 0) + count
+        return counts
+
     system_query = select(Product.game_system, func.count()).group_by(Product.game_system)
     system_result = await db.execute(system_query)
-    by_system = {row[0] or "Unknown": row[1] for row in system_result.fetchall()}
+    by_system = _split_facets(system_result.fetchall(), split=True)
 
     type_query = select(Product.product_type, func.count()).group_by(Product.product_type)
     type_result = await db.execute(type_query)
-    by_type = {row[0] or "Unknown": row[1] for row in type_result.fetchall()}
+    by_type = _split_facets(type_result.fetchall())
 
     genre_query = select(Product.genre, func.count()).group_by(Product.genre)
     genre_result = await db.execute(genre_query)
-    by_genre = {row[0] or "Unknown": row[1] for row in genre_result.fetchall()}
+    by_genre = _split_facets(genre_result.fetchall(), split=True)
 
     author_query = select(Product.author, func.count()).group_by(Product.author)
     author_result = await db.execute(author_query)
-    by_author = {row[0] or "Unknown": row[1] for row in author_result.fetchall()}
+    by_author = _split_facets(author_result.fetchall(), split=True)
 
     publisher_query = select(Product.publisher, func.count()).group_by(Product.publisher)
     publisher_result = await db.execute(publisher_query)
-    by_publisher = {row[0] or "Unknown": row[1] for row in publisher_result.fetchall()}
+    by_publisher = _split_facets(publisher_result.fetchall())
 
     from grimoire.models import ProcessingQueue
 

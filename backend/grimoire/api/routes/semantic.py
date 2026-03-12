@@ -11,11 +11,35 @@ from grimoire.services.embeddings import (
     generate_embeddings,
     find_similar,
     chunk_text,
-    get_available_providers,
+    SENTENCE_TRANSFORMERS_AVAILABLE,
+)
+from grimoire.processors.ai_identifier import (
+    get_setting_from_db,
+    check_ollama_available,
+    get_ollama_url,
 )
 
 
 router = APIRouter()
+
+
+async def _get_embedding_providers() -> dict[str, bool]:
+    """Check embedding provider availability from env vars AND database settings."""
+    import os
+
+    openai_available = bool(os.getenv("OPENAI_API_KEY"))
+    if not openai_available:
+        openai_available = bool(await get_setting_from_db("openai_api_key"))
+
+    ollama_url = await get_ollama_url()
+    ollama_available = check_ollama_available(ollama_url)
+
+    return {
+        "openai": openai_available,
+        "ollama": ollama_available,
+        "local": SENTENCE_TRANSFORMERS_AVAILABLE,
+    }
+
 
 
 class EmbedProductRequest(BaseModel):
@@ -47,7 +71,7 @@ class NaturalLanguageQueryRequest(BaseModel):
 async def get_embedding_providers() -> dict:
     """Get available embedding providers."""
     return {
-        "providers": get_available_providers(),
+        "providers": await _get_embedding_providers(),
     }
 
 
@@ -257,7 +281,7 @@ async def embed_all_products(
 ) -> dict:
     """Queue all products with extracted text for embedding generation."""
     # Check if any embedding provider is available
-    providers = get_available_providers()
+    providers = await _get_embedding_providers()
     if not any(providers.values()):
         raise HTTPException(
             status_code=400,
@@ -333,9 +357,9 @@ async def embedding_status(db: DbSession) -> dict:
     prod_result = await db.execute(prod_query)
     embeddable_products = set(prod_result.scalars().all())
 
-    # Get available providers
-    providers = get_available_providers()
-    any_provider_available = providers.get("openai") or providers.get("local") or providers.get("ollama", False)
+    # Get available providers (check env vars AND database settings)
+    providers = await _get_embedding_providers()
+    any_provider_available = any(providers.values())
 
     # Queue stats for embed tasks
     from sqlalchemy import func as sql_func
@@ -363,6 +387,8 @@ async def embedding_status(db: DbSession) -> dict:
 
     # Anthropic availability (for NL query interpretation, not embeddings)
     anthropic_available = bool(os.getenv("ANTHROPIC_API_KEY", ""))
+    if not anthropic_available:
+        anthropic_available = bool(await get_setting_from_db("anthropic_api_key"))
 
     return {
         "total_products": len(embeddable_products),

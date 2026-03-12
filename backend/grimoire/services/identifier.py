@@ -123,20 +123,28 @@ class IdentificationResult:
         ai_data: dict[str, Any],
         confidence: float,
     ) -> "IdentificationResult":
+        def _str_field(val: Any) -> str | None:
+            """Coerce AI result field to string, joining lists."""
+            if val is None:
+                return None
+            if isinstance(val, list):
+                return ", ".join(str(v) for v in val) if val else None
+            return str(val)
+
         return cls(
             source=IdentificationSource.AI,
             confidence=confidence,
             needs_confirmation=confidence < 0.9,
-            title=ai_data.get("title"),
-            author=", ".join(str(a) for a in ai_data["author"]) if isinstance(ai_data.get("author"), list) else ai_data.get("author"),
-            publisher=ai_data.get("publisher"),
-            game_system=ai_data.get("game_system"),
-            genre=ai_data.get("genre"),
-            product_type=ai_data.get("product_type"),
+            title=_str_field(ai_data.get("title")),
+            author=_str_field(ai_data.get("author")),
+            publisher=_str_field(ai_data.get("publisher")),
+            game_system=_str_field(ai_data.get("game_system")),
+            genre=_str_field(ai_data.get("genre")),
+            product_type=_str_field(ai_data.get("product_type")),
             publication_year=ai_data.get("publication_year"),
             level_range_min=ai_data.get("level_range_min"),
             level_range_max=ai_data.get("level_range_max"),
-            description=ai_data.get("description"),
+            description=_str_field(ai_data.get("description")),
             raw_data=ai_data,
         )
 

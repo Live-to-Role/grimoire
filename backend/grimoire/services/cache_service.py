@@ -120,8 +120,22 @@ class CacheService:
         )
         
         result = await db.execute(query)
-        values = [row[0] for row in result.fetchall()]
-        return values
+        raw_values = [row[0] for row in result.fetchall()]
+
+        # Split comma-separated values for multi-value fields
+        if field in ("author", "genre", "game_system"):
+            split_values = set()
+            for val in raw_values:
+                if ", " in val:
+                    for part in val.split(", "):
+                        part = part.strip()
+                        if part:
+                            split_values.add(part)
+                else:
+                    split_values.add(val)
+            return sorted(split_values)
+
+        return raw_values
     
     async def invalidate_filter_options(self):
         """Invalidate all filter option caches.

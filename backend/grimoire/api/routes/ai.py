@@ -38,6 +38,43 @@ class IdentifyRequest(BaseModel):
     codex_api_key: str | None = Field(None, description="Codex API key for contributions")
 
 
+def _coerce_str(val) -> str | None:
+    """Coerce a value to string, joining lists. AI models sometimes return lists for string fields."""
+    if val is None:
+        return None
+    if isinstance(val, list):
+        return ", ".join(str(v) for v in val) if val else None
+    return str(val)
+
+
+def _apply_ai_fields(product: Product, data: dict) -> None:
+    """Apply AI identification fields to a product, safely coercing types."""
+    if data.get("title"):
+        product.title = _coerce_str(data["title"])
+    if data.get("author"):
+        product.author = _coerce_str(data["author"])
+    if data.get("game_system"):
+        product.game_system = _coerce_str(data["game_system"])
+    if data.get("genre"):
+        product.genre = _coerce_str(data["genre"])
+    if data.get("product_type"):
+        product.product_type = _coerce_str(data["product_type"])
+    if data.get("publisher"):
+        product.publisher = _coerce_str(data["publisher"])
+    if data.get("publication_year"):
+        product.publication_year = data["publication_year"]
+    if data.get("level_range_min"):
+        product.level_range_min = data["level_range_min"]
+    if data.get("level_range_max"):
+        product.level_range_max = data["level_range_max"]
+    if data.get("party_size_min"):
+        product.party_size_min = data["party_size_min"]
+    if data.get("party_size_max"):
+        product.party_size_max = data["party_size_max"]
+    if data.get("estimated_runtime"):
+        product.estimated_runtime = data["estimated_runtime"]
+
+
 class BulkIdentifyRequest(BaseModel):
     """Request to identify multiple products."""
 
@@ -251,30 +288,7 @@ async def confirm_identification(
         raise HTTPException(status_code=404, detail="Product not found")
 
     # Apply confirmed data
-    if confirmed_data.get("title"):
-        product.title = confirmed_data["title"]
-    if confirmed_data.get("author"):
-        product.author = confirmed_data["author"]
-    if confirmed_data.get("game_system"):
-        product.game_system = confirmed_data["game_system"]
-    if confirmed_data.get("genre"):
-        product.genre = confirmed_data["genre"]
-    if confirmed_data.get("product_type"):
-        product.product_type = confirmed_data["product_type"]
-    if confirmed_data.get("publisher"):
-        product.publisher = confirmed_data["publisher"]
-    if confirmed_data.get("publication_year"):
-        product.publication_year = confirmed_data["publication_year"]
-    if confirmed_data.get("level_range_min"):
-        product.level_range_min = confirmed_data["level_range_min"]
-    if confirmed_data.get("level_range_max"):
-        product.level_range_max = confirmed_data["level_range_max"]
-    if confirmed_data.get("party_size_min"):
-        product.party_size_min = confirmed_data["party_size_min"]
-    if confirmed_data.get("party_size_max"):
-        product.party_size_max = confirmed_data["party_size_max"]
-    if confirmed_data.get("estimated_runtime"):
-        product.estimated_runtime = confirmed_data["estimated_runtime"]
+    _apply_ai_fields(product, confirmed_data)
 
     product.ai_identified = True
     await db.commit()
@@ -323,27 +337,7 @@ async def identify_batch(
             continue
 
         if request.apply:
-            if identification.get("game_system"):
-                product.game_system = identification["game_system"]
-            if identification.get("genre"):
-                product.genre = identification["genre"]
-            if identification.get("product_type"):
-                product.product_type = identification["product_type"]
-            if identification.get("publisher"):
-                product.publisher = identification["publisher"]
-            if identification.get("author"):
-                author = identification["author"]
-                if isinstance(author, list):
-                    author = ", ".join(str(a) for a in author)
-                product.author = author
-            if identification.get("title"):
-                product.title = identification["title"]
-            if identification.get("publication_year"):
-                product.publication_year = identification["publication_year"]
-            if identification.get("level_range_min"):
-                product.level_range_min = identification["level_range_min"]
-            if identification.get("level_range_max"):
-                product.level_range_max = identification["level_range_max"]
+            _apply_ai_fields(product, identification)
 
             product.ai_identified = True
 
