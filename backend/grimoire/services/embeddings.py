@@ -141,8 +141,12 @@ async def generate_embeddings(
     Returns:
         List of EmbeddingResult objects
     """
+    from grimoire.processors.ai_identifier import get_setting_from_db, get_ollama_url
+
     openai_key = os.getenv("OPENAI_API_KEY", "")
-    ollama_url = os.getenv("OLLAMA_BASE_URL", "")
+    if not openai_key:
+        openai_key = await get_setting_from_db("openai_api_key") or ""
+    ollama_url = await get_ollama_url()
 
     # Auto-detect provider
     if provider is None:
