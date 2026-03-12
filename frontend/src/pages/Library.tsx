@@ -6,6 +6,7 @@ import { ProductGrid } from '../components/ProductGrid';
 import { ProductDetail } from '../components/ProductDetail';
 import { BulkEditModal } from '../components/BulkEditModal';
 import { searchProducts } from '../api/search';
+import { getSemanticSearchStatus, semanticSearch } from '../api/semantic';
 import { useDebounce } from '../hooks/useDebounce';
 import type { Product, ProductListResponse } from '../types/product';
 import type { ProductFilters } from '../api/products';
@@ -47,6 +48,7 @@ export function Library({
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [searchContent, setSearchContent] = useState(false);
+  const [searchSemantic, setSearchSemantic] = useState(false);
   const [activeSearch, setActiveSearch] = useState('');
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [showBulkEdit, setShowBulkEdit] = useState(false);
@@ -56,10 +58,10 @@ export function Library({
 
   // Live title search: update filters when debounced input changes
   useEffect(() => {
-    if (!searchContent) {
+    if (!searchContent && !searchSemantic) {
       setFilters(prev => ({ ...prev, search: debouncedSearch || undefined }));
     }
-  }, [debouncedSearch, searchContent]);
+  }, [debouncedSearch, searchContent, searchSemantic]);
 
   const { data, isLoading, error, refetch, isFetching, fetchNextPage, hasNextPage, isFetchingNextPage } = useProducts(effectiveFilters);
 
@@ -71,13 +73,42 @@ export function Library({
   } = useQuery({
     queryKey: ['search', activeSearch, searchContent],
     queryFn: () => searchProducts({ q: activeSearch, search_content: searchContent }),
-    enabled: activeSearch.length > 0,
+    enabled: activeSearch.length > 0 && !searchSemantic,
     staleTime: 60000,
   });
 
+  // Semantic search status
+  const { data: semanticStatus } = useQuery({
+    queryKey: ['semantic-search-status'],
+    queryFn: getSemanticSearchStatus,
+    staleTime: 300000,
+  });
+
+  // Semantic search query
+  const {
+    data: semanticData,
+    isLoading: semanticLoading,
+    error: semanticError,
+  } = useQuery({
+    queryKey: ['semantic-search', activeSearch],
+    queryFn: () => semanticSearch(activeSearch),
+    enabled: activeSearch.length > 0 && searchSemantic,
+    staleTime: 60000,
+  });
+
+  const handleContentToggle = () => {
+    setSearchContent(!searchContent);
+    setSearchSemantic(false);
+  };
+
+  const handleSemanticToggle = () => {
+    setSearchSemantic(!searchSemantic);
+    setSearchContent(false);
+  };
+
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
-    if (searchContent) {
+    if (searchContent || searchSemantic) {
       setActiveSearch(searchInput);
     } else {
       setFilters((prev) => ({ ...prev, search: searchInput }));
@@ -100,9 +131,15 @@ export function Library({
 
   // Determine which products to show
   const isSearching = activeSearch.length > 0;
-  const displayProducts = isSearching ? (searchData?.results || []) : allProducts;
-  const displayLoading = isSearching ? searchLoading : isLoading;
-  const displayError = isSearching ? searchError : error;
+  const displayProducts = isSearching
+    ? (searchSemantic ? (semanticData?.results || []) : (searchData?.results || []))
+    : allProducts;
+  const displayLoading = isSearching
+    ? (searchSemantic ? semanticLoading : searchLoading)
+    : isLoading;
+  const displayError = isSearching
+    ? (searchSemantic ? semanticError : searchError)
+    : error;
 
   const handleProductClick = (product: Product) => {
     setSelectedProduct(product);
@@ -181,7 +218,7 @@ export function Library({
                 />
                 <input
                   type="search"
-                  placeholder={searchContent ? 'Search in PDF content...' : 'Search titles...'}
+                  placeholder={searchSemantic ? 'Search with AI...' : searchContent ? 'Search in PDF content...' : 'Search titles...'}
                   value={searchInput}
                   onChange={(e) => setSearchInput(e.target.value)}
                   className="input pl-12 pr-12"
@@ -202,7 +239,7 @@ export function Library({
 
             {/* Search content toggle */}
             <button
-              onClick={() => setSearchContent(!searchContent)}
+              onClick={handleContentToggle}
               className="flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium whitespace-nowrap transition-colors"
               style={{
                 backgroundColor: searchContent ? 'var(--color-accent-light)' : 'var(--color-surface-raised)',
@@ -211,6 +248,21 @@ export function Library({
               }}
             >
               Content
+            </button>
+
+            {/* Semantic search toggle */}
+            <button
+              onClick={handleSemanticToggle}
+              disabled={!semanticStatus?.enabled}
+              className="flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium whitespace-nowrap transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              style={{
+                backgroundColor: searchSemantic ? 'var(--color-accent-light)' : 'var(--color-surface-raised)',
+                color: searchSemantic ? 'var(--color-accent)' : 'var(--color-text-secondary)',
+                border: `1px solid ${searchSemantic ? 'var(--color-accent)' : 'var(--color-border)'}`,
+              }}
+              title={!semanticStatus?.enabled ? 'Configure a search provider in Settings to enable semantic search' : 'Search with AI embeddings'}
+            >
+              Semantic
             </button>
 
             {/* Right controls */}
@@ -336,6 +388,7 @@ export function Library({
                     <>
                       {displayProducts.length} result{displayProducts.length !== 1 ? 's' : ''} for "{activeSearch}"
                       {searchContent && ' (content search)'}
+                      {searchSemantic && ' (semantic search)'}
                     </>
                   ) : (
                     <>

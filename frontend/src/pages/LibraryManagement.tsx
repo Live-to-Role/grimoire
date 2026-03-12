@@ -258,6 +258,7 @@ export function LibraryManagement() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['app-settings'] });
+      queryClient.invalidateQueries({ queryKey: ['semantic-search-status'] });
     },
   });
 
@@ -1398,6 +1399,30 @@ export function LibraryManagement() {
                     }}
                   />
                 </div>
+              </div>
+
+              <div className="mt-4 rounded-md p-4" style={{ backgroundColor: 'var(--color-surface-raised)' }}>
+                <label className="block text-sm font-medium mb-2" style={{ color: 'var(--color-text-primary)' }}>
+                  Search Provider
+                </label>
+                <p className="text-xs mb-2" style={{ color: 'var(--color-text-secondary)' }}>
+                  Choose which provider embeds your search queries. This is separate from the provider used for product identification.
+                </p>
+                <select
+                  value={appSettings?.semantic_search_provider || 'none'}
+                  onChange={(e) => updateSettingMutation.mutate({ key: 'semantic_search_provider', value: e.target.value })}
+                  className="rounded-md px-3 py-2 text-sm"
+                  style={{
+                    backgroundColor: 'var(--color-bg)',
+                    border: '1px solid var(--color-border)',
+                    color: 'var(--color-text-primary)',
+                  }}
+                >
+                  <option value="none">Disabled</option>
+                  {embeddingStats?.providers?.ollama && <option value="ollama">Ollama</option>}
+                  {embeddingStats?.providers?.openai && <option value="openai">OpenAI</option>}
+                  {embeddingStats?.providers?.local && <option value="local">Local (sentence-transformers)</option>}
+                </select>
               </div>
 
               {embeddingStats && embeddingStats.not_embedded > 0 && (
