@@ -347,7 +347,31 @@ async def handle_embed_task(db: AsyncSession, product: Product) -> bool:
         embedding_record.set_embedding_vector(emb_result.embedding)
         db.add(embedding_record)
 
+    # Compute and store per-product averaged vector
+    from grimoire.models.product_search_vector import ProductSearchVector, compute_average_vector
+    from grimoire.services.embeddings import invalidate_vector_cache
+
+    chunk_vectors = [emb_result.embedding for emb_result in embeddings]
+    avg_vector = compute_average_vector(chunk_vectors)
+
+    existing_sv = await db.execute(
+        select(ProductSearchVector).where(ProductSearchVector.product_id == product.id)
+    )
+    sv = existing_sv.scalar_one_or_none()
+    if sv:
+        sv.set_vector(avg_vector)
+        sv.embedding_model = embeddings[0].model
+    else:
+        sv = ProductSearchVector(
+            product_id=product.id,
+            embedding_model=embeddings[0].model,
+            embedding_dim=len(avg_vector),
+        )
+        sv.set_vector(avg_vector)
+        db.add(sv)
+
     await db.commit()
+    invalidate_vector_cache()
     return True
 
 

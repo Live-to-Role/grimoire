@@ -170,7 +170,31 @@ async def embed_product(
         embedding_record.set_embedding_vector(emb_result.embedding)
         db.add(embedding_record)
 
+    # Compute and store per-product averaged vector
+    from grimoire.models.product_search_vector import ProductSearchVector, compute_average_vector
+    from grimoire.services.embeddings import invalidate_vector_cache
+
+    chunk_vectors = [emb_result.embedding for emb_result in embeddings]
+    avg_vector = compute_average_vector(chunk_vectors)
+
+    existing_sv = await db.execute(
+        select(ProductSearchVector).where(ProductSearchVector.product_id == product_id)
+    )
+    sv = existing_sv.scalar_one_or_none()
+    if sv:
+        sv.set_vector(avg_vector)
+        sv.embedding_model = embeddings[0].model
+    else:
+        sv = ProductSearchVector(
+            product_id=product_id,
+            embedding_model=embeddings[0].model,
+            embedding_dim=len(avg_vector),
+        )
+        sv.set_vector(avg_vector)
+        db.add(sv)
+
     await db.commit()
+    invalidate_vector_cache()
 
     return {
         "product_id": product_id,
@@ -185,72 +209,69 @@ async def semantic_search(
     db: DbSession,
     request: SemanticSearchRequest,
 ) -> dict:
-    """Search products using semantic similarity (in-memory cosine similarity)."""
-    # Generate query embedding
+    """Search products using semantic similarity with per-product vectors."""
+    import json
+    from grimoire.models import Setting
+    from grimoire.models.product_search_vector import ProductSearchVector
+    from grimoire.services.embeddings import search_product_vectors
+    from grimoire.api.routes.products import product_to_response
+    from sqlalchemy.orm import selectinload
+    from grimoire.models import ProductTag
+
+    # Read provider from settings (ignore request param)
+    result = await db.execute(
+        select(Setting).where(Setting.key == "semantic_search_provider")
+    )
+    setting = result.scalar_one_or_none()
+    provider = json.loads(setting.value) if setting else "none"
+
+    if provider == "none":
+        raise HTTPException(status_code=400, detail="Semantic search not configured. Set a search provider in Settings.")
+
+    # Embed the query
     try:
         query_embeddings = await generate_embeddings(
-            [request.query],
-            request.provider,
-            request.model,
+            [request.query], provider, request.model
         )
         query_vector = query_embeddings[0].embedding
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Embedding failed: {e}")
 
-    # In-memory search using cosine similarity
-    emb_query = select(ProductEmbedding)
-    emb_result = await db.execute(emb_query)
-    stored_embeddings = list(emb_result.scalars().all())
+    # Load per-product vectors
+    sv_result = await db.execute(select(ProductSearchVector))
+    search_vectors = {sv.product_id: sv.get_vector() for sv in sv_result.scalars().all()}
 
-    if not stored_embeddings:
-        return {
-            "query": request.query,
-            "results": [],
-            "message": "No embeddings found. Run /embed on products first.",
-        }
+    if not search_vectors:
+        return {"query": request.query, "results": [], "total_matches": 0}
 
-    # Build embedding list for search
-    embeddings_list = [
-        (emb.id, emb.get_embedding_vector())
-        for emb in stored_embeddings
-    ]
-
-    # Find similar using cosine similarity
-    similar = find_similar(
-        query_vector,
-        embeddings_list,
-        request.top_k * 2,
-        request.threshold,
+    # Fast numpy search
+    matches = search_product_vectors(
+        query_vector, search_vectors, request.top_k, request.threshold
     )
 
-    # Get product info and dedupe
-    seen_products = set()
+    # Fetch full product data for matched IDs
+    matched_ids = [pid for pid, _ in matches]
+    score_map = {pid: score for pid, score in matches}
+
+    if not matched_ids:
+        return {"query": request.query, "results": [], "total_matches": 0}
+
+    products_query = (
+        select(Product)
+        .where(Product.id.in_(matched_ids))
+        .options(selectinload(Product.product_tags).selectinload(ProductTag.tag))
+    )
+    products_result = await db.execute(products_query)
+    products = {p.id: p for p in products_result.scalars().all()}
+
     results = []
-
-    for emb_id, score in similar:
-        emb_record = next((e for e in stored_embeddings if e.id == emb_id), None)
-        if not emb_record:
+    for product_id in matched_ids:
+        product = products.get(product_id)
+        if not product:
             continue
-
-        product_id = emb_record.product_id
-        if product_id in seen_products:
-            continue
-        seen_products.add(product_id)
-
-        prod_query = select(Product).where(Product.id == product_id)
-        prod_result = await db.execute(prod_query)
-        product = prod_result.scalar_one_or_none()
-
-        if product:
-            results.append({
-                "product_id": product_id,
-                "title": product.title or product.file_name,
-                "score": round(score, 4),
-                "matched_chunk": emb_record.chunk_text[:200] + "..." if len(emb_record.chunk_text) > 200 else emb_record.chunk_text,
-            })
-
-        if len(results) >= request.top_k:
-            break
+        item = product_to_response(product).model_dump()
+        item["score"] = round(score_map[product_id], 4)
+        results.append(item)
 
     return {
         "query": request.query,
@@ -305,14 +326,38 @@ async def embed_batch(
                 )
                 embedding_record.set_embedding_vector(emb_result.embedding)
                 db.add(embedding_record)
-            
+
+            # Compute and store per-product averaged vector
+            from grimoire.models.product_search_vector import ProductSearchVector, compute_average_vector
+            from grimoire.services.embeddings import invalidate_vector_cache
+
+            chunk_vectors = [emb_result.embedding for emb_result in embeddings]
+            avg_vector = compute_average_vector(chunk_vectors)
+
+            existing_sv = await db.execute(
+                select(ProductSearchVector).where(ProductSearchVector.product_id == product_id)
+            )
+            sv = existing_sv.scalar_one_or_none()
+            if sv:
+                sv.set_vector(avg_vector)
+                sv.embedding_model = embeddings[0].model
+            else:
+                sv = ProductSearchVector(
+                    product_id=product_id,
+                    embedding_model=embeddings[0].model,
+                    embedding_dim=len(avg_vector),
+                )
+                sv.set_vector(avg_vector)
+                db.add(sv)
+
             await db.commit()
+            invalidate_vector_cache()
             success += 1
         except Exception as e:
             failed += 1
             import logging
             logging.error(f"Failed to embed product {product_id}: {e}")
-    
+
     return {
         "success": success,
         "failed": failed,
@@ -462,10 +507,18 @@ async def delete_product_embeddings(
     product_id: int,
 ) -> dict:
     """Delete embeddings for a product."""
-    result = await db.execute(
+    from grimoire.models.product_search_vector import ProductSearchVector
+    from grimoire.services.embeddings import invalidate_vector_cache
+
+    await db.execute(
         delete(ProductEmbedding).where(ProductEmbedding.product_id == product_id)
     )
+    # Also delete the averaged search vector
+    await db.execute(
+        delete(ProductSearchVector).where(ProductSearchVector.product_id == product_id)
+    )
     await db.commit()
+    invalidate_vector_cache()
 
     return {
         "product_id": product_id,
