@@ -73,6 +73,16 @@ class SemanticSearchRequest(BaseModel):
     threshold: float = Field(0.5, ge=0.0, le=1.0)
     provider: str | None = Field(None)
     model: str | None = Field(None)
+    # Metadata filters (applied post-vector-search)
+    game_system: str | None = Field(None)
+    product_type: str | None = Field(None)
+    genre: str | None = Field(None)
+    publisher: str | None = Field(None)
+    author: str | None = Field(None)
+    level_min: int | None = Field(None, ge=0)
+    level_max: int | None = Field(None, ge=0)
+    tags: str | None = Field(None, description="Comma-separated tag IDs")
+    collection: int | None = Field(None)
 
 
 class NaturalLanguageQueryRequest(BaseModel):
@@ -143,6 +153,11 @@ async def embed_product(
             status_code=400,
             detail="Product has no extracted text"
         )
+
+    # Prepend metadata so embeddings capture game system, publisher, etc.
+    from grimoire.services.embeddings import build_metadata_preamble
+    preamble = build_metadata_preamble(product)
+    text = preamble + text
 
     # Delete existing embeddings
     await db.execute(
