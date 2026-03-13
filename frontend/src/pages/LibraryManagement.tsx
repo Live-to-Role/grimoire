@@ -1408,6 +1408,10 @@ export function LibraryManagement() {
                 <p className="text-xs mb-2" style={{ color: 'var(--color-text-secondary)' }}>
                   Choose which provider embeds your search queries. This is separate from the provider used for product identification.
                 </p>
+                <p className="text-xs mb-2 font-medium" style={{ color: 'var(--color-warning, #b45309)' }}>
+                  ⚠ Changing providers requires re-embedding all products, as each provider produces different vector formats.
+                  Existing embeddings from a different provider will not be used in search results until re-embedded.
+                </p>
                 <select
                   value={appSettings?.semantic_search_provider || 'none'}
                   onChange={(e) => updateSettingMutation.mutate({ key: 'semantic_search_provider', value: e.target.value })}

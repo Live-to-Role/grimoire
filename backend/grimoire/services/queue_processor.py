@@ -14,6 +14,41 @@ from grimoire.models import ProcessingQueue, Product
 
 logger = logging.getLogger(__name__)
 
+
+async def _commit_with_retry(db: AsyncSession, max_retries: int = 5) -> None:
+    """Commit with retry on 'database is locked' errors.
+
+    After a lock error SQLAlchemy invalidates the session, so we must
+    rollback before retrying.  We snapshot dirty object state before
+    the attempt and restore it after rollback.
+    """
+    for attempt in range(max_retries):
+        # Snapshot pending attribute changes before commit/flush can fail
+        dirty_snapshots: list[tuple[object, dict]] = []
+        for obj in list(db.dirty):
+            attrs = {
+                col.key: getattr(obj, col.key)
+                for col in obj.__class__.__table__.columns
+            }
+            dirty_snapshots.append((obj, attrs))
+
+        try:
+            await db.commit()
+            return
+        except Exception as e:
+            if "database is locked" in str(e) and attempt < max_retries - 1:
+                logger.warning(f"DB locked on commit, retrying ({attempt + 1}/{max_retries})...")
+                await db.rollback()
+
+                # Re-apply dirty attributes so they get flushed on retry
+                for obj, attrs in dirty_snapshots:
+                    for k, v in attrs.items():
+                        setattr(obj, k, v)
+
+                await asyncio.sleep(0.5 * (attempt + 1))
+                continue
+            raise
+
 # Task type handlers
 TASK_HANDLERS = {}
 
@@ -504,7 +539,7 @@ async def _process_item_with_session(db: AsyncSession, item: ProcessingQueue) ->
     item.status = "processing"
     item.started_at = datetime.now(UTC)
     item.attempts += 1
-    await db.commit()
+    await _commit_with_retry(db)
 
     # Get the product
     product_result = await db.execute(
@@ -516,7 +551,7 @@ async def _process_item_with_session(db: AsyncSession, item: ProcessingQueue) ->
         item.status = "failed"
         item.error_message = "Product not found"
         item.completed_at = datetime.now(UTC)
-        await db.commit()
+        await _commit_with_retry(db)
         return False
 
     handler = TASK_HANDLERS.get(item.task_type)
@@ -524,7 +559,7 @@ async def _process_item_with_session(db: AsyncSession, item: ProcessingQueue) ->
         item.status = "failed"
         item.error_message = f"Unknown task type: {item.task_type}"
         item.completed_at = datetime.now(UTC)
-        await db.commit()
+        await _commit_with_retry(db)
         return False
 
     try:
@@ -540,7 +575,7 @@ async def _process_item_with_session(db: AsyncSession, item: ProcessingQueue) ->
             item.status = "pending"
         item.completed_at = datetime.now(UTC)
 
-        await db.commit()
+        await _commit_with_retry(db)
 
         # Emit SSE event
         from grimoire.services.event_bus import event_bus
@@ -567,7 +602,10 @@ async def _process_item_with_session(db: AsyncSession, item: ProcessingQueue) ->
         item.error_message = str(e)[:500]
         item.status = "failed" if item.attempts >= item.max_attempts else "pending"
         item.completed_at = datetime.now(UTC)
-        await db.commit()
+        try:
+            await _commit_with_retry(db)
+        except Exception:
+            logger.error(f"Failed to update status for queue item {item.id} after error")
 
         from grimoire.services.event_bus import event_bus
         await event_bus.publish("queue", {
@@ -762,9 +800,8 @@ async def run_queue_worker(
             await db.commit()
             logger.info(f"Reset {len(stuck_items)} stuck 'processing' items to 'pending'")
 
-    semaphore = asyncio.Semaphore(max_concurrent)
     logger.info(
-        f"Queue worker started (max_concurrent={max_concurrent}, "
+        f"Queue worker started ("
         f"batch_size={batch_size}, poll_interval={poll_interval}s)"
     )
 
@@ -790,23 +827,21 @@ async def run_queue_worker(
                 await asyncio.sleep(poll_interval)
                 continue
 
-            # Process batch concurrently with semaphore
-            async def _process_with_semaphore(item_id: int):
-                async with semaphore:
-                    return await process_queue_item(item_id)
-
-            tasks = [
-                asyncio.create_task(_process_with_semaphore(item.id))
-                for item in items
-            ]
-            results = await asyncio.gather(*tasks, return_exceptions=True)
-
-            succeeded = sum(1 for r in results if r is True)
-            failed = sum(1 for r in results if r is False or isinstance(r, Exception))
-
-            for r in results:
-                if isinstance(r, Exception):
-                    logger.error(f"Queue task raised exception: {r}")
+            # Process items sequentially to avoid SQLite write contention.
+            # Ollama/embedding calls are sequential on the server side anyway,
+            # so concurrent DB sessions just cause lock errors without speedup.
+            succeeded = 0
+            failed = 0
+            for item in items:
+                try:
+                    result = await process_queue_item(item.id)
+                    if result is True:
+                        succeeded += 1
+                    else:
+                        failed += 1
+                except Exception as e:
+                    logger.error(f"Queue task raised exception: {e}")
+                    failed += 1
 
             logger.info(
                 f"Batch complete: {succeeded} succeeded, {failed} failed "

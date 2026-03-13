@@ -211,6 +211,8 @@ async def semantic_search(
 ) -> dict:
     """Search products using semantic similarity with per-product vectors."""
     import json
+    import logging
+    import traceback
     from grimoire.models import Setting
     from grimoire.models.product_search_vector import ProductSearchVector
     from grimoire.services.embeddings import search_product_vectors
@@ -218,66 +220,76 @@ async def semantic_search(
     from sqlalchemy.orm import selectinload
     from grimoire.models import ProductTag
 
-    # Read provider from settings (ignore request param)
-    result = await db.execute(
-        select(Setting).where(Setting.key == "semantic_search_provider")
-    )
-    setting = result.scalar_one_or_none()
-    provider = json.loads(setting.value) if setting else "none"
+    logger = logging.getLogger(__name__)
 
-    if provider == "none":
-        raise HTTPException(status_code=400, detail="Semantic search not configured. Set a search provider in Settings.")
-
-    # Embed the query
     try:
-        query_embeddings = await generate_embeddings(
-            [request.query], provider, request.model
+        # Read provider from settings (ignore request param)
+        result = await db.execute(
+            select(Setting).where(Setting.key == "semantic_search_provider")
         )
-        query_vector = query_embeddings[0].embedding
+        setting = result.scalar_one_or_none()
+        provider = json.loads(setting.value) if setting else "none"
+
+        if provider == "none":
+            raise HTTPException(status_code=400, detail="Semantic search not configured. Set a search provider in Settings.")
+
+        # Embed the query
+        try:
+            query_embeddings = await generate_embeddings(
+                [request.query], provider, request.model
+            )
+            query_vector = query_embeddings[0].embedding
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Embedding failed: {e}")
+
+        # Load per-product vectors
+        sv_result = await db.execute(select(ProductSearchVector))
+        search_vectors = {sv.product_id: sv.get_vector() for sv in sv_result.scalars().all()}
+
+        if not search_vectors:
+            return {"query": request.query, "results": [], "total_matches": 0}
+
+        # Fast numpy search
+        matches = search_product_vectors(
+            query_vector, search_vectors, request.top_k, request.threshold
+        )
+
+        # Fetch full product data for matched IDs
+        matched_ids = [pid for pid, _ in matches]
+        score_map = {pid: score for pid, score in matches}
+
+        if not matched_ids:
+            return {"query": request.query, "results": [], "total_matches": 0}
+
+        products_query = (
+            select(Product)
+            .where(Product.id.in_(matched_ids))
+            .options(selectinload(Product.product_tags).selectinload(ProductTag.tag))
+        )
+        products_result = await db.execute(products_query)
+        products = {p.id: p for p in products_result.scalars().all()}
+
+        results = []
+        for product_id in matched_ids:
+            product = products.get(product_id)
+            if not product:
+                continue
+            item = product_to_response(product).model_dump()
+            item["score"] = round(score_map[product_id], 4)
+            results.append(item)
+
+        return {
+            "query": request.query,
+            "results": results,
+            "total_matches": len(results),
+        }
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Embedding failed: {e}")
-
-    # Load per-product vectors
-    sv_result = await db.execute(select(ProductSearchVector))
-    search_vectors = {sv.product_id: sv.get_vector() for sv in sv_result.scalars().all()}
-
-    if not search_vectors:
-        return {"query": request.query, "results": [], "total_matches": 0}
-
-    # Fast numpy search
-    matches = search_product_vectors(
-        query_vector, search_vectors, request.top_k, request.threshold
-    )
-
-    # Fetch full product data for matched IDs
-    matched_ids = [pid for pid, _ in matches]
-    score_map = {pid: score for pid, score in matches}
-
-    if not matched_ids:
-        return {"query": request.query, "results": [], "total_matches": 0}
-
-    products_query = (
-        select(Product)
-        .where(Product.id.in_(matched_ids))
-        .options(selectinload(Product.product_tags).selectinload(ProductTag.tag))
-    )
-    products_result = await db.execute(products_query)
-    products = {p.id: p for p in products_result.scalars().all()}
-
-    results = []
-    for product_id in matched_ids:
-        product = products.get(product_id)
-        if not product:
-            continue
-        item = product_to_response(product).model_dump()
-        item["score"] = round(score_map[product_id], 4)
-        results.append(item)
-
-    return {
-        "query": request.query,
-        "results": results,
-        "total_matches": len(results),
-    }
+        logger.error("Semantic search failed: %s\n%s", e, traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"Semantic search error: {e}")
 
 
 @router.post("/embed-batch")
@@ -431,6 +443,64 @@ async def embed_all_products(
         "message": f"Queued {queued} products for embedding generation",
         "queued": queued,
         "provider": provider or "auto",
+    }
+
+
+@router.post("/re-embed-mismatched")
+async def re_embed_mismatched(
+    db: DbSession,
+    target_model: str = Query("nomic-embed-text", description="Target embedding model"),
+) -> dict:
+    """Queue products whose search vectors don't match the target model for re-embedding."""
+    from grimoire.models.product_search_vector import ProductSearchVector
+    from grimoire.models import ProcessingQueue
+
+    # Find product IDs with wrong model
+    result = await db.execute(
+        select(ProductSearchVector.product_id).where(
+            ProductSearchVector.embedding_model != target_model
+        )
+    )
+    mismatched_ids = result.scalars().all()
+
+    if not mismatched_ids:
+        return {"message": "All vectors already match target model", "queued": 0}
+
+    # Delete old embeddings + search vectors so they get re-generated
+    await db.execute(
+        delete(ProductEmbedding).where(ProductEmbedding.product_id.in_(mismatched_ids))
+    )
+    await db.execute(
+        delete(ProductSearchVector).where(ProductSearchVector.product_id.in_(mismatched_ids))
+    )
+
+    # Queue for re-embedding
+    queued = 0
+    for pid in mismatched_ids:
+        existing = await db.execute(
+            select(ProcessingQueue).where(
+                ProcessingQueue.product_id == pid,
+                ProcessingQueue.task_type == "embed",
+                ProcessingQueue.status.in_(["pending", "processing"]),
+            )
+        )
+        if existing.scalar_one_or_none():
+            continue
+        db.add(ProcessingQueue(
+            product_id=pid,
+            task_type="embed",
+            priority=9,
+            status="pending",
+        ))
+        queued += 1
+
+    await db.commit()
+
+    return {
+        "message": f"Queued {queued} products for re-embedding with {target_model}",
+        "queued": queued,
+        "deleted_old": len(mismatched_ids),
+        "target_model": target_model,
     }
 
 

@@ -275,7 +275,11 @@ def search_product_vectors(
     if not product_vectors:
         return []
 
-    product_ids = list(product_vectors.keys())
+    # Filter to vectors matching query dimension (mixed models produce different sizes)
+    query_dim = len(query)
+    product_ids = [pid for pid, vec in product_vectors.items() if len(vec) == query_dim]
+    if not product_ids:
+        return []
     matrix = np.array([product_vectors[pid] for pid in product_ids], dtype=np.float32)
     query_vec = np.array(query, dtype=np.float32)
 
