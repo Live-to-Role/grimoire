@@ -381,7 +381,7 @@ export function Settings() {
                   type="text"
                   value={newFolderPath}
                   onChange={(e) => setNewFolderPath(e.target.value)}
-                  placeholder="/path/to/pdfs"
+                  placeholder="/path/to/pdfs or //server/share"
                   className="input flex-1 rounded-lg px-3"
                   style={{ height: '48px', fontSize: '18px', backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-border)', color: 'var(--color-text-primary)' }}
                 />
@@ -422,7 +422,7 @@ export function Settings() {
                 </button>
               </div>
               <p className="mt-2 text-base" style={{ color: 'var(--color-text-secondary)' }}>
-                Enter the path to a folder containing PDF files. The folder must be accessible to the application.
+                Network drives supported — use a mapped drive letter (e.g. Z:\RPGs) or a UNC path (e.g. \\server\share). On Linux, mount the share first (e.g. /mnt/nas/rpgs). The folder must be accessible to the application.
               </p>
             </div>
 
