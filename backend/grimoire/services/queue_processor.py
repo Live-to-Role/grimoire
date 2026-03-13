@@ -356,20 +356,21 @@ async def handle_embed_task(db: AsyncSession, product: Product) -> bool:
     
     if not product.text_extracted:
         return False
-    
+
     # get_extracted_text reads JSON from disk — run in thread
     text = await asyncio.to_thread(get_extracted_text, product)
     if not text:
         return False
 
-    # Delete existing embeddings
+    # Chunk and embed BEFORE touching the DB to avoid holding a write
+    # transaction open during the slow Ollama/OpenAI call.
+    chunks = chunk_text(text, 500, 50)
+    embeddings = await generate_embeddings(chunks)
+
+    # Now do all DB writes quickly
     await db.execute(
         delete(ProductEmbedding).where(ProductEmbedding.product_id == product.id)
     )
-
-    # Chunk and embed — let exceptions propagate so queue processor captures error details
-    chunks = chunk_text(text, 500, 50)
-    embeddings = await generate_embeddings(chunks)
 
     for i, (chunk, emb_result) in enumerate(zip(chunks, embeddings)):
         embedding_record = ProductEmbedding(
