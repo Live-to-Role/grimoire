@@ -83,6 +83,7 @@ class SemanticSearchRequest(BaseModel):
     level_max: int | None = Field(None, ge=0)
     tags: str | None = Field(None, description="Comma-separated tag IDs")
     collection: int | None = Field(None)
+    hybrid: bool = Field(False, description="Blend keyword (BM25) + vector scores")
 
 
 def build_semantic_filter_conditions(request: SemanticSearchRequest) -> list:
@@ -315,6 +316,35 @@ async def semantic_search(
         matches = search_product_vectors(
             query_vector, search_vectors, search_top_k, request.threshold
         )
+
+        # Hybrid: blend with BM25 keyword results
+        if request.hybrid and request.query:
+            from grimoire.services.fts_service import search_fts
+            from grimoire.services.hybrid_search import reciprocal_rank_fusion
+
+            try:
+                fts_results = await search_fts(
+                    db, request.query,
+                    game_system=request.game_system,
+                    product_type=request.product_type,
+                    limit=request.top_k * 3,
+                )
+                keyword_matches = [
+                    (r["id"], r["relevance_score"]) for r in fts_results
+                ]
+            except Exception:
+                logger.warning("FTS5 search failed during hybrid search, falling back to pure semantic")
+                keyword_matches = []
+
+            # Fuse rankings
+            matches = reciprocal_rank_fusion(matches, keyword_matches)
+            matches = matches[:search_top_k]
+
+            # Normalize RRF scores to 0-1 range for consistent UI display
+            if matches:
+                max_score = matches[0][1]
+                if max_score > 0:
+                    matches = [(pid, score / max_score) for pid, score in matches]
 
         # Fetch full product data for matched IDs, applying filters
         matched_ids = [pid for pid, _ in matches]
