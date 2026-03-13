@@ -738,13 +738,13 @@ async def _auto_requeue_embeddings(db: AsyncSession, batch_size: int = 100) -> i
 
     queued = 0
     for product in products:
-        # Skip if already has a recent failed entry (avoid retry loops)
+        # Skip if already has a failed entry (avoid retry loops)
         existing = await db.execute(
-            select(ProcessingQueue).where(
+            select(ProcessingQueue.id).where(
                 ProcessingQueue.product_id == product.id,
                 ProcessingQueue.task_type == "embed",
                 ProcessingQueue.status == "failed",
-            )
+            ).limit(1)
         )
         if existing.scalar_one_or_none():
             continue

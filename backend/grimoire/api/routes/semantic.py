@@ -419,11 +419,11 @@ async def embed_all_products(
     queued = 0
     for product in products:
         existing = await db.execute(
-            select(ProcessingQueue).where(
+            select(ProcessingQueue.id).where(
                 ProcessingQueue.product_id == product.id,
                 ProcessingQueue.task_type == "embed",
                 ProcessingQueue.status.in_(["pending", "processing"])
-            )
+            ).limit(1)
         )
         if existing.scalar_one_or_none():
             continue
@@ -478,11 +478,11 @@ async def re_embed_mismatched(
     queued = 0
     for pid in mismatched_ids:
         existing = await db.execute(
-            select(ProcessingQueue).where(
+            select(ProcessingQueue.id).where(
                 ProcessingQueue.product_id == pid,
                 ProcessingQueue.task_type == "embed",
                 ProcessingQueue.status.in_(["pending", "processing"]),
-            )
+            ).limit(1)
         )
         if existing.scalar_one_or_none():
             continue
