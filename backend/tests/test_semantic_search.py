@@ -38,6 +38,21 @@ def test_search_product_vectors_threshold():
     assert results[0][0] == 1
 
 
+def test_build_semantic_filter_conditions():
+    """build_semantic_filter_conditions returns SQLAlchemy conditions for active filters."""
+    from grimoire.api.routes.semantic import build_semantic_filter_conditions, SemanticSearchRequest
+
+    req = SemanticSearchRequest(
+        query="test",
+        game_system="DCC",
+        level_min=1,
+        level_max=5,
+    )
+    conditions = build_semantic_filter_conditions(req)
+    # Should have game_system condition + level range conditions
+    assert len(conditions) >= 2
+
+
 def test_semantic_search_request_accepts_filters():
     """SemanticSearchRequest accepts optional filter fields."""
     from grimoire.api.routes.semantic import SemanticSearchRequest

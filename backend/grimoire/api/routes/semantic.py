@@ -85,6 +85,30 @@ class SemanticSearchRequest(BaseModel):
     collection: int | None = Field(None)
 
 
+def build_semantic_filter_conditions(request: SemanticSearchRequest) -> list:
+    """Build SQLAlchemy filter conditions from semantic search request."""
+    conditions = []
+    if request.game_system:
+        conditions.append(Product.game_system == request.game_system)
+    if request.product_type:
+        conditions.append(Product.product_type == request.product_type)
+    if request.genre:
+        conditions.append(Product.genre == request.genre)
+    if request.publisher:
+        conditions.append(Product.publisher == request.publisher)
+    if request.author:
+        conditions.append(Product.author == request.author)
+    if request.level_min is not None:
+        conditions.append(
+            (Product.level_range_max >= request.level_min) | (Product.level_range_max.is_(None))
+        )
+    if request.level_max is not None:
+        conditions.append(
+            (Product.level_range_min <= request.level_max) | (Product.level_range_min.is_(None))
+        )
+    return conditions
+
+
 class NaturalLanguageQueryRequest(BaseModel):
     """Request for natural language query."""
     query: str = Field(..., min_length=1, max_length=500, description="Natural language query like 'Find swamp adventures for level 3'")
@@ -266,12 +290,33 @@ async def semantic_search(
         if not search_vectors:
             return {"query": request.query, "results": [], "total_matches": 0}
 
+        # Build filter conditions
+        filter_conditions = build_semantic_filter_conditions(request)
+
+        # Handle tag filtering via subquery
+        if request.tags:
+            tag_ids = [int(t.strip()) for t in request.tags.split(",") if t.strip()]
+            if tag_ids:
+                tag_subq = select(ProductTag.product_id).where(ProductTag.tag_id.in_(tag_ids))
+                filter_conditions.append(Product.id.in_(tag_subq))
+
+        # Handle collection filtering via subquery
+        if request.collection:
+            from grimoire.models.collection import CollectionProduct
+            coll_subq = select(CollectionProduct.product_id).where(
+                CollectionProduct.collection_id == request.collection
+            )
+            filter_conditions.append(Product.id.in_(coll_subq))
+
+        # Fetch more candidates than requested since filters will reduce results
+        search_top_k = request.top_k * 3 if filter_conditions else request.top_k
+
         # Fast numpy search
         matches = search_product_vectors(
-            query_vector, search_vectors, request.top_k, request.threshold
+            query_vector, search_vectors, search_top_k, request.threshold
         )
 
-        # Fetch full product data for matched IDs
+        # Fetch full product data for matched IDs, applying filters
         matched_ids = [pid for pid, _ in matches]
         score_map = {pid: score for pid, score in matches}
 
@@ -283,6 +328,8 @@ async def semantic_search(
             .where(Product.id.in_(matched_ids))
             .options(selectinload(Product.product_tags).selectinload(ProductTag.tag))
         )
+        if filter_conditions:
+            products_query = products_query.where(*filter_conditions)
         products_result = await db.execute(products_query)
         products = {p.id: p for p in products_result.scalars().all()}
 
@@ -294,6 +341,8 @@ async def semantic_search(
             item = product_to_response(product).model_dump()
             item["score"] = round(score_map[product_id], 4)
             results.append(item)
+
+        results = results[:request.top_k]
 
         return {
             "query": request.query,
