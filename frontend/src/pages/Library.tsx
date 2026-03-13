@@ -90,8 +90,8 @@ export function Library({
     isLoading: semanticLoading,
     error: semanticError,
   } = useQuery({
-    queryKey: ['semantic-search', activeSearch],
-    queryFn: () => semanticSearch(activeSearch),
+    queryKey: ['semantic-search', activeSearch, effectiveFilters],
+    queryFn: () => semanticSearch(activeSearch, 20, effectiveFilters),
     enabled: activeSearch.length > 0 && searchSemantic,
     staleTime: 60000,
   });
@@ -218,7 +218,7 @@ export function Library({
                 />
                 <input
                   type="search"
-                  placeholder={searchSemantic ? 'Search with AI...' : searchContent ? 'Search in PDF content...' : 'Search titles...'}
+                  placeholder={searchSemantic ? 'Describe what you\'re looking for, e.g. "undead adventure for level 3 characters"' : searchContent ? 'Search in PDF content...' : 'Search titles...'}
                   value={searchInput}
                   onChange={(e) => setSearchInput(e.target.value)}
                   className="input pl-12 pr-12"
