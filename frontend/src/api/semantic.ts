@@ -28,6 +28,7 @@ export async function semanticSearch(
     query,
     top_k: topK,
     threshold: 0.3,
+    hybrid: true,
     game_system: filters.game_system || undefined,
     product_type: filters.product_type || undefined,
     genre: filters.genre || undefined,
