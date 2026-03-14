@@ -15,7 +15,7 @@ from pathlib import Path
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from grimoire.schemas.backup import BackupEntry
+from grimoire.schemas.backup import BackupEntry, BackupStatus, StorageRecommendation
 
 logger = logging.getLogger(__name__)
 
@@ -231,3 +231,112 @@ async def rotate(
 
     write_manifest(backup_dir, entries)
     return deleted_ids
+
+
+def get_storage_recommendations(
+    db_size_bytes: int,
+    derived_size_bytes: int,
+    budget_gb: float,
+) -> StorageRecommendation:
+    """Calculate recommended retention counts based on budget. 70% DB, 30% full."""
+    db_size_gb = db_size_bytes / (1024**3)
+    derived_size_gb = derived_size_bytes / (1024**3)
+    full_size_gb = db_size_gb + derived_size_gb
+
+    db_budget = budget_gb * 0.7
+    full_budget = budget_gb * 0.3
+
+    db_retention = max(1, int(db_budget / db_size_gb)) if db_size_gb > 0 else 1
+    full_retention = max(0, int(full_budget / full_size_gb)) if full_size_gb > 0 else 0
+
+    explanation = (
+        f"With {budget_gb} GB budget: "
+        f"{db_retention} DB snapshots ({db_retention * db_size_gb:.0f} GB) + "
+        f"{full_retention} full backups ({full_retention * full_size_gb:.0f} GB)"
+    )
+
+    return StorageRecommendation(
+        db_snapshot_size_gb=round(db_size_gb, 2),
+        derived_files_size_gb=round(derived_size_gb, 2),
+        recommended_db_retention=db_retention,
+        recommended_full_retention=full_retention,
+        budget_gb=budget_gb,
+        explanation=explanation,
+    )
+
+
+def get_status(
+    backup_dir: Path | None,
+    budget_gb: float = 100,
+) -> BackupStatus:
+    """Get backup system status and health warnings."""
+    warnings = []
+
+    if backup_dir is None:
+        return BackupStatus(
+            destination_configured=False,
+            destination_path=None,
+            destination_available_gb=None,
+            last_db_snapshot=None,
+            last_full_backup=None,
+            total_backup_size_gb=0,
+            budget_gb=budget_gb,
+            budget_used_pct=0,
+            db_snapshot_count=0,
+            full_backup_count=0,
+            warnings=["No backup destination configured"],
+        )
+
+    entries = read_manifest(backup_dir)
+    db_entries = sorted([e for e in entries if e.type == "db"], key=lambda e: e.timestamp)
+    full_entries = sorted([e for e in entries if e.type == "full"], key=lambda e: e.timestamp)
+
+    total_bytes = sum(e.size_bytes for e in entries)
+    total_gb = total_bytes / (1024**3)
+    budget_used_pct = (total_gb / budget_gb * 100) if budget_gb > 0 else 0
+
+    try:
+        disk = shutil.disk_usage(str(backup_dir))
+        available_gb = round(disk.free / (1024**3), 1)
+    except OSError:
+        available_gb = None
+        disk = None
+
+    last_db = db_entries[-1].timestamp if db_entries else None
+    last_full = full_entries[-1].timestamp if full_entries else None
+
+    # Warnings
+    if last_db is not None:
+        from datetime import timedelta
+        age = datetime.now(timezone.utc) - last_db
+        if age > timedelta(days=7):
+            warnings.append("No DB snapshot in over 7 days")
+
+    if budget_used_pct > 90:
+        warnings.append(f"Budget nearly full ({budget_used_pct:.0f}% used)")
+
+    if available_gb is not None and disk is not None:
+        pct_free = (disk.free / disk.total * 100) if disk.total > 0 else 0
+        if available_gb < 5 or pct_free < 10:
+            warnings.append(f"Destination drive low on space ({available_gb} GB free, {pct_free:.0f}%)")
+
+    # Check for last backup failure
+    error_file = backup_dir / ".last-backup-error"
+    if error_file.exists():
+        error_msg = error_file.read_text(encoding="utf-8").strip()
+        if error_msg:
+            warnings.append(f"Last backup failed: {error_msg}")
+
+    return BackupStatus(
+        destination_configured=True,
+        destination_path=str(backup_dir),
+        destination_available_gb=available_gb,
+        last_db_snapshot=last_db,
+        last_full_backup=last_full,
+        total_backup_size_gb=round(total_gb, 2),
+        budget_gb=budget_gb,
+        budget_used_pct=round(budget_used_pct, 1),
+        db_snapshot_count=len(db_entries),
+        full_backup_count=len(full_entries),
+        warnings=warnings,
+    )

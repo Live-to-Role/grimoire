@@ -12,6 +12,8 @@ import asyncio
 from grimoire.services.backup import (
     full_backup,
     get_backup_settings,
+    get_status,
+    get_storage_recommendations,
     read_manifest,
     rotate,
     snapshot_db,
@@ -211,3 +213,39 @@ async def test_rotate_removes_files(source_db, backup_dir):
 
     assert not file_path.exists()
     assert read_manifest(backup_dir) == []
+
+
+# --- Task 7: Storage Recommendations and Status ---
+
+
+def test_get_storage_recommendations():
+    rec = get_storage_recommendations(
+        db_size_bytes=14 * 1024**3,
+        derived_size_bytes=3 * 1024**3,
+        budget_gb=100,
+    )
+    assert rec.recommended_db_retention == 5
+    assert rec.recommended_full_retention == 1
+    assert rec.budget_gb == 100
+
+
+def test_get_storage_recommendations_small_budget():
+    rec = get_storage_recommendations(
+        db_size_bytes=14 * 1024**3,
+        derived_size_bytes=3 * 1024**3,
+        budget_gb=10,
+    )
+    assert rec.recommended_db_retention >= 1
+    assert rec.recommended_full_retention >= 0
+
+
+def test_get_status_unconfigured():
+    status = get_status(backup_dir=None)
+    assert status.destination_configured is False
+    assert "No backup destination configured" in status.warnings
+
+
+def test_get_status_configured(backup_dir):
+    status = get_status(backup_dir=backup_dir, budget_gb=100)
+    assert status.destination_configured is True
+    assert status.db_snapshot_count == 0
