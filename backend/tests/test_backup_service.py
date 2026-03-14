@@ -6,6 +6,7 @@ from datetime import datetime
 from pathlib import Path
 
 from grimoire.services.backup import (
+    get_backup_settings,
     read_manifest,
     write_manifest,
 )
@@ -65,3 +66,14 @@ def test_write_manifest_atomic(backup_dir):
     data = json.loads(manifest_path.read_text())
     assert len(data) == 1
     assert data[0]["id"] == "test"
+
+
+@pytest.mark.asyncio
+async def test_get_backup_settings_defaults(db):
+    """With no settings configured, returns defaults."""
+    s = await get_backup_settings(db)
+    assert s["backup_destination"] is None
+    assert s["backup_max_budget_gb"] == 100
+    assert s["backup_auto_enabled"] is False
+    assert s["backup_db_retention_count"] is None
+    assert s["backup_full_retention_count"] is None
