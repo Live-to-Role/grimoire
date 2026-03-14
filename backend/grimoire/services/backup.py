@@ -418,3 +418,92 @@ async def restore_from_snapshot(
         product_count=product_count,
         pre_restore_snapshot_id=pre_restore_entry.id,
     )
+
+
+async def restore_from_full(
+    backup_id: str,
+    backup_dir: Path,
+    db_path: Path,
+    data_dir: Path,
+    dispose_engine: Callable[[], Awaitable[None]] | None,
+    recreate_engine: Callable[[], None] | None,
+) -> RestoreSummary:
+    """Restore from a full backup (DB + derived files)."""
+    entries = read_manifest(backup_dir)
+    entry = next((e for e in entries if e.id == backup_id), None)
+    if entry is None:
+        raise ValueError(f"Backup not found: {backup_id}")
+    if entry.type != "full":
+        raise ValueError(f"Backup {backup_id} is not a full backup")
+
+    backup_path = backup_dir / entry.path
+    if not backup_path.exists():
+        raise ValueError(f"Backup file missing: {backup_path}")
+
+    actual_hash = await asyncio.to_thread(_compute_sha256, backup_path)
+    if actual_hash != entry.sha256:
+        raise ValueError(f"Backup integrity check failed for {backup_id}")
+
+    pre_restore_entry = await snapshot_db(
+        db_path=db_path,
+        backup_dir=backup_dir,
+        label=f"pre-restore-{datetime.now(timezone.utc).strftime('%Y-%m-%dT%H-%M-%S')}",
+    )
+
+    if dispose_engine:
+        await dispose_engine()
+
+    def _extract():
+        with _zipfile.ZipFile(backup_path, "r") as zf:
+            for name in zf.namelist():
+                if name == "grimoire.db":
+                    with zf.open(name) as src, open(db_path, "wb") as dst:
+                        shutil.copyfileobj(src, dst)
+                elif name.startswith(("covers/", "text/", "images/")):
+                    dest = data_dir / name
+                    dest.parent.mkdir(parents=True, exist_ok=True)
+                    with zf.open(name) as src, open(dest, "wb") as dst:
+                        shutil.copyfileobj(src, dst)
+
+    await asyncio.to_thread(_extract)
+
+    for suffix in (".db-wal", ".db-shm"):
+        wal_path = db_path.with_suffix(suffix)
+        if wal_path.exists():
+            wal_path.unlink()
+
+    if recreate_engine:
+        recreate_engine()
+
+    def _verify():
+        conn = _sqlite3.connect(str(db_path))
+        try:
+            return conn.execute("SELECT COUNT(*) FROM products").fetchone()[0]
+        finally:
+            conn.close()
+
+    product_count = await asyncio.to_thread(_verify)
+
+    logger.info("Full restore from %s: %d products", backup_id, product_count)
+
+    return RestoreSummary(
+        restored_from=backup_id,
+        restored_timestamp=entry.timestamp,
+        product_count=product_count,
+        pre_restore_snapshot_id=pre_restore_entry.id,
+    )
+
+
+async def delete_backup(backup_id: str, backup_dir: Path) -> None:
+    """Delete a backup file and its manifest entry."""
+    entries = read_manifest(backup_dir)
+    entry = next((e for e in entries if e.id == backup_id), None)
+    if entry is None:
+        raise ValueError(f"Backup not found: {backup_id}")
+
+    file_path = backup_dir / entry.path
+    file_path.unlink(missing_ok=True)
+
+    entries = [e for e in entries if e.id != backup_id]
+    write_manifest(backup_dir, entries)
+    logger.info("Deleted backup: %s", backup_id)

@@ -10,11 +10,13 @@ from pathlib import Path
 import asyncio
 
 from grimoire.services.backup import (
+    delete_backup,
     full_backup,
     get_backup_settings,
     get_status,
     get_storage_recommendations,
     read_manifest,
+    restore_from_full,
     restore_from_snapshot,
     rotate,
     snapshot_db,
@@ -317,3 +319,45 @@ async def test_restore_verifies_integrity(source_db, backup_dir):
             dispose_engine=None,
             recreate_engine=None,
         )
+
+
+# --- Task 9: Restore from Full and Delete ---
+
+
+@pytest.mark.asyncio
+async def test_restore_from_full(source_db, backup_dir, data_dir):
+    entry = await full_backup(db_path=source_db, backup_dir=backup_dir, data_dir=data_dir)
+
+    (data_dir / "covers" / "cover1.jpg").write_bytes(b"modified")
+    (data_dir / "covers" / "new_cover.jpg").write_bytes(b"new")
+
+    summary = await restore_from_full(
+        backup_id=entry.id,
+        backup_dir=backup_dir,
+        db_path=source_db,
+        data_dir=data_dir,
+        dispose_engine=None,
+        recreate_engine=None,
+    )
+
+    assert summary.product_count == 1
+    assert (data_dir / "covers" / "cover1.jpg").read_bytes() == b"fake-jpg-data"
+
+
+@pytest.mark.asyncio
+async def test_delete_backup(source_db, backup_dir):
+    entry = await snapshot_db(db_path=source_db, backup_dir=backup_dir)
+    file_path = backup_dir / entry.path
+    assert file_path.exists()
+
+    await delete_backup(backup_id=entry.id, backup_dir=backup_dir)
+
+    assert not file_path.exists()
+    entries = read_manifest(backup_dir)
+    assert len(entries) == 0
+
+
+@pytest.mark.asyncio
+async def test_delete_backup_not_found(backup_dir):
+    with pytest.raises(ValueError, match="not found"):
+        await delete_backup(backup_id="nonexistent", backup_dir=backup_dir)
