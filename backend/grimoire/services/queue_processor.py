@@ -918,6 +918,7 @@ async def run_queue_worker(
             # so concurrent DB sessions just cause lock errors without speedup.
             succeeded = 0
             failed = 0
+            failed_details: list[str] = []
             for item in items:
                 try:
                     result = await process_queue_item(item.id)
@@ -925,14 +926,44 @@ async def run_queue_worker(
                         succeeded += 1
                     else:
                         failed += 1
+                        failed_details.append(
+                            f"  - item {item.id} ({item.task_type}) product_id={item.product_id}"
+                        )
                 except Exception as e:
                     logger.error(f"Queue task raised exception: {e}")
                     failed += 1
+                    failed_details.append(
+                        f"  - item {item.id} ({item.task_type}) product_id={item.product_id}: {e}"
+                    )
 
             logger.info(
                 f"Batch complete: {succeeded} succeeded, {failed} failed "
                 f"out of {len(items)}"
             )
+            if failed_details:
+                # Look up filenames for failed items
+                failed_product_ids = {
+                    item.product_id for item in items
+                }
+                async with async_session_maker() as lookup_db:
+                    result = await lookup_db.execute(
+                        select(Product.id, Product.file_name).where(
+                            Product.id.in_(failed_product_ids)
+                        )
+                    )
+                    name_map = dict(result.all())
+                # Re-build details with filenames
+                enriched: list[str] = []
+                for detail in failed_details:
+                    for pid, fname in name_map.items():
+                        detail = detail.replace(
+                            f"product_id={pid}",
+                            f"'{fname}'"
+                        )
+                    enriched.append(detail)
+                logger.warning(
+                    "Failed items:\n" + "\n".join(enriched)
+                )
 
             from grimoire.services.event_bus import event_bus
             await event_bus.publish("queue", {
