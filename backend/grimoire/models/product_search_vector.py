@@ -10,6 +10,28 @@ def compute_average_vector(chunk_vectors: list[list[float]]) -> list[float]:
     return np.mean(matrix, axis=0).tolist()
 
 
+def compute_weighted_average_vector(
+    vectors: list[list[float]],
+    metadata_weight: float = 2.0,
+) -> list[float]:
+    """Compute weighted average of chunk vectors, boosting the first (metadata) chunk.
+
+    Args:
+        vectors: List of embedding vectors (first is assumed to contain metadata preamble)
+        metadata_weight: Weight multiplier for the first chunk (default 2x)
+    """
+    if not vectors:
+        return []
+    if len(vectors) == 1:
+        return vectors[0]
+
+    arr = np.array(vectors, dtype=np.float32)
+    weights = np.ones(len(vectors), dtype=np.float32)
+    weights[0] = metadata_weight
+    weighted = np.average(arr, axis=0, weights=weights)
+    return weighted.tolist()
+
+
 class ProductSearchVector(Base):
     """One averaged embedding per product for fast semantic search."""
 

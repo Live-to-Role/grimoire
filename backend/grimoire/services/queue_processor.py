@@ -350,10 +350,10 @@ async def handle_fts_index_task(db: AsyncSession, product: Product) -> bool:
 async def handle_embed_task(db: AsyncSession, product: Product) -> bool:
     """Handle embedding generation task for semantic search."""
     from grimoire.services.processor import get_extracted_text
-    from grimoire.services.embeddings import generate_embeddings, chunk_text
+    from grimoire.services.embeddings import generate_embeddings, chunk_text, build_metadata_preamble
     from grimoire.models import ProductEmbedding
     from sqlalchemy import delete
-    
+
     if not product.text_extracted:
         return False
 
@@ -361,6 +361,10 @@ async def handle_embed_task(db: AsyncSession, product: Product) -> bool:
     text = await asyncio.to_thread(get_extracted_text, product)
     if not text:
         return False
+
+    # Prepend metadata so embeddings capture game system, publisher, etc.
+    preamble = build_metadata_preamble(product)
+    text = preamble + text
 
     # Chunk and embed BEFORE touching the DB to avoid holding a write
     # transaction open during the slow Ollama/OpenAI call.
@@ -384,11 +388,11 @@ async def handle_embed_task(db: AsyncSession, product: Product) -> bool:
         db.add(embedding_record)
 
     # Compute and store per-product averaged vector
-    from grimoire.models.product_search_vector import ProductSearchVector, compute_average_vector
+    from grimoire.models.product_search_vector import ProductSearchVector, compute_weighted_average_vector
     from grimoire.services.embeddings import invalidate_vector_cache
 
     chunk_vectors = [emb_result.embedding for emb_result in embeddings]
-    avg_vector = compute_average_vector(chunk_vectors)
+    avg_vector = compute_weighted_average_vector(chunk_vectors, metadata_weight=2.0)
 
     existing_sv = await db.execute(
         select(ProductSearchVector).where(ProductSearchVector.product_id == product.id)

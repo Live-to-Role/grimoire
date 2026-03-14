@@ -211,11 +211,11 @@ async def embed_product(
         db.add(embedding_record)
 
     # Compute and store per-product averaged vector
-    from grimoire.models.product_search_vector import ProductSearchVector, compute_average_vector
+    from grimoire.models.product_search_vector import ProductSearchVector, compute_weighted_average_vector
     from grimoire.services.embeddings import invalidate_vector_cache
 
     chunk_vectors = [emb_result.embedding for emb_result in embeddings]
-    avg_vector = compute_average_vector(chunk_vectors)
+    avg_vector = compute_weighted_average_vector(chunk_vectors, metadata_weight=2.0)
 
     existing_sv = await db.execute(
         select(ProductSearchVector).where(ProductSearchVector.product_id == product_id)
@@ -434,11 +434,11 @@ async def embed_batch(
                 db.add(embedding_record)
 
             # Compute and store per-product averaged vector
-            from grimoire.models.product_search_vector import ProductSearchVector, compute_average_vector
+            from grimoire.models.product_search_vector import ProductSearchVector, compute_weighted_average_vector
             from grimoire.services.embeddings import invalidate_vector_cache
 
             chunk_vectors = [emb_result.embedding for emb_result in embeddings]
-            avg_vector = compute_average_vector(chunk_vectors)
+            avg_vector = compute_weighted_average_vector(chunk_vectors, metadata_weight=2.0)
 
             existing_sv = await db.execute(
                 select(ProductSearchVector).where(ProductSearchVector.product_id == product_id)

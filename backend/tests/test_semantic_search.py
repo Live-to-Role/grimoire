@@ -96,6 +96,18 @@ def test_build_metadata_preamble_includes_fields():
     assert "Level Range: 0-0" in preamble
 
 
+def test_weighted_average_boosts_first_chunk():
+    """compute_weighted_average_vector weights first chunk higher."""
+    from grimoire.models.product_search_vector import compute_weighted_average_vector
+
+    # First chunk is [1, 0], rest are [0, 1]
+    vectors = [[1.0, 0.0], [0.0, 1.0], [0.0, 1.0], [0.0, 1.0]]
+    uniform = compute_weighted_average_vector(vectors, metadata_weight=1.0)
+    boosted = compute_weighted_average_vector(vectors, metadata_weight=3.0)
+    # Boosted version should have higher first dimension
+    assert boosted[0] > uniform[0]
+
+
 def test_build_metadata_preamble_empty_product():
     """build_metadata_preamble returns empty string for product with no metadata."""
     product = SimpleNamespace(
