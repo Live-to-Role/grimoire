@@ -11,6 +11,7 @@ from typing import Any
 
 import httpx
 import numpy as np
+from sqlalchemy import inspect
 
 try:
     from sentence_transformers import SentenceTransformer
@@ -216,6 +217,71 @@ def find_similar(
     return scores[:top_k]
 
 
+
+
+def build_metadata_preamble(product: Any) -> str:
+    """Build a metadata preamble to prepend to extracted text before embedding.
+
+    This ensures the embedding vector captures structured metadata like
+    game system, publisher, tags, and themes — not just raw PDF content.
+    """
+    parts = []
+
+    if product.title:
+        parts.append(f"Title: {product.title}")
+    if product.game_system:
+        parts.append(f"Game System: {product.game_system}")
+    if product.publisher:
+        parts.append(f"Publisher: {product.publisher}")
+    if product.product_type:
+        parts.append(f"Type: {product.product_type}")
+    if product.author:
+        parts.append(f"Author: {product.author}")
+    if product.setting:
+        parts.append(f"Setting: {product.setting}")
+    if product.genre:
+        parts.append(f"Genre: {product.genre}")
+    if product.series:
+        series_str = product.series
+        if product.series_order:
+            series_str += f" #{product.series_order}"
+        parts.append(f"Series: {series_str}")
+    if product.level_range_min is not None or product.level_range_max is not None:
+        low = product.level_range_min if product.level_range_min is not None else "?"
+        high = product.level_range_max if product.level_range_max is not None else "?"
+        parts.append(f"Level Range: {low}-{high}")
+    if product.description:
+        parts.append(f"Description: {product.description}")
+
+    # Parse JSON array fields
+    for field_name, label in [("themes", "Themes"), ("content_warnings", "Content Warnings")]:
+        raw = getattr(product, field_name, None)
+        if raw:
+            try:
+                items = json.loads(raw)
+                if isinstance(items, list) and items:
+                    parts.append(f"{label}: {', '.join(str(i) for i in items)}")
+            except (json.JSONDecodeError, TypeError):
+                pass
+
+    # Include tags if the relationship is already loaded (avoid lazy load in async)
+    try:
+        product_tags = inspect(product).dict.get("product_tags")
+        if product_tags:
+            tag_names = []
+            for pt in product_tags:
+                tag = inspect(pt).dict.get("tag")
+                if tag:
+                    tag_names.append(tag.name)
+            if tag_names:
+                parts.append(f"Tags: {', '.join(tag_names)}")
+    except Exception:
+        pass
+
+    if not parts:
+        return ""
+
+    return "\n".join(parts) + "\n\n"
 
 
 def chunk_text(text: str, chunk_size: int = 500, overlap: int = 50) -> list[str]:
