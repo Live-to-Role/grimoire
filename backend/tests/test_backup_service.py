@@ -2,11 +2,13 @@
 
 import json
 import sqlite3
+import zipfile
 import pytest
 from datetime import datetime
 from pathlib import Path
 
 from grimoire.services.backup import (
+    full_backup,
     get_backup_settings,
     read_manifest,
     snapshot_db,
@@ -127,3 +129,49 @@ async def test_snapshot_db_data_integrity(source_db, backup_dir):
     rows = conn.execute("SELECT title FROM products").fetchall()
     conn.close()
     assert rows == [("Test Product",)]
+
+
+# --- Task 5: Full Backup ---
+
+
+@pytest.fixture
+def data_dir(tmp_path):
+    """Create a data directory with derived files."""
+    d = tmp_path / "data"
+    d.mkdir()
+    (d / "covers").mkdir()
+    (d / "covers" / "cover1.jpg").write_bytes(b"fake-jpg-data")
+    (d / "text").mkdir()
+    (d / "text" / "doc1.txt").write_text("extracted text")
+    (d / "images").mkdir()
+    (d / "images" / "img1.png").write_bytes(b"fake-png-data")
+    return d
+
+
+@pytest.mark.asyncio
+async def test_full_backup_creates_zip(source_db, backup_dir, data_dir):
+    entry = await full_backup(db_path=source_db, backup_dir=backup_dir, data_dir=data_dir)
+    assert entry.type == "full"
+    zip_path = backup_dir / entry.path
+    assert zip_path.exists()
+    assert zip_path.suffix == ".zip"
+
+
+@pytest.mark.asyncio
+async def test_full_backup_zip_contents(source_db, backup_dir, data_dir):
+    entry = await full_backup(db_path=source_db, backup_dir=backup_dir, data_dir=data_dir)
+    zip_path = backup_dir / entry.path
+    with zipfile.ZipFile(zip_path, "r") as zf:
+        names = zf.namelist()
+        assert any(n.endswith(".db") for n in names)
+        assert any("covers/" in n for n in names)
+        assert any("text/" in n for n in names)
+        assert any("images/" in n for n in names)
+
+
+@pytest.mark.asyncio
+async def test_full_backup_updates_manifest(source_db, backup_dir, data_dir):
+    await full_backup(db_path=source_db, backup_dir=backup_dir, data_dir=data_dir)
+    entries = read_manifest(backup_dir)
+    full_entries = [e for e in entries if e.type == "full"]
+    assert len(full_entries) == 1

@@ -8,6 +8,7 @@ import logging
 import shutil
 import sqlite3 as _sqlite3
 import tempfile
+import zipfile as _zipfile
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -128,4 +129,63 @@ async def snapshot_db(
     write_manifest(backup_dir, entries)
 
     logger.info("DB snapshot created: %s (%s bytes)", filename, size_bytes)
+    return entry
+
+
+def _create_full_backup_zip(
+    db_path: Path, dest_zip: Path, data_dir: Path
+) -> None:
+    """Create zip archive with DB snapshot + derived files (sync, for thread)."""
+    with _zipfile.ZipFile(dest_zip, "w", _zipfile.ZIP_DEFLATED) as zf:
+        zf.write(db_path, "grimoire.db")
+        for subdir in ("covers", "text", "images"):
+            dir_path = data_dir / subdir
+            if not dir_path.exists():
+                continue
+            for file in dir_path.rglob("*"):
+                if file.is_file():
+                    arcname = f"{subdir}/{file.relative_to(dir_path)}"
+                    zf.write(file, arcname)
+
+
+async def full_backup(
+    db_path: Path,
+    backup_dir: Path,
+    data_dir: Path,
+    label: str | None = None,
+) -> BackupEntry:
+    """Create a full backup: DB snapshot + derived files as zip."""
+    now = datetime.now(timezone.utc)
+    timestamp_str = now.strftime("%Y-%m-%dT%H-%M-%S")
+    filename = f"grimoire-full-{timestamp_str}.zip"
+    rel_path = f"full/{filename}"
+    dest_path = backup_dir / rel_path
+
+    dest_path.parent.mkdir(parents=True, exist_ok=True)
+
+    temp_db = backup_dir / f".tmp-snapshot-{timestamp_str}.db"
+    try:
+        await asyncio.to_thread(_snapshot_db_sync, db_path, temp_db)
+        await asyncio.to_thread(_create_full_backup_zip, temp_db, dest_path, data_dir)
+    finally:
+        temp_db.unlink(missing_ok=True)
+
+    sha256 = await asyncio.to_thread(_compute_sha256, dest_path)
+    size_bytes = dest_path.stat().st_size
+
+    entry = BackupEntry(
+        id=f"grimoire-full-{timestamp_str}",
+        type="full",
+        timestamp=now,
+        size_bytes=size_bytes,
+        sha256=sha256,
+        label=label,
+        path=rel_path,
+    )
+
+    entries = read_manifest(backup_dir)
+    entries.append(entry)
+    write_manifest(backup_dir, entries)
+
+    logger.info("Full backup created: %s (%s bytes)", filename, size_bytes)
     return entry
