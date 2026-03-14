@@ -1,6 +1,7 @@
 """Tests for backup service."""
 
 import json
+import sqlite3
 import pytest
 from datetime import datetime
 from pathlib import Path
@@ -8,6 +9,7 @@ from pathlib import Path
 from grimoire.services.backup import (
     get_backup_settings,
     read_manifest,
+    snapshot_db,
     write_manifest,
 )
 from grimoire.schemas.backup import BackupEntry
@@ -77,3 +79,51 @@ async def test_get_backup_settings_defaults(db):
     assert s["backup_auto_enabled"] is False
     assert s["backup_db_retention_count"] is None
     assert s["backup_full_retention_count"] is None
+
+
+@pytest.fixture
+def source_db(tmp_path):
+    """Create a source SQLite database with test data."""
+    db_path = tmp_path / "source" / "grimoire.db"
+    db_path.parent.mkdir()
+    conn = sqlite3.connect(str(db_path))
+    conn.execute("CREATE TABLE products (id INTEGER PRIMARY KEY, title TEXT)")
+    conn.execute("INSERT INTO products VALUES (1, 'Test Product')")
+    conn.commit()
+    conn.close()
+    return db_path
+
+
+@pytest.mark.asyncio
+async def test_snapshot_db_creates_file(source_db, backup_dir):
+    """snapshot_db creates a .db file in backup_dir/db/."""
+    entry = await snapshot_db(
+        db_path=source_db,
+        backup_dir=backup_dir,
+        label="test snapshot",
+    )
+    assert entry.type == "db"
+    assert entry.label == "test snapshot"
+    assert entry.size_bytes > 0
+    assert len(entry.sha256) == 64
+    assert (backup_dir / entry.path).exists()
+
+
+@pytest.mark.asyncio
+async def test_snapshot_db_updates_manifest(source_db, backup_dir):
+    """snapshot_db adds entry to manifest."""
+    await snapshot_db(db_path=source_db, backup_dir=backup_dir)
+    entries = read_manifest(backup_dir)
+    assert len(entries) == 1
+    assert entries[0].type == "db"
+
+
+@pytest.mark.asyncio
+async def test_snapshot_db_data_integrity(source_db, backup_dir):
+    """Snapshot contains the same data as original."""
+    entry = await snapshot_db(db_path=source_db, backup_dir=backup_dir)
+    backup_path = backup_dir / entry.path
+    conn = sqlite3.connect(str(backup_path))
+    rows = conn.execute("SELECT title FROM products").fetchall()
+    conn.close()
+    assert rows == [("Test Product",)]

@@ -1,9 +1,14 @@
 """Backup service for database snapshots and full backups."""
 
+import asyncio
+import hashlib
 import json
 import json as _json
 import logging
+import shutil
+import sqlite3 as _sqlite3
 import tempfile
+from datetime import datetime, timezone
 from pathlib import Path
 
 from sqlalchemy import select
@@ -67,3 +72,60 @@ async def get_backup_settings(db: AsyncSession) -> dict:
         else:
             result[key] = default
     return result
+
+
+def _compute_sha256(file_path: Path) -> str:
+    """Compute SHA-256 hash of a file."""
+    h = hashlib.sha256()
+    with open(file_path, "rb") as f:
+        for chunk in iter(lambda: f.read(8192), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def _snapshot_db_sync(db_path: Path, dest_path: Path) -> None:
+    """Perform SQLite backup in a thread-safe way."""
+    source = _sqlite3.connect(str(db_path))
+    dest = _sqlite3.connect(str(dest_path))
+    try:
+        source.backup(dest)
+    finally:
+        dest.close()
+        source.close()
+
+
+async def snapshot_db(
+    db_path: Path,
+    backup_dir: Path,
+    label: str | None = None,
+) -> BackupEntry:
+    """Create a consistent DB snapshot using SQLite backup API."""
+    now = datetime.now(timezone.utc)
+    timestamp_str = now.strftime("%Y-%m-%dT%H-%M-%S")
+    filename = f"grimoire-{timestamp_str}.db"
+    rel_path = f"db/{filename}"
+    dest_path = backup_dir / rel_path
+
+    dest_path.parent.mkdir(parents=True, exist_ok=True)
+
+    await asyncio.to_thread(_snapshot_db_sync, db_path, dest_path)
+
+    sha256 = await asyncio.to_thread(_compute_sha256, dest_path)
+    size_bytes = dest_path.stat().st_size
+
+    entry = BackupEntry(
+        id=f"grimoire-{timestamp_str}",
+        type="db",
+        timestamp=now,
+        size_bytes=size_bytes,
+        sha256=sha256,
+        label=label,
+        path=rel_path,
+    )
+
+    entries = read_manifest(backup_dir)
+    entries.append(entry)
+    write_manifest(backup_dir, entries)
+
+    logger.info("DB snapshot created: %s (%s bytes)", filename, size_bytes)
+    return entry
