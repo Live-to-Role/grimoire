@@ -418,6 +418,25 @@ export function Library({
                   </button>
                 )}
               </div>
+              {searchSemantic && semanticData && semanticData.total_matches < 3 && activeSearch && (
+                <div
+                  className="mb-4 rounded-lg p-3 text-sm"
+                  style={{
+                    backgroundColor: 'var(--color-surface-raised)',
+                    color: 'var(--color-text-secondary)',
+                    border: '1px solid var(--color-border)',
+                  }}
+                >
+                  <p className="font-medium" style={{ color: 'var(--color-text-primary)' }}>
+                    Few results found. Try:
+                  </p>
+                  <ul className="mt-1 ml-4 list-disc space-y-0.5">
+                    <li>Describing the content differently (e.g., "horror themed dungeon with zombies")</li>
+                    <li>Using the filter drawer to narrow by game system first, then searching</li>
+                    <li>Switching to Content search for exact phrase matching</li>
+                  </ul>
+                </div>
+              )}
               <ProductGrid
                 products={displayProducts}
                 onProductClick={handleProductClick}
