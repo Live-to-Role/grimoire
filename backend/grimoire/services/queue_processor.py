@@ -646,8 +646,16 @@ async def _process_item_with_session(db: AsyncSession, item: ProcessingQueue) ->
         elif item.attempts >= item.max_attempts:
             item.status = "failed"
             item.error_message = "Max attempts reached"
+            logger.warning(
+                f"Queue item {item.id} ({item.task_type}) failed for "
+                f"'{product.file_name}': max attempts reached"
+            )
         else:
             item.status = "pending"
+            logger.warning(
+                f"Queue item {item.id} ({item.task_type}) failed for "
+                f"'{product.file_name}', will retry (attempt {item.attempts}/{item.max_attempts})"
+            )
         item.completed_at = datetime.now(UTC)
 
         await _commit_with_retry(db)
@@ -673,7 +681,10 @@ async def _process_item_with_session(db: AsyncSession, item: ProcessingQueue) ->
         return success
 
     except Exception as e:
-        logger.error(f"Error processing queue item {item.id}: {e}")
+        logger.error(
+            f"Queue item {item.id} ({item.task_type}) error for "
+            f"'{product.file_name}': {e}"
+        )
         item.error_message = str(e)[:500]
         item.status = "failed" if item.attempts >= item.max_attempts else "pending"
         item.completed_at = datetime.now(UTC)
