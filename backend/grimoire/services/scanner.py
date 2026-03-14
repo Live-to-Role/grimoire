@@ -165,6 +165,13 @@ async def scan_folder(
     if remaining:
         await queue_products_for_processing(db, remaining)
 
+    # Publish backup trigger event
+    from grimoire.services.event_bus import event_bus
+    await event_bus.publish("backup_triggers", {
+        "type": "scan_complete",
+        "count": len(products),
+    })
+
     return {
         "products": products,
         "new_count": len(products),
