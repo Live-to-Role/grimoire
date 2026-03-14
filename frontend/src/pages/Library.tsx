@@ -96,6 +96,16 @@ export function Library({
     staleTime: 60000,
   });
 
+  // Build score map from semantic results
+  const scoreMap = useMemo(() => {
+    if (!semanticData?.results) return undefined;
+    const map: Record<number, number> = {};
+    for (const r of semanticData.results) {
+      map[r.id] = r.score;
+    }
+    return map;
+  }, [semanticData]);
+
   const handleContentToggle = () => {
     setSearchContent(!searchContent);
     setSearchSemantic(false);
@@ -418,6 +428,7 @@ export function Library({
                 selectable={true}
                 selectedIds={selectedIds}
                 onSelectionChange={handleSelectionChange}
+                scoreMap={searchSemantic ? scoreMap : undefined}
               />
             </>
           ) : null}

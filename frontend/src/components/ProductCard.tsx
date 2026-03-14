@@ -12,9 +12,10 @@ interface ProductCardProps {
   selectable?: boolean;
   selected?: boolean;
   onSelectionChange?: (productId: number, selected: boolean) => void;
+  score?: number;
 }
 
-export function ProductCard({ product, onClick, viewMode = 'grid', selectable, selected, onSelectionChange }: ProductCardProps) {
+export function ProductCard({ product, onClick, viewMode = 'grid', selectable, selected, onSelectionChange, score }: ProductCardProps) {
   const [queued, setQueued] = useState(false);
   const [coverError, setCoverError] = useState(false);
 
@@ -111,6 +112,17 @@ export function ProductCard({ product, onClick, viewMode = 'grid', selectable, s
         </div>
 
         <div className="flex items-center gap-2">
+          {score != null && (
+            <span
+              className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium"
+              style={{
+                backgroundColor: 'var(--color-accent-light)',
+                color: 'var(--color-accent)',
+              }}
+            >
+              {Math.round(score * 100)}% match
+            </span>
+          )}
           {product.game_system && (
             <span
               className="badge-primary text-sm px-3 py-1"
@@ -233,6 +245,22 @@ export function ProductCard({ product, onClick, viewMode = 'grid', selectable, s
             style={{ backgroundColor: 'var(--color-success)' }}
           >
             <FileText size={14} className="text-white" />
+          </div>
+        )}
+
+        {/* Relevance score badge */}
+        {score != null && (
+          <div
+            className="absolute bottom-2 left-2 rounded-full px-2 py-0.5 text-xs font-medium"
+            style={{
+              backgroundColor: 'var(--color-surface)',
+              color: 'var(--color-text-secondary)',
+              border: '1px solid var(--color-border)',
+              opacity: 0.9,
+            }}
+            title={`Relevance: ${Math.round(score * 100)}%`}
+          >
+            {Math.round(score * 100)}%
           </div>
         )}
       </div>
