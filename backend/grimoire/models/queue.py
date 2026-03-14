@@ -24,6 +24,7 @@ class ProcessingQueue(Base):
     max_attempts: Mapped[int] = mapped_column(Integer, default=3)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     estimated_cost: Mapped[float | None] = mapped_column(Float, nullable=True)
+    config: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime, nullable=False, server_default=func.now()

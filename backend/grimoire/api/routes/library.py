@@ -66,7 +66,19 @@ async def library_stats(db: DbSession) -> dict:
     ai_query = select(func.count(Product.id)).where(Product.ai_identified == True)
     ai_result = await db.execute(ai_query)
     ai_identified = ai_result.scalar() or 0
-    
+
+    # Count products whose AI identification permanently failed
+    from grimoire.models import ProcessingQueue
+    ai_failed_query = (
+        select(func.count(func.distinct(ProcessingQueue.product_id)))
+        .where(
+            ProcessingQueue.task_type == "ai_identify",
+            ProcessingQueue.status == "failed",
+        )
+    )
+    ai_failed_result = await db.execute(ai_failed_query)
+    ai_identify_failed = ai_failed_result.scalar() or 0
+
     return {
         "total_products": total_products,
         "total_size_bytes": total_size,
@@ -79,6 +91,7 @@ async def library_stats(db: DbSession) -> dict:
             "covers_extracted": covers_extracted,
             "text_extracted": text_extracted,
             "ai_identified": ai_identified,
+            "ai_identify_failed": ai_identify_failed,
         },
     }
 

@@ -1,6 +1,7 @@
 """AI and Codex identification API endpoints."""
 
 import asyncio
+import json
 import logging
 from dataclasses import asdict
 
@@ -470,40 +471,48 @@ async def identify_all(
     # Queue products for AI identification
     queued = 0
     already_queued = 0
-    
+    previously_failed = 0
+
     for product in products:
-        # Check if already queued
+        # Check if already queued (pending/processing) or previously failed
         existing = await db.execute(
             select(ProcessingQueue).where(
                 ProcessingQueue.product_id == product.id,
                 ProcessingQueue.task_type == "ai_identify",
-                ProcessingQueue.status.in_(["pending", "processing"])
+                ProcessingQueue.status.in_(["pending", "processing", "failed"])
             ).limit(1)
         )
-        if existing.scalar_one_or_none():
-            already_queued += 1
+        existing_item = existing.scalar_one_or_none()
+        if existing_item:
+            if existing_item.status == "failed":
+                previously_failed += 1
+            else:
+                already_queued += 1
             continue
-        
-        # Queue for AI identification
+
+        # Queue for AI identification, storing provider in config
         item = ProcessingQueue(
             product_id=product.id,
             task_type="ai_identify",
             priority=5,  # Medium priority
             status="pending",
+            config=json.dumps({"provider": provider}) if provider else None,
         )
         db.add(item)
         queued += 1
-    
+
     await db.commit()
-    
-    logger.info(f"Queued {queued} products for AI identification (provider={provider})")
+
+    effective_provider = provider or "auto (from settings)"
+    logger.info(f"Queued {queued} products for AI identification (provider={effective_provider})")
 
     return {
         "message": f"Queued {queued} products for AI identification",
         "queued": queued,
         "already_queued": already_queued,
+        "previously_failed": previously_failed,
         "total_found": len(products),
-        "provider": provider or "auto (from settings)",
+        "provider": effective_provider,
     }
 
 

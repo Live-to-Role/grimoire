@@ -33,6 +33,7 @@ interface LibraryStats {
     covers_extracted: number;
     text_extracted: number;
     ai_identified: number;
+    ai_identify_failed?: number;
   };
 }
 
@@ -367,7 +368,7 @@ export function LibraryManagement() {
   const identifyAllMutation = useMutation({
     mutationFn: async (provider: string) => {
       const res = await apiClient.post('/ai/identify-all', {}, {
-        params: { provider, apply: true },
+        params: { provider },
       });
       return res.data;
     },
@@ -1662,11 +1663,16 @@ export function LibraryManagement() {
               </div>
 
               {/* Identify Button */}
-              {stats.processing.text_extracted > stats.processing.ai_identified && (
+              {(stats.processing.text_extracted - stats.processing.ai_identified - (stats.processing.ai_identify_failed || 0)) > 0 && (
                 <div className="mt-4 flex items-center justify-between rounded-md p-4" style={{ backgroundColor: 'var(--color-accent-light)' }}>
                   <div>
                     <p className="font-medium" style={{ color: 'var(--color-text-primary)' }}>
-                      {stats.processing.text_extracted - stats.processing.ai_identified} products ready for identification
+                      {stats.processing.text_extracted - stats.processing.ai_identified - (stats.processing.ai_identify_failed || 0)} products ready for identification
+                      {(stats.processing.ai_identify_failed || 0) > 0 && (
+                        <span className="text-sm font-normal" style={{ color: 'var(--color-text-secondary)' }}>
+                          {' '}({stats.processing.ai_identify_failed} failed — insufficient text)
+                        </span>
+                      )}
                     </p>
                     <p className="text-sm" style={{ color: 'var(--color-accent)' }}>
                       {selectedProvider === 'ollama'
@@ -1714,6 +1720,7 @@ export function LibraryManagement() {
                   <p className="text-sm">
                     Queued {identifyAllMutation.data?.queued || 0} products for identification.
                     {identifyAllMutation.data?.already_queued > 0 && ` ${identifyAllMutation.data.already_queued} already in queue.`}
+                    {identifyAllMutation.data?.previously_failed > 0 && ` ${identifyAllMutation.data.previously_failed} previously failed (skipped).`}
                   </p>
                   <p className="text-sm mt-1">
                     Click "Process Batch Now" to start processing, or items will be processed in the background.

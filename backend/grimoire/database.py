@@ -148,6 +148,7 @@ async def _ensure_columns(conn) -> None:
         ("products", "is_image_content", "BOOLEAN DEFAULT 0"),
         ("products", "images_extracted", "BOOLEAN DEFAULT 0"),
         ("products", "image_count", "INTEGER"),
+        ("processing_queue", "config", "TEXT"),
     ]
     for table, column, col_type in migrations:
         try:

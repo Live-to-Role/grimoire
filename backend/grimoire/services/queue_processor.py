@@ -494,13 +494,16 @@ async def handle_identify_task(db: AsyncSession, product: Product) -> bool:
 
 
 @register_handler("ai_identify")
-async def handle_ai_identify_task(db: AsyncSession, product: Product) -> bool:
+async def handle_ai_identify_task(db: AsyncSession, product: Product, config: dict | None = None) -> bool:
     """Handle AI identification task using configured provider."""
     from grimoire.processors.ai_identifier import identify_product
     from grimoire.services.processor import get_extracted_text
 
-    # Get configured provider
-    provider = await get_setting(db, "auto_identify_provider", "ollama")
+    # Use provider from queue item config, falling back to settings
+    if config and config.get("provider"):
+        provider = config["provider"]
+    else:
+        provider = await get_setting(db, "auto_identify_provider", "ollama")
 
     # Read product attributes in async context before entering thread
     extracted_text_path = product.extracted_text_path
@@ -619,8 +622,23 @@ async def _process_item_with_session(db: AsyncSession, item: ProcessingQueue) ->
         await _commit_with_retry(db)
         return False
 
+    # Parse config from queue item if present
+    import json as _json
+    item_config = None
+    if item.config:
+        try:
+            item_config = _json.loads(item.config)
+        except Exception:
+            pass
+
     try:
-        success = await handler(db, product)
+        # Pass config to handlers that accept it
+        import inspect
+        sig = inspect.signature(handler)
+        if "config" in sig.parameters:
+            success = await handler(db, product, config=item_config)
+        else:
+            success = await handler(db, product)
 
         if success:
             item.status = "completed"
