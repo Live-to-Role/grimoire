@@ -48,7 +48,7 @@ The user configures a backup destination directory. Within it:
 └── backup-manifest.json
 ```
 
-`backup-manifest.json` indexes all backups with metadata: timestamp, type, size in bytes, product count, SHA-256 integrity hash, and a label (e.g., "pre-restore", "auto: post-scan").
+`backup-manifest.json` indexes all backups with metadata: timestamp, type, size in bytes, product count, SHA-256 integrity hash, and a label (e.g., "pre-restore", "auto: post-scan"). Manifest writes use atomic file operations (write to temp file, then rename) to prevent corruption from crashes mid-write.
 
 Backups use standard formats — plain `.db` files and `.zip` archives — so they can be restored manually without the application if necessary.
 
@@ -58,9 +58,9 @@ A new service at `grimoire/services/backup.py` with these methods:
 
 #### Core Operations
 
-- **`snapshot_db(label: str | None)`** — Uses `sqlite3.backup()` to create a consistent DB copy. Writes to `<backup_dir>/db/grimoire-{timestamp}.db`. Computes SHA-256 hash. Updates manifest. Calls `rotate()`.
-- **`full_backup()`** — Calls `snapshot_db()`, then creates a zip archive of `data/covers/`, `data/text/`, and `data/images/` alongside the DB copy. Writes to `<backup_dir>/full/grimoire-full-{timestamp}.zip`. Updates manifest. Calls `rotate()`.
-- **`restore_from_snapshot(backup_id: str)`** — Pre-restore safety snapshot, then copies backup DB over current `grimoire.db`, removes WAL/SHM files, reconnects. Returns summary.
+- **`snapshot_db(label: str | None)`** — Uses `sqlite3.backup()` via `asyncio.to_thread()` to create a consistent DB copy without blocking the event loop. Writes to `<backup_dir>/db/grimoire-{timestamp}.db`. Computes SHA-256 hash. Updates manifest atomically (write to temp file, then rename). Calls `rotate()`.
+- **`full_backup()`** — Calls `snapshot_db()`, then creates a zip archive of derived file directories (resolved from `settings.data_dir`: `covers/`, `text/`, `images/`) alongside the DB copy. Runs in a background thread via `asyncio.to_thread()`. Writes to `<backup_dir>/full/grimoire-full-{timestamp}.zip`. Updates manifest atomically. Calls `rotate()`.
+- **`restore_from_snapshot(backup_id: str)`** — Pre-restore safety snapshot, then disposes the async engine via `await engine.dispose()`, copies backup DB over current `grimoire.db`, removes WAL/SHM files, recreates the engine and session factory. Returns summary.
 - **`restore_from_full(backup_id: str)`** — Calls DB restore, then unpacks derived files from zip overwriting current data directories. Returns summary.
 - **`list_backups()`** — Returns all manifest entries with type, timestamp, size, label.
 - **`delete_backup(backup_id: str)`** — Removes backup file and manifest entry.
@@ -116,12 +116,12 @@ The status endpoint surfaces warnings when:
 
 ### Event-Driven Triggers
 
-After these operations complete, automatically call `snapshot_db()` if auto-backups are enabled:
+Backup triggers use the existing `EventBus` (`grimoire/services/event_bus.py`) to subscribe to completion events, keeping processing services decoupled from the backup service. The `BackupService` subscribes to these events at startup and calls `snapshot_db()` if auto-backups are enabled:
 
-1. **Folder scan completes** — hook in `scanner.py` after scan finishes
-2. **Bulk AI identification finishes** — hook in `ai_identifier.py`
-3. **Bulk embedding generation finishes** — hook in `embeddings.py`
-4. **Bulk text extraction finishes** — hook in `text_extractor.py`
+1. **Folder scan completes** — event from `grimoire/services/scanner.py`
+2. **Bulk AI identification finishes** — event from `grimoire/services/identifier.py`
+3. **Bulk embedding generation finishes** — event from `grimoire/services/embeddings.py`
+4. **Bulk text extraction finishes** — event from `grimoire/services/queue_processor.py` (text extraction runs through the queue)
 
 Each auto-triggered snapshot is labeled with the event (e.g., "auto: post-scan", "auto: post-identification") for easy identification in the backup list.
 
@@ -131,7 +131,7 @@ Backup configuration stored in the existing `settings` table:
 
 | Key | Default | Description |
 |-----|---------|-------------|
-| `backup_destination` | `null` | Path to backup directory (must be set by user) |
+| `backup_destination` | `null` | Path to backup directory (must be set by user, validated as writable) |
 | `backup_max_budget_gb` | `100` | Max total disk space for all backups |
 | `backup_db_retention_count` | `null` | Max DB snapshots to keep (null = use recommendation) |
 | `backup_full_retention_count` | `null` | Max full backups to keep (null = use recommendation) |
@@ -161,7 +161,7 @@ When backup endpoints are accessed with no destination configured, the API retur
 #### Restore Process
 
 1. **Auto-protect current state** — create a snapshot labeled `pre-restore-{timestamp}` so the user can undo a bad restore
-2. **DB restore** — shut down DB connection pool, copy backup DB over `grimoire.db`, delete WAL and SHM files, re-initialize connection pool
+2. **DB restore** — dispose the async engine via `await engine.dispose()`, copy backup DB over `grimoire.db`, delete WAL and SHM files, recreate engine and session factory
 3. **Full restore only** — additionally unpack derived files (covers/, text/, images/) overwriting current contents
 4. **Post-restore verification** — open DB, run a basic query (product count), confirm success
 5. **Return summary** — product count, backup timestamp, pre-restore snapshot ID for rollback

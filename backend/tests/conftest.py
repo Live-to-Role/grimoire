@@ -4,6 +4,7 @@ import asyncio
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from grimoire.database import Base
+import grimoire.models  # noqa: F401 — registers all models with Base.metadata
 
 
 @pytest.fixture(scope="session")

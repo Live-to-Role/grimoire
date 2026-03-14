@@ -45,7 +45,22 @@ async def lifespan(app: FastAPI):
     from grimoire.database import get_db_session
     await start_queue_processor(get_db_session)
 
+    # Start auto-backup subscriber
+    from grimoire.services.backup import start_auto_backup_subscriber
+    from pathlib import Path
+    backup_db_path = Path(settings.database_url.split("///", 1)[1])
+    backup_task = asyncio.create_task(
+        start_auto_backup_subscriber(backup_db_path, get_db_session)
+    )
+
     yield
+
+    # Stop auto-backup subscriber
+    backup_task.cancel()
+    try:
+        await backup_task
+    except asyncio.CancelledError:
+        pass
 
     # Stop contribution queue processor
     stop_queue_processor()
