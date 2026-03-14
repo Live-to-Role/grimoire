@@ -15,6 +15,7 @@ from grimoire.services.backup import (
     get_backup_settings,
     get_status,
     get_storage_recommendations,
+    handle_auto_backup_event,
     read_manifest,
     restore_from_full,
     restore_from_snapshot,
@@ -361,3 +362,53 @@ async def test_delete_backup(source_db, backup_dir):
 async def test_delete_backup_not_found(backup_dir):
     with pytest.raises(ValueError, match="not found"):
         await delete_backup(backup_id="nonexistent", backup_dir=backup_dir)
+
+
+# --- Task 11: Auto-Backup Event Subscriber ---
+
+
+@pytest.mark.asyncio
+async def test_handle_auto_backup_event(source_db, backup_dir, db):
+    """Auto-backup creates a snapshot with event label."""
+    from grimoire.models import Setting
+    import json as _json
+
+    db.add(Setting(key="backup_destination", value=_json.dumps(str(backup_dir))))
+    db.add(Setting(key="backup_auto_enabled", value=_json.dumps(True)))
+    await db.commit()
+
+    event = {"type": "scan_complete", "folder": "/pdfs", "count": 50}
+    entry = await handle_auto_backup_event(
+        db=db, event=event, event_label="post-scan", db_path=source_db,
+    )
+
+    assert entry is not None
+    assert entry.label == "auto: post-scan"
+    assert entry.type == "db"
+
+
+@pytest.mark.asyncio
+async def test_handle_auto_backup_skips_when_disabled(source_db, backup_dir, db):
+    """Auto-backup does nothing when backup_auto_enabled is False."""
+    from grimoire.models import Setting
+    from sqlalchemy import select
+    import json as _json
+
+    # Update existing or insert new settings
+    for key, value in [
+        ("backup_destination", _json.dumps(str(backup_dir))),
+        ("backup_auto_enabled", _json.dumps(False)),
+    ]:
+        result = await db.execute(select(Setting).where(Setting.key == key))
+        existing = result.scalar_one_or_none()
+        if existing:
+            existing.value = value
+        else:
+            db.add(Setting(key=key, value=value))
+    await db.commit()
+
+    event = {"type": "scan_complete"}
+    entry = await handle_auto_backup_event(
+        db=db, event=event, event_label="post-scan", db_path=source_db,
+    )
+    assert entry is None

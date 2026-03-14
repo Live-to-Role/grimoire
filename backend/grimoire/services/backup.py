@@ -494,6 +494,95 @@ async def restore_from_full(
     )
 
 
+async def handle_auto_backup_event(
+    db: AsyncSession,
+    event: dict,
+    event_label: str,
+    db_path: Path,
+) -> BackupEntry | None:
+    """Handle an auto-backup trigger event. Returns BackupEntry if created, None if skipped."""
+    settings = await get_backup_settings(db)
+
+    if not settings["backup_auto_enabled"]:
+        return None
+
+    dest = settings["backup_destination"]
+    if dest is None:
+        logger.warning("Auto-backup skipped: no destination configured")
+        return None
+
+    backup_dir = Path(dest)
+    if not backup_dir.exists():
+        logger.warning("Auto-backup skipped: destination does not exist: %s", dest)
+        return None
+
+    try:
+        entry = await snapshot_db(
+            db_path=db_path,
+            backup_dir=backup_dir,
+            label=f"auto: {event_label}",
+        )
+
+        # Run rotation
+        db_ret = settings["backup_db_retention_count"]
+        full_ret = settings["backup_full_retention_count"]
+        if db_ret is None or full_ret is None:
+            rec = get_storage_recommendations(
+                db_size_bytes=db_path.stat().st_size,
+                derived_size_bytes=0,
+                budget_gb=settings["backup_max_budget_gb"],
+            )
+            db_ret = db_ret or rec.recommended_db_retention
+            full_ret = full_ret or rec.recommended_full_retention
+        await rotate(
+            backup_dir=backup_dir,
+            db_retention_count=db_ret,
+            full_retention_count=full_ret,
+            max_budget_bytes=int(settings["backup_max_budget_gb"] * 1024**3),
+        )
+
+        # Clear any previous error
+        error_file = backup_dir / ".last-backup-error"
+        error_file.unlink(missing_ok=True)
+
+        logger.info("Auto-backup completed: %s", entry.id)
+        return entry
+    except Exception as exc:
+        logger.exception("Auto-backup failed")
+        error_file = backup_dir / ".last-backup-error"
+        error_file.write_text(str(exc), encoding="utf-8")
+        return None
+
+
+async def start_auto_backup_subscriber(db_path: Path, session_factory) -> None:
+    """Subscribe to EventBus events and trigger auto-backups.
+
+    Runs as a long-lived background task started during app lifespan.
+    """
+    from grimoire.services.event_bus import event_bus
+
+    event_labels = {
+        "scan_complete": "post-scan",
+        "bulk_identify_complete": "post-identification",
+        "bulk_embedding_complete": "post-embedding",
+        "bulk_extraction_complete": "post-extraction",
+    }
+
+    async for event in event_bus.subscribe("backup_triggers"):
+        event_type = event.get("type", "")
+        label = event_labels.get(event_type)
+        if label is None:
+            continue
+
+        try:
+            async with session_factory() as db:
+                await handle_auto_backup_event(
+                    db=db, event=event, event_label=label, db_path=db_path,
+                )
+        except Exception:
+            logger.exception("Error in auto-backup subscriber")
+
+
 async def delete_backup(backup_id: str, backup_dir: Path) -> None:
     """Delete a backup file and its manifest entry."""
     entries = read_manifest(backup_dir)
