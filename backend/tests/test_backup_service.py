@@ -7,10 +7,13 @@ import pytest
 from datetime import datetime
 from pathlib import Path
 
+import asyncio
+
 from grimoire.services.backup import (
     full_backup,
     get_backup_settings,
     read_manifest,
+    rotate,
     snapshot_db,
     write_manifest,
 )
@@ -175,3 +178,36 @@ async def test_full_backup_updates_manifest(source_db, backup_dir, data_dir):
     entries = read_manifest(backup_dir)
     full_entries = [e for e in entries if e.type == "full"]
     assert len(full_entries) == 1
+
+
+# --- Task 6: Rotation ---
+
+
+@pytest.mark.asyncio
+async def test_rotate_by_count(source_db, backup_dir):
+    for i in range(3):
+        await snapshot_db(db_path=source_db, backup_dir=backup_dir, label=f"snap-{i}")
+        await asyncio.sleep(0.01)
+
+    entries_before = read_manifest(backup_dir)
+    assert len(entries_before) == 3
+
+    await rotate(backup_dir=backup_dir, db_retention_count=2, full_retention_count=1)
+
+    entries_after = read_manifest(backup_dir)
+    db_entries = [e for e in entries_after if e.type == "db"]
+    assert len(db_entries) == 2
+    assert db_entries[0].label == "snap-1"
+    assert db_entries[1].label == "snap-2"
+
+
+@pytest.mark.asyncio
+async def test_rotate_removes_files(source_db, backup_dir):
+    entry = await snapshot_db(db_path=source_db, backup_dir=backup_dir)
+    file_path = backup_dir / entry.path
+    assert file_path.exists()
+
+    await rotate(backup_dir=backup_dir, db_retention_count=0, full_retention_count=0)
+
+    assert not file_path.exists()
+    assert read_manifest(backup_dir) == []

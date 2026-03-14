@@ -189,3 +189,45 @@ async def full_backup(
 
     logger.info("Full backup created: %s (%s bytes)", filename, size_bytes)
     return entry
+
+
+async def rotate(
+    backup_dir: Path,
+    db_retention_count: int,
+    full_retention_count: int,
+    max_budget_bytes: int | None = None,
+) -> list[str]:
+    """Delete oldest backups exceeding retention limits."""
+    entries = read_manifest(backup_dir)
+    deleted_ids = []
+
+    db_entries = sorted([e for e in entries if e.type == "db"], key=lambda e: e.timestamp)
+    full_entries = sorted([e for e in entries if e.type == "full"], key=lambda e: e.timestamp)
+
+    to_delete = []
+    if len(db_entries) > db_retention_count:
+        to_delete.extend(db_entries[: len(db_entries) - db_retention_count])
+    if len(full_entries) > full_retention_count:
+        to_delete.extend(full_entries[: len(full_entries) - full_retention_count])
+
+    for entry in to_delete:
+        file_path = backup_dir / entry.path
+        file_path.unlink(missing_ok=True)
+        entries.remove(entry)
+        deleted_ids.append(entry.id)
+        logger.info("Rotated backup: %s", entry.id)
+
+    if max_budget_bytes is not None:
+        remaining = sorted(entries, key=lambda e: e.timestamp)
+        total = sum(e.size_bytes for e in remaining)
+        while total > max_budget_bytes and remaining:
+            oldest = remaining.pop(0)
+            file_path = backup_dir / oldest.path
+            file_path.unlink(missing_ok=True)
+            entries.remove(oldest)
+            total -= oldest.size_bytes
+            deleted_ids.append(oldest.id)
+            logger.info("Rotated backup (budget): %s", oldest.id)
+
+    write_manifest(backup_dir, entries)
+    return deleted_ids
