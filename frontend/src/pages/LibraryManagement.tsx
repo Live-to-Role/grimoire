@@ -1663,14 +1663,14 @@ export function LibraryManagement() {
               </div>
 
               {/* Identify Button */}
-              {(stats.processing.text_extracted - stats.processing.ai_identified - (stats.processing.ai_identify_failed || 0)) > 0 && (
+              {(stats.processing.text_extracted - stats.processing.ai_identified) > 0 && (
                 <div className="mt-4 flex items-center justify-between rounded-md p-4" style={{ backgroundColor: 'var(--color-accent-light)' }}>
                   <div>
                     <p className="font-medium" style={{ color: 'var(--color-text-primary)' }}>
-                      {stats.processing.text_extracted - stats.processing.ai_identified - (stats.processing.ai_identify_failed || 0)} products ready for identification
+                      {stats.processing.text_extracted - stats.processing.ai_identified} products not yet identified
                       {(stats.processing.ai_identify_failed || 0) > 0 && (
                         <span className="text-sm font-normal" style={{ color: 'var(--color-text-secondary)' }}>
-                          {' '}({stats.processing.ai_identify_failed} failed — insufficient text)
+                          {' '}({stats.processing.ai_identify_failed} previously failed — may succeed with different provider)
                         </span>
                       )}
                     </p>

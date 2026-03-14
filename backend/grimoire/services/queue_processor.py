@@ -370,12 +370,12 @@ async def handle_embed_task(db: AsyncSession, product: Product) -> bool:
     from sqlalchemy import delete
 
     if not product.text_extracted:
-        return False
+        raise TaskError(f"Product {product.id} has no extracted text (text_extracted=False)")
 
     # Read product attributes in async context before entering thread
     extracted_text_path = product.extracted_text_path
     if not extracted_text_path:
-        return False
+        raise TaskError(f"Product {product.id} has no extracted_text_path")
 
     # Read file from disk in thread to avoid blocking the event loop
     def _read_extracted_text(path: str) -> str | None:
@@ -393,7 +393,10 @@ async def handle_embed_task(db: AsyncSession, product: Product) -> bool:
 
     text = await asyncio.to_thread(_read_extracted_text, extracted_text_path)
     if not text:
-        return False
+        raise TaskError(
+            f"Product {product.id} '{product.file_name}' has no embeddable text "
+            f"(file: {extracted_text_path})"
+        )
 
     # Prepend metadata so embeddings capture game system, publisher, etc.
     preamble = build_metadata_preamble(product)
@@ -686,7 +689,11 @@ async def _process_item_with_session(db: AsyncSession, item: ProcessingQueue) ->
             f"'{product.file_name}': {e}"
         )
         item.error_message = str(e)[:500]
-        item.status = "failed" if item.attempts >= item.max_attempts else "pending"
+        # TaskError = permanent failure (bad data, missing prereqs) — no retry
+        if isinstance(e, TaskError):
+            item.status = "failed"
+        else:
+            item.status = "failed" if item.attempts >= item.max_attempts else "pending"
         item.completed_at = datetime.now(UTC)
         try:
             await _commit_with_retry(db)
@@ -810,7 +817,10 @@ async def _auto_requeue_embeddings(db: AsyncSession, batch_size: int = 100) -> i
     embedded_result = await db.execute(embedded_query)
     embedded_ids = set(embedded_result.scalars().all())
 
-    products_query = select(Product).where(Product.text_extracted == True)
+    products_query = select(Product).where(
+        Product.text_extracted == True,
+        Product.extracted_text_path.isnot(None),
+    )
     if embedded_ids:
         products_query = products_query.where(Product.id.notin_(embedded_ids))
     products_query = products_query.limit(batch_size)
