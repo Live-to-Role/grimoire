@@ -172,40 +172,41 @@ async def handle_text_task(db: AsyncSession, product: Product) -> bool:
     from grimoire.processors.text_extractor import detect_needs_ocr
     from pathlib import Path
     
-    # Check if this PDF needs OCR
+    # Check if this is image content (maps, stock art) or needs OCR
     pdf_path = Path(product.file_path)
     if pdf_path.exists():
-        # detect_needs_ocr opens PDF with fitz — run in thread
-        detection = await asyncio.to_thread(detect_needs_ocr, pdf_path)
-        if detection["needs_ocr"]:
-            # Classify as image content (maps, stock art, etc.)
-            from grimoire.processors.image_classifier import classify_image_content
-            classification = classify_image_content(product.file_name, product.file_path)
+        from grimoire.processors.image_classifier import detect_image_content
+        img_detection = await asyncio.to_thread(
+            detect_image_content, pdf_path, product.file_name, product.file_path
+        )
+        if img_detection["is_image_content"]:
+            classification = img_detection["classification"]
 
             product.is_image_content = True
-            product.product_type = classification
+            if classification:
+                product.product_type = classification
 
-            # Auto-tag with built-in tag
-            from grimoire.models import Tag, ProductTag
-            tag_result = await db.execute(
-                select(Tag).where(Tag.name == classification, Tag.is_builtin == True)
-            )
-            tag = tag_result.scalar_one_or_none()
-            if tag:
-                existing_pt = await db.execute(
-                    select(ProductTag).where(
-                        ProductTag.product_id == product.id,
-                        ProductTag.tag_id == tag.id,
-                    )
+                # Auto-tag with built-in tag
+                from grimoire.models import Tag, ProductTag
+                tag_result = await db.execute(
+                    select(Tag).where(Tag.name == classification, Tag.is_builtin == True)
                 )
-                if not existing_pt.scalar_one_or_none():
-                    db.add(ProductTag(
-                        product_id=product.id,
-                        tag_id=tag.id,
-                        source="auto",
-                    ))
+                tag = tag_result.scalar_one_or_none()
+                if tag:
+                    existing_pt = await db.execute(
+                        select(ProductTag).where(
+                            ProductTag.product_id == product.id,
+                            ProductTag.tag_id == tag.id,
+                        )
+                    )
+                    if not existing_pt.scalar_one_or_none():
+                        db.add(ProductTag(
+                            product_id=product.id,
+                            tag_id=tag.id,
+                            source="auto",
+                        ))
 
-            # Queue image extraction instead of OCR
+            # Queue image extraction
             img_item = ProcessingQueue(
                 product_id=product.id,
                 task_type="extract_images",
@@ -214,7 +215,21 @@ async def handle_text_task(db: AsyncSession, product: Product) -> bool:
             )
             db.add(img_item)
             await db.commit()
-            logger.info(f"Product {product.id} classified as '{classification}': {detection['reason']}")
+            logger.info(f"Product {product.id} classified as '{classification}': {img_detection['reason']}")
+            return True
+
+        # Not image content — check if it still needs OCR
+        detection = await asyncio.to_thread(detect_needs_ocr, pdf_path)
+        if detection["needs_ocr"]:
+            ocr_item = ProcessingQueue(
+                product_id=product.id,
+                task_type="ocr_text",
+                priority=1,
+                status="pending",
+            )
+            db.add(ocr_item)
+            await db.commit()
+            logger.info(f"Product {product.id} needs OCR: {detection['reason']}")
             return True
 
     # Run sync extraction in thread pool
@@ -357,8 +372,26 @@ async def handle_embed_task(db: AsyncSession, product: Product) -> bool:
     if not product.text_extracted:
         return False
 
-    # get_extracted_text reads JSON from disk — run in thread
-    text = await asyncio.to_thread(get_extracted_text, product)
+    # Read product attributes in async context before entering thread
+    extracted_text_path = product.extracted_text_path
+    if not extracted_text_path:
+        return False
+
+    # Read file from disk in thread to avoid blocking the event loop
+    def _read_extracted_text(path: str) -> str | None:
+        import json
+        from pathlib import Path
+        text_path = Path(path)
+        if not text_path.exists():
+            return None
+        try:
+            with open(text_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                return data.get("markdown")
+        except Exception:
+            return None
+
+    text = await asyncio.to_thread(_read_extracted_text, extracted_text_path)
     if not text:
         return False
 
@@ -469,8 +502,27 @@ async def handle_ai_identify_task(db: AsyncSession, product: Product) -> bool:
     # Get configured provider
     provider = await get_setting(db, "auto_identify_provider", "ollama")
 
+    # Read product attributes in async context before entering thread
+    extracted_text_path = product.extracted_text_path
+    text_extracted = product.text_extracted
+
+    def _read_text(path: str | None, extracted: bool) -> str | None:
+        if not extracted or not path:
+            return None
+        import json
+        from pathlib import Path
+        text_path = Path(path)
+        if not text_path.exists():
+            return None
+        try:
+            with open(text_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                return data.get("markdown")
+        except Exception:
+            return None
+
     # Get extracted text — file I/O, run in thread
-    text = await asyncio.to_thread(get_extracted_text, product)
+    text = await asyncio.to_thread(_read_text, extracted_text_path, text_extracted)
     if not text or len(text) < 100:
         raise TaskError(f"Insufficient text for AI identification ({len(text) if text else 0} chars)")
 
