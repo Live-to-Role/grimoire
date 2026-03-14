@@ -560,6 +560,87 @@ async def mark_missing_files(db: DbSession) -> dict:
     }
 
 
+@router.post("/maintenance/reset-image-classification")
+async def reset_image_classification(db: DbSession) -> dict:
+    """Reset all incorrectly classified image content products.
+
+    Clears is_image_content, images_extracted, image_count, and removes
+    auto-applied content type tags. Queues affected products for text
+    re-extraction so they go through the improved detection.
+    """
+    from grimoire.models import ProcessingQueue, ProductTag, Tag
+    import shutil
+    from grimoire.config import settings
+
+    # Find all products marked as image content
+    query = select(Product).where(Product.is_image_content == True)
+    result = await db.execute(query)
+    products = list(result.scalars().all())
+
+    if not products:
+        return {"reset": 0, "message": "No image content products found"}
+
+    # Get builtin tag IDs for removal
+    builtin_query = select(Tag.id).where(Tag.is_builtin == True)
+    builtin_result = await db.execute(builtin_query)
+    builtin_tag_ids = set(builtin_result.scalars().all())
+
+    reset_count = 0
+    queued = 0
+
+    for product in products:
+        # Reset image content flags
+        product.is_image_content = False
+        product.images_extracted = False
+        product.image_count = None
+        product.text_extracted = False
+        # Only clear product_type if it was an image classification
+        if product.product_type in ("Map", "Stock Art", "Token", "Portrait", "Handout", "Scene", "Item", "Texture"):
+            product.product_type = None
+
+        # Remove auto-applied builtin tags
+        auto_tags_query = select(ProductTag).where(
+            ProductTag.product_id == product.id,
+            ProductTag.source == "auto",
+            ProductTag.tag_id.in_(builtin_tag_ids),
+        )
+        auto_tags_result = await db.execute(auto_tags_query)
+        for pt in auto_tags_result.scalars().all():
+            await db.delete(pt)
+
+        # Clean up extracted images directory
+        image_dir = settings.data_dir / "images" / str(product.id)
+        if image_dir.exists():
+            shutil.rmtree(str(image_dir), ignore_errors=True)
+
+        # Queue for text re-extraction
+        existing_queue = await db.execute(
+            select(ProcessingQueue).where(
+                ProcessingQueue.product_id == product.id,
+                ProcessingQueue.task_type == "text",
+                ProcessingQueue.status == "pending",
+            )
+        )
+        if not existing_queue.scalar_one_or_none():
+            db.add(ProcessingQueue(
+                product_id=product.id,
+                task_type="text",
+                priority=5,
+                status="pending",
+            ))
+            queued += 1
+
+        reset_count += 1
+
+    await db.commit()
+
+    return {
+        "reset": reset_count,
+        "queued_for_reextraction": queued,
+        "message": f"Reset {reset_count} products. Queued {queued} for text re-extraction with improved detection.",
+    }
+
+
 @router.post("/import/dtrpg")
 async def import_dtrpg_library(
     db: DbSession,

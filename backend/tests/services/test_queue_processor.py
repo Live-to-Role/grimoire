@@ -36,6 +36,8 @@ async def test_text_task_runs_in_thread():
 
     async def tracking_to_thread(func, *args, **kwargs):
         to_thread_calls.append(func.__name__ if hasattr(func, '__name__') else str(func))
+        if func.__name__ == "detect_image_content":
+            return {"is_image_content": False, "classification": None, "reason": "test", "stats": {}}
         if func.__name__ == "detect_needs_ocr":
             return {"needs_ocr": False}
         return True
@@ -50,8 +52,8 @@ async def test_text_task_runs_in_thread():
         new_callable=AsyncMock,
     ), patch("pathlib.Path.exists", return_value=True):
         await handle_text_task(db, product)
-        # to_thread should be called for both detect_needs_ocr and process_text_extraction_sync
-        assert "detect_needs_ocr" in to_thread_calls
+        # to_thread should be called for detect_image_content and process_text_extraction_sync
+        assert "detect_image_content" in to_thread_calls
         assert "process_text_extraction_sync" in to_thread_calls
 
 
