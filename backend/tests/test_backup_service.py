@@ -15,6 +15,7 @@ from grimoire.services.backup import (
     get_status,
     get_storage_recommendations,
     read_manifest,
+    restore_from_snapshot,
     rotate,
     snapshot_db,
     write_manifest,
@@ -249,3 +250,70 @@ def test_get_status_configured(backup_dir):
     status = get_status(backup_dir=backup_dir, budget_gb=100)
     assert status.destination_configured is True
     assert status.db_snapshot_count == 0
+
+
+# --- Task 8: Restore from Snapshot ---
+
+
+@pytest.mark.asyncio
+async def test_restore_from_snapshot(source_db, backup_dir):
+    """Restore replaces the DB file with the backup."""
+    entry = await snapshot_db(db_path=source_db, backup_dir=backup_dir, label="v1")
+
+    # Ensure next snapshot gets a different timestamp
+    await asyncio.sleep(1.1)
+
+    conn = sqlite3.connect(str(source_db))
+    conn.execute("INSERT INTO products VALUES (2, 'New Product')")
+    conn.commit()
+    conn.close()
+
+    conn = sqlite3.connect(str(source_db))
+    assert len(conn.execute("SELECT * FROM products").fetchall()) == 2
+    conn.close()
+
+    summary = await restore_from_snapshot(
+        backup_id=entry.id,
+        backup_dir=backup_dir,
+        db_path=source_db,
+        dispose_engine=None,
+        recreate_engine=None,
+    )
+
+    assert summary.restored_from == entry.id
+    assert summary.product_count == 1
+
+
+@pytest.mark.asyncio
+async def test_restore_creates_pre_restore_snapshot(source_db, backup_dir):
+    entry = await snapshot_db(db_path=source_db, backup_dir=backup_dir)
+
+    summary = await restore_from_snapshot(
+        backup_id=entry.id,
+        backup_dir=backup_dir,
+        db_path=source_db,
+        dispose_engine=None,
+        recreate_engine=None,
+    )
+
+    entries = read_manifest(backup_dir)
+    pre_restore = [e for e in entries if e.label and "pre-restore" in e.label]
+    assert len(pre_restore) == 1
+    assert summary.pre_restore_snapshot_id == pre_restore[0].id
+
+
+@pytest.mark.asyncio
+async def test_restore_verifies_integrity(source_db, backup_dir):
+    entry = await snapshot_db(db_path=source_db, backup_dir=backup_dir)
+
+    backup_path = backup_dir / entry.path
+    backup_path.write_bytes(b"corrupted data")
+
+    with pytest.raises(ValueError, match="integrity"):
+        await restore_from_snapshot(
+            backup_id=entry.id,
+            backup_dir=backup_dir,
+            db_path=source_db,
+            dispose_engine=None,
+            recreate_engine=None,
+        )

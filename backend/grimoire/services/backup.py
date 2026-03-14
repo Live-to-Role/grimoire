@@ -15,7 +15,14 @@ from pathlib import Path
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from grimoire.schemas.backup import BackupEntry, BackupStatus, StorageRecommendation
+from typing import Awaitable, Callable
+
+from grimoire.schemas.backup import (
+    BackupEntry,
+    BackupStatus,
+    RestoreSummary,
+    StorageRecommendation,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -339,4 +346,75 @@ def get_status(
         db_snapshot_count=len(db_entries),
         full_backup_count=len(full_entries),
         warnings=warnings,
+    )
+
+
+async def restore_from_snapshot(
+    backup_id: str,
+    backup_dir: Path,
+    db_path: Path,
+    dispose_engine: Callable[[], Awaitable[None]] | None,
+    recreate_engine: Callable[[], None] | None,
+) -> RestoreSummary:
+    """Restore database from a snapshot."""
+    entries = read_manifest(backup_dir)
+    entry = next((e for e in entries if e.id == backup_id), None)
+    if entry is None:
+        raise ValueError(f"Backup not found: {backup_id}")
+
+    backup_path = backup_dir / entry.path
+    if not backup_path.exists():
+        raise ValueError(f"Backup file missing: {backup_path}")
+
+    # Verify integrity
+    actual_hash = await asyncio.to_thread(_compute_sha256, backup_path)
+    if actual_hash != entry.sha256:
+        raise ValueError(
+            f"Backup integrity check failed for {backup_id}: "
+            f"expected {entry.sha256}, got {actual_hash}"
+        )
+
+    # Pre-restore safety snapshot
+    pre_restore_entry = await snapshot_db(
+        db_path=db_path,
+        backup_dir=backup_dir,
+        label=f"pre-restore-{datetime.now(timezone.utc).strftime('%Y-%m-%dT%H-%M-%S')}",
+    )
+
+    # Dispose engine to release all connections
+    if dispose_engine:
+        await dispose_engine()
+
+    # Copy backup over live DB, remove WAL/SHM
+    await asyncio.to_thread(shutil.copy2, backup_path, db_path)
+    for suffix in (".db-wal", ".db-shm"):
+        wal_path = db_path.with_suffix(suffix)
+        if wal_path.exists():
+            wal_path.unlink()
+
+    # Recreate engine
+    if recreate_engine:
+        recreate_engine()
+
+    # Post-restore verification
+    def _verify():
+        conn = _sqlite3.connect(str(db_path))
+        try:
+            count = conn.execute("SELECT COUNT(*) FROM products").fetchone()[0]
+            return count
+        finally:
+            conn.close()
+
+    product_count = await asyncio.to_thread(_verify)
+
+    logger.info(
+        "Restored from %s: %d products, pre-restore snapshot: %s",
+        backup_id, product_count, pre_restore_entry.id,
+    )
+
+    return RestoreSummary(
+        restored_from=backup_id,
+        restored_timestamp=entry.timestamp,
+        product_count=product_count,
+        pre_restore_snapshot_id=pre_restore_entry.id,
     )
