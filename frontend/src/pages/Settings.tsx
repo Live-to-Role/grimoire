@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Save, Database, Sparkles, Check, AlertCircle, FolderOpen, Plus, Trash2, Star, Copy, X, RefreshCw, Upload } from 'lucide-react';
+import { Save, Database, Sparkles, Check, AlertCircle, FolderOpen, Plus, Trash2, Star, Copy, X, RefreshCw, Upload, HardDrive, Download, Shield } from 'lucide-react';
 import apiClient from '../api/client';
 import { FolderBrowserModal } from '../components/FolderBrowserModal';
 import { useThemeContext } from '../contexts/ThemeContext';
@@ -23,6 +23,50 @@ interface SettingsData {
   openai_api_key?: string;
   anthropic_api_key?: string;
   ollama_base_url?: string;
+  backup_destination?: string;
+  backup_max_budget_gb?: number;
+  backup_auto_enabled?: boolean;
+}
+
+interface BackupStatus {
+  destination_configured: boolean;
+  destination_path: string | null;
+  last_db_snapshot: string | null;
+  last_full_backup: string | null;
+  total_backup_size_gb: number;
+  budget_gb: number;
+  budget_used_pct: number;
+  db_snapshot_count: number;
+  full_backup_count: number;
+  warnings: string[];
+  destination_available_gb: number | null;
+}
+
+interface BackupEntry {
+  id: string;
+  type: 'db_snapshot' | 'full';
+  timestamp: string;
+  size_mb: number;
+  label: string | null;
+}
+
+interface BackupList {
+  backups: BackupEntry[];
+  total_size_gb: number;
+}
+
+function formatRelativeTime(dateStr: string | null): string {
+  if (!dateStr) return 'Never';
+  const date = new Date(dateStr);
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffMins = Math.floor(diffMs / 60000);
+  if (diffMins < 1) return 'Just now';
+  if (diffMins < 60) return `${diffMins}m ago`;
+  const diffHours = Math.floor(diffMins / 60);
+  if (diffHours < 24) return `${diffHours}h ago`;
+  const diffDays = Math.floor(diffHours / 24);
+  return `${diffDays}d ago`;
 }
 
 interface WatchedFolder {
@@ -82,6 +126,7 @@ export function Settings() {
   const [newFolderLabel, setNewFolderLabel] = useState('');
   const [folderError, setFolderError] = useState<string | null>(null);
   const [showBrowseModal, setShowBrowseModal] = useState(false);
+  const [showBackupBrowseModal, setShowBackupBrowseModal] = useState(false);
   const [showDuplicateModal, setShowDuplicateModal] = useState(false);
   const [duplicatePreview, setDuplicatePreview] = useState<DuplicatePreview | null>(null);
   const [isLoadingPreview, setIsLoadingPreview] = useState(false);
@@ -128,6 +173,66 @@ export function Settings() {
     onError: () => {
       setSyncResult({ message: 'Failed to sync contributions', type: 'error' });
       setTimeout(() => setSyncResult(null), 5000);
+    },
+  });
+
+  const { data: backupStatus, refetch: refetchBackupStatus } = useQuery<BackupStatus>({
+    queryKey: ['backup-status'],
+    queryFn: async () => {
+      const res = await apiClient.get('/backups/status');
+      return res.data;
+    },
+    refetchInterval: 30000,
+  });
+
+  const { data: backupList, refetch: refetchBackups } = useQuery<BackupList>({
+    queryKey: ['backup-list'],
+    queryFn: async () => {
+      const res = await apiClient.get('/backups/');
+      return res.data;
+    },
+  });
+
+  const snapshotMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiClient.post('/backups/snapshot', { label: 'manual' });
+      return res.data;
+    },
+    onSuccess: () => {
+      refetchBackupStatus();
+      refetchBackups();
+    },
+  });
+
+  const fullBackupMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiClient.post('/backups/full');
+      return res.data;
+    },
+    onSuccess: () => {
+      refetchBackupStatus();
+      refetchBackups();
+    },
+  });
+
+  const restoreMutation = useMutation({
+    mutationFn: async (backupId: string) => {
+      const res = await apiClient.post(`/backups/${backupId}/restore`);
+      return res.data;
+    },
+    onSuccess: () => {
+      refetchBackupStatus();
+      refetchBackups();
+    },
+  });
+
+  const deleteBackupMutation = useMutation({
+    mutationFn: async (backupId: string) => {
+      await apiClient.delete(`/backups/${backupId}`);
+    },
+    onSuccess: () => {
+      refetchBackupStatus();
+      refetchBackups();
     },
   });
 
@@ -656,6 +761,244 @@ export function Settings() {
             </div>
           </section>
 
+          {/* Backup & Recovery */}
+          <section className="rounded-lg p-6" style={{ backgroundColor: 'var(--color-surface)', border: '1px solid var(--color-border)' }}>
+            <div className="mb-4 flex items-center gap-3">
+              <HardDrive className="h-6 w-6 text-green-500" />
+              <div>
+                <h2 className="text-xl font-semibold" style={{ color: 'var(--color-text-primary)' }}>Backup & Recovery</h2>
+                <p className="text-base" style={{ color: 'var(--color-text-secondary)' }}>
+                  Protect your library data with scheduled and manual backups
+                </p>
+              </div>
+            </div>
+
+            {/* Status Card */}
+            <div className="mb-4 rounded-lg p-3" style={{ backgroundColor: 'var(--color-surface-raised)', border: '1px solid var(--color-border)' }}>
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-base" style={{ color: 'var(--color-text-secondary)' }}>Status</span>
+                {backupStatus?.destination_configured ? (
+                  <span className="inline-flex items-center gap-1 text-sm text-green-600">
+                    <Check className="h-4 w-4" />
+                    Configured
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1 text-sm text-amber-600">
+                    <AlertCircle className="h-4 w-4" />
+                    Not configured
+                  </span>
+                )}
+              </div>
+              {backupStatus?.destination_configured && (
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between">
+                    <span className="text-base" style={{ color: 'var(--color-text-secondary)' }}>Last DB snapshot</span>
+                    <span className="text-base" style={{ color: 'var(--color-text-primary)' }}>
+                      {formatRelativeTime(backupStatus.last_db_snapshot)}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-base" style={{ color: 'var(--color-text-secondary)' }}>Last full backup</span>
+                    <span className="text-base" style={{ color: 'var(--color-text-primary)' }}>
+                      {formatRelativeTime(backupStatus.last_full_backup)}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-base" style={{ color: 'var(--color-text-secondary)' }}>Backups</span>
+                    <span className="text-base" style={{ color: 'var(--color-text-primary)' }}>
+                      {backupStatus.db_snapshot_count} snapshots, {backupStatus.full_backup_count} full
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-base" style={{ color: 'var(--color-text-secondary)' }}>Storage used</span>
+                    <span className="text-base" style={{ color: 'var(--color-text-primary)' }}>
+                      {backupStatus.total_backup_size_gb.toFixed(2)} GB / {backupStatus.budget_gb} GB ({backupStatus.budget_used_pct.toFixed(0)}%)
+                    </span>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Warnings */}
+            {backupStatus?.warnings && backupStatus.warnings.length > 0 && (
+              <div className="mb-4 space-y-2">
+                {backupStatus.warnings.map((warning, i) => (
+                  <div key={i} className="flex items-center gap-2 rounded-lg p-2" style={{ backgroundColor: 'rgba(217, 119, 6, 0.1)', border: '1px solid rgba(217, 119, 6, 0.3)' }}>
+                    <AlertCircle className="h-4 w-4 flex-shrink-0 text-amber-600" />
+                    <span className="text-sm text-amber-600">{warning}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Configuration */}
+            <div className="space-y-4">
+              <div>
+                <label className="block text-lg font-medium" style={{ color: 'var(--color-text-primary)' }}>
+                  Backup Destination
+                </label>
+                <p className="mb-1 text-base" style={{ color: 'var(--color-text-secondary)' }}>
+                  Folder where backups will be stored
+                </p>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={settings.backup_destination || ''}
+                    onChange={(e) => setSettings({ ...settings, backup_destination: e.target.value })}
+                    placeholder="/path/to/backup/folder"
+                    className="input flex-1 rounded-lg px-3"
+                    style={{ height: '48px', fontSize: '18px', backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-border)', color: 'var(--color-text-primary)' }}
+                  />
+                  <button
+                    onClick={() => setShowBackupBrowseModal(true)}
+                    type="button"
+                    className="inline-flex items-center gap-1 rounded-lg px-3 text-base font-medium"
+                    style={{ backgroundColor: 'var(--color-surface)', border: '1px solid var(--color-border)', color: 'var(--color-text-secondary)', minHeight: '44px' }}
+                  >
+                    <FolderOpen className="h-4 w-4" />
+                    Browse
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-lg font-medium" style={{ color: 'var(--color-text-primary)' }}>
+                  Storage Budget (GB)
+                </label>
+                <p className="mb-1 text-base" style={{ color: 'var(--color-text-secondary)' }}>
+                  Maximum disk space for backups
+                </p>
+                <input
+                  type="number"
+                  value={settings.backup_max_budget_gb ?? ''}
+                  onChange={(e) => setSettings({ ...settings, backup_max_budget_gb: e.target.value ? Number(e.target.value) : undefined })}
+                  placeholder="10"
+                  min={1}
+                  className="input w-40 rounded-lg px-3"
+                  style={{ height: '48px', fontSize: '18px', backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-border)', color: 'var(--color-text-primary)' }}
+                />
+              </div>
+
+              <label className="flex items-center gap-3">
+                <input
+                  type="checkbox"
+                  checked={settings.backup_auto_enabled || false}
+                  onChange={(e) =>
+                    setSettings({ ...settings, backup_auto_enabled: e.target.checked })
+                  }
+                  className="h-4 w-4 rounded"
+                  style={{ accentColor: 'var(--color-accent)' }}
+                />
+                <div>
+                  <span className="text-lg font-medium" style={{ color: 'var(--color-text-primary)' }}>
+                    Automatic Backups
+                  </span>
+                  <p className="text-base" style={{ color: 'var(--color-text-secondary)' }}>
+                    Automatically create DB snapshots on a schedule
+                  </p>
+                </div>
+              </label>
+            </div>
+
+            {/* Actions */}
+            {backupStatus?.destination_configured && (
+              <div className="mt-4 pt-4" style={{ borderTop: '1px solid var(--color-border)' }}>
+                <p className="mb-3 text-lg font-medium" style={{ color: 'var(--color-text-primary)' }}>Manual Backup</p>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => snapshotMutation.mutate()}
+                    disabled={snapshotMutation.isPending}
+                    className="inline-flex items-center gap-2 rounded-lg px-3 text-base font-medium text-white disabled:opacity-50"
+                    style={{ backgroundColor: 'var(--color-accent)', minHeight: '44px' }}
+                    onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = 'var(--color-accent-hover)')}
+                    onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'var(--color-accent)')}
+                  >
+                    <Database className="h-4 w-4" />
+                    {snapshotMutation.isPending ? 'Creating...' : 'Create Snapshot'}
+                  </button>
+                  <button
+                    onClick={() => fullBackupMutation.mutate()}
+                    disabled={fullBackupMutation.isPending}
+                    className="inline-flex items-center gap-2 rounded-lg px-3 text-base font-medium disabled:opacity-50"
+                    style={{ backgroundColor: 'var(--color-surface)', border: '1px solid var(--color-border)', color: 'var(--color-text-secondary)', minHeight: '44px' }}
+                  >
+                    <HardDrive className="h-4 w-4" />
+                    {fullBackupMutation.isPending ? 'Creating...' : 'Full Backup'}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Backup List */}
+            {backupList?.backups && backupList.backups.length > 0 && (
+              <div className="mt-4 pt-4" style={{ borderTop: '1px solid var(--color-border)' }}>
+                <p className="mb-3 text-lg font-medium" style={{ color: 'var(--color-text-primary)' }}>Existing Backups</p>
+                <div className="space-y-2">
+                  {backupList.backups.map((backup) => (
+                    <div
+                      key={backup.id}
+                      className="flex items-center justify-between rounded-lg p-3"
+                      style={{ backgroundColor: 'var(--color-surface-raised)', border: '1px solid var(--color-border)' }}
+                    >
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span
+                            className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+                              backup.type === 'db_snapshot'
+                                ? 'bg-blue-100 text-blue-700'
+                                : 'bg-green-100 text-green-700'
+                            }`}
+                          >
+                            {backup.type === 'db_snapshot' ? 'DB' : 'Full'}
+                          </span>
+                          <span className="text-base" style={{ color: 'var(--color-text-primary)' }}>
+                            {new Date(backup.timestamp).toLocaleString()}
+                          </span>
+                          {backup.label && (
+                            <span className="text-base" style={{ color: 'var(--color-text-secondary)' }}>
+                              ({backup.label})
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-base" style={{ color: 'var(--color-text-secondary)' }}>
+                          {backup.size_mb.toFixed(1)} MB
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2 ml-2">
+                        <button
+                          onClick={() => {
+                            if (confirm('Are you sure you want to restore from this backup? This will overwrite current data.')) {
+                              restoreMutation.mutate(backup.id);
+                            }
+                          }}
+                          disabled={restoreMutation.isPending}
+                          className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-sm font-medium disabled:opacity-50"
+                          style={{ backgroundColor: 'var(--color-surface)', border: '1px solid var(--color-border)', color: 'var(--color-text-secondary)' }}
+                          title="Restore from this backup"
+                        >
+                          <Download className="h-3 w-3" />
+                          Restore
+                        </button>
+                        <button
+                          onClick={() => {
+                            if (confirm('Are you sure you want to delete this backup? This cannot be undone.')) {
+                              deleteBackupMutation.mutate(backup.id);
+                            }
+                          }}
+                          disabled={deleteBackupMutation.isPending}
+                          className="p-1 text-neutral-400 hover:text-red-600"
+                          title="Delete backup"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </section>
+
           {/* Appearance */}
           <section className="rounded-lg p-6" style={{ backgroundColor: 'var(--color-surface)', border: '1px solid var(--color-border)' }}>
             <div className="mb-4">
@@ -709,6 +1052,16 @@ export function Settings() {
         isOpen={showBrowseModal}
         onClose={() => setShowBrowseModal(false)}
         onSelect={(path) => setNewFolderPath(path)}
+      />
+
+      {/* Backup Folder Browser Modal */}
+      <FolderBrowserModal
+        isOpen={showBackupBrowseModal}
+        onClose={() => setShowBackupBrowseModal(false)}
+        onSelect={(path) => {
+          setSettings(prev => ({ ...prev, backup_destination: path }));
+          setShowBackupBrowseModal(false);
+        }}
       />
 
       {/* Duplicate Resolution Modal */}
