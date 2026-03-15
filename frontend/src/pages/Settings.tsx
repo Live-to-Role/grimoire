@@ -44,10 +44,13 @@ interface BackupStatus {
 
 interface BackupEntry {
   id: string;
-  type: 'db_snapshot' | 'full';
+  type: 'db' | 'full';
   timestamp: string;
-  size_mb: number;
+  size_bytes: number;
+  size_gb: number;
+  sha256: string;
   label: string | null;
+  path: string;
 }
 
 interface BackupList {
@@ -976,12 +979,12 @@ export function Settings() {
                         <div className="flex items-center gap-2">
                           <span
                             className={`rounded-full px-2 py-0.5 text-xs font-medium ${
-                              backup.type === 'db_snapshot'
+                              backup.type === 'db'
                                 ? 'bg-blue-100 text-blue-700'
                                 : 'bg-green-100 text-green-700'
                             }`}
                           >
-                            {backup.type === 'db_snapshot' ? 'DB' : 'Full'}
+                            {backup.type === 'db' ? 'DB' : 'Full'}
                           </span>
                           <span className="text-base" style={{ color: 'var(--color-text-primary)' }}>
                             {new Date(backup.timestamp).toLocaleString()}
@@ -993,7 +996,7 @@ export function Settings() {
                           )}
                         </div>
                         <p className="text-base" style={{ color: 'var(--color-text-secondary)' }}>
-                          {backup.size_mb.toFixed(1)} MB
+                          {backup.size_gb >= 1 ? `${backup.size_gb.toFixed(1)} GB` : `${(backup.size_bytes / (1024 * 1024)).toFixed(1)} MB`}
                         </p>
                       </div>
                       <div className="flex items-center gap-2 ml-2">
