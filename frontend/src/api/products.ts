@@ -101,6 +101,10 @@ export interface BulkUpdateFields {
   series?: string | null;
   estimated_runtime?: string | null;
   format?: string | null;
+  // Reclassification
+  is_image_content?: boolean;
+  content_type?: string;
+  re_extract?: boolean;
 }
 
 export interface BulkResponse {
