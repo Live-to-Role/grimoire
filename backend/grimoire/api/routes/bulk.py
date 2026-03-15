@@ -1,12 +1,18 @@
 """Bulk operations API endpoints."""
 
+import logging
+import shutil
+
 from pydantic import BaseModel, Field, model_validator
 from fastapi import APIRouter, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
 from grimoire.api.deps import DbSession
-from grimoire.models import Product, Tag, ProductTag, Collection, CollectionProduct
+from grimoire.config import settings
+from grimoire.models import Product, Tag, ProductTag, Collection, CollectionProduct, ProcessingQueue
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -246,7 +252,68 @@ async def bulk_update_products(db: DbSession, request: BulkUpdateRequest) -> Bul
         if updated:
             affected += 1
 
-    await db.commit()
+    # Handle reclassification
+    queued_count = 0
+
+    if "is_image_content" in provided_fields and request.is_image_content is True:
+        from grimoire.services.tag_service import set_content_type_tag
+
+        for product in products:
+            product.is_image_content = True
+            product.product_type = request.content_type
+            await set_content_type_tag(db, product.id, request.content_type)
+
+            should_extract = not product.images_extracted or request.re_extract
+            if should_extract:
+                existing_task = await db.execute(
+                    select(ProcessingQueue).where(
+                        ProcessingQueue.product_id == product.id,
+                        ProcessingQueue.task_type == "extract_images",
+                        ProcessingQueue.status.in_(["pending", "processing"]),
+                    )
+                )
+                if not existing_task.scalar_one_or_none():
+                    db.add(ProcessingQueue(
+                        product_id=product.id,
+                        task_type="extract_images",
+                        priority=2,
+                        status="pending",
+                    ))
+                    queued_count += 1
+
+        affected = len(products)
+        filter_fields_updated = True
+
+    elif "is_image_content" in provided_fields and request.is_image_content is False:
+        from grimoire.services.tag_service import remove_content_type_tags
+
+        for product in products:
+            product.is_image_content = False
+            product.product_type = None
+            product.images_extracted = False
+            product.image_count = None
+            await remove_content_type_tags(db, product.id)
+
+        affected = len(products)
+        filter_fields_updated = True
+
+    # Commit
+    committed = False
+
+    if "is_image_content" in provided_fields and request.is_image_content is False:
+        await db.commit()
+        committed = True
+
+        for product in products:
+            image_dir = settings.data_dir / "images" / str(product.id)
+            if image_dir.exists():
+                try:
+                    shutil.rmtree(image_dir)
+                except OSError as e:
+                    logger.warning("Failed to delete image dir %s: %s", image_dir, e)
+
+    if not committed:
+        await db.commit()
 
     # Invalidate filter cache if filter-relevant fields were updated
     if filter_fields_updated:
@@ -254,8 +321,12 @@ async def bulk_update_products(db: DbSession, request: BulkUpdateRequest) -> Bul
         cache = await get_cache_service()
         await cache.invalidate_filter_options()
 
+    message = "Updated products"
+    if queued_count > 0:
+        message = f"Updated {affected} products. Queued {queued_count} for image extraction."
+
     return BulkResponse(
-        message=f"Updated products",
+        message=message,
         affected=affected,
     )
 

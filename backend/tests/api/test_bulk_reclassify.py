@@ -194,3 +194,165 @@ class TestBulkUpdateRequestValidation:
 
         req = BulkUpdateRequest(product_ids=[1], game_system="D&D 5e")
         assert "is_image_content" not in req.model_fields_set
+
+
+class TestReclassifyToImageContent:
+    @pytest.mark.asyncio
+    async def test_sets_image_content_fields(self, db, seeded_tags, reclassify_products):
+        from grimoire.api.routes.bulk import BulkUpdateRequest, bulk_update_products
+
+        product_ids = [p.id for p in reclassify_products]
+        req = BulkUpdateRequest(
+            product_ids=product_ids,
+            is_image_content=True,
+            content_type="Map",
+        )
+        response = await bulk_update_products(db, req)
+
+        assert response.affected == 3
+        for p in reclassify_products:
+            await db.refresh(p)
+            assert p.is_image_content is True
+            assert p.product_type == "Map"
+
+    @pytest.mark.asyncio
+    async def test_creates_auto_tag(self, db, seeded_tags, reclassify_products):
+        from grimoire.api.routes.bulk import BulkUpdateRequest, bulk_update_products
+
+        req = BulkUpdateRequest(
+            product_ids=[reclassify_products[0].id],
+            is_image_content=True,
+            content_type="Map",
+        )
+        await bulk_update_products(db, req)
+
+        result = await db.execute(
+            select(ProductTag).where(
+                ProductTag.product_id == reclassify_products[0].id,
+                ProductTag.tag_id == seeded_tags["Map"].id,
+                ProductTag.source == "auto",
+            )
+        )
+        assert result.scalar_one() is not None
+
+    @pytest.mark.asyncio
+    async def test_queues_extraction(self, db, seeded_tags, reclassify_products):
+        from grimoire.api.routes.bulk import BulkUpdateRequest, bulk_update_products
+
+        req = BulkUpdateRequest(
+            product_ids=[reclassify_products[0].id],
+            is_image_content=True,
+            content_type="Map",
+        )
+        await bulk_update_products(db, req)
+
+        result = await db.execute(
+            select(ProcessingQueue).where(
+                ProcessingQueue.product_id == reclassify_products[0].id,
+                ProcessingQueue.task_type == "extract_images",
+            )
+        )
+        task = result.scalar_one()
+        assert task.status == "pending"
+        assert task.priority == 2
+
+    @pytest.mark.asyncio
+    async def test_skips_extraction_when_already_extracted(self, db, seeded_tags, reclassify_products):
+        from grimoire.api.routes.bulk import BulkUpdateRequest, bulk_update_products
+
+        reclassify_products[0].images_extracted = True
+        await db.flush()
+
+        req = BulkUpdateRequest(
+            product_ids=[reclassify_products[0].id],
+            is_image_content=True,
+            content_type="Map",
+        )
+        await bulk_update_products(db, req)
+
+        result = await db.execute(
+            select(ProcessingQueue).where(
+                ProcessingQueue.product_id == reclassify_products[0].id,
+                ProcessingQueue.task_type == "extract_images",
+            )
+        )
+        assert result.scalar_one_or_none() is None
+
+    @pytest.mark.asyncio
+    async def test_re_extract_queues_already_extracted(self, db, seeded_tags, reclassify_products):
+        from grimoire.api.routes.bulk import BulkUpdateRequest, bulk_update_products
+
+        reclassify_products[0].images_extracted = True
+        await db.flush()
+
+        req = BulkUpdateRequest(
+            product_ids=[reclassify_products[0].id],
+            is_image_content=True,
+            content_type="Map",
+            re_extract=True,
+        )
+        await bulk_update_products(db, req)
+
+        result = await db.execute(
+            select(ProcessingQueue).where(
+                ProcessingQueue.product_id == reclassify_products[0].id,
+                ProcessingQueue.task_type == "extract_images",
+            )
+        )
+        assert result.scalar_one() is not None
+
+    @pytest.mark.asyncio
+    async def test_no_duplicate_queue_entries(self, db, seeded_tags, reclassify_products):
+        from grimoire.api.routes.bulk import BulkUpdateRequest, bulk_update_products
+
+        db.add(ProcessingQueue(
+            product_id=reclassify_products[0].id,
+            task_type="extract_images",
+            status="pending",
+            priority=2,
+        ))
+        await db.flush()
+
+        req = BulkUpdateRequest(
+            product_ids=[reclassify_products[0].id],
+            is_image_content=True,
+            content_type="Map",
+        )
+        await bulk_update_products(db, req)
+
+        result = await db.execute(
+            select(ProcessingQueue).where(
+                ProcessingQueue.product_id == reclassify_products[0].id,
+                ProcessingQueue.task_type == "extract_images",
+            )
+        )
+        tasks = list(result.scalars().all())
+        assert len(tasks) == 1
+
+    @pytest.mark.asyncio
+    async def test_response_message_includes_queue_count(self, db, seeded_tags, reclassify_products):
+        from grimoire.api.routes.bulk import BulkUpdateRequest, bulk_update_products
+
+        req = BulkUpdateRequest(
+            product_ids=[p.id for p in reclassify_products],
+            is_image_content=True,
+            content_type="Map",
+        )
+        response = await bulk_update_products(db, req)
+        assert "Queued 3" in response.message
+
+    @pytest.mark.asyncio
+    async def test_product_type_overridden_by_content_type(self, db, seeded_tags, reclassify_products):
+        """Spec: product_type is ignored when is_image_content=True; content_type wins."""
+        from grimoire.api.routes.bulk import BulkUpdateRequest, bulk_update_products
+
+        p = reclassify_products[0]
+        req = BulkUpdateRequest(
+            product_ids=[p.id],
+            is_image_content=True,
+            content_type="Map",
+            product_type="Adventure",
+        )
+        await bulk_update_products(db, req)
+        await db.refresh(p)
+        assert p.product_type == "Map"
