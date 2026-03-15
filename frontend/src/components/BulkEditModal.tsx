@@ -31,6 +31,7 @@ const FIELD_LABELS: Record<string, string> = {
 
 const LEFT_FIELDS = ['game_system', 'product_type', 'genre', 'publisher', 'author'];
 const RIGHT_FIELDS = ['publication_year', 'setting', 'series', 'estimated_runtime', 'format'];
+const CONTENT_TYPES = ['Map', 'Stock Art', 'Token', 'Handout', 'Portrait', 'Scene', 'Item', 'Texture'];
 
 function createInitialState(): Record<string, FieldState> {
   const state: Record<string, FieldState> = {};
@@ -43,6 +44,9 @@ function createInitialState(): Record<string, FieldState> {
 export function BulkEditModal({ selectedProducts, onClose, onComplete }: BulkEditModalProps) {
   const [fieldStates, setFieldStates] = useState<Record<string, FieldState>>(createInitialState);
   const [view, setView] = useState<'edit' | 'preview'>('edit');
+  const [imageContentToggle, setImageContentToggle] = useState<'unchanged' | 'yes' | 'no'>('unchanged');
+  const [contentType, setContentType] = useState<string>('');
+  const [reExtract, setReExtract] = useState(false);
   const queryClient = useQueryClient();
 
   const updateField = useCallback((key: string, value: string) => {
@@ -63,6 +67,9 @@ export function BulkEditModal({ selectedProducts, onClose, onComplete }: BulkEdi
     ([, state]) => state.touched && (state.value !== '' || state.clear)
   );
 
+  const hasChanges = changedFields.length > 0 || imageContentToggle !== 'unchanged';
+  const needsContentType = imageContentToggle === 'yes' && !contentType;
+
   const mutation = useMutation({
     mutationFn: () => {
       const fields: BulkUpdateFields = {};
@@ -82,6 +89,13 @@ export function BulkEditModal({ selectedProducts, onClose, onComplete }: BulkEdi
           }
         }
       }
+      if (imageContentToggle === 'yes') {
+        fields.is_image_content = true;
+        fields.content_type = contentType;
+        fields.re_extract = reExtract;
+      } else if (imageContentToggle === 'no') {
+        fields.is_image_content = false;
+      }
       return bulkUpdateProducts(
         selectedProducts.map(p => p.id),
         fields,
@@ -90,6 +104,7 @@ export function BulkEditModal({ selectedProducts, onClose, onComplete }: BulkEdi
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['products'] });
       queryClient.invalidateQueries({ queryKey: ['filters'] });
+      queryClient.invalidateQueries({ queryKey: ['gallery'] });
       onComplete();
       onClose();
     },
@@ -98,23 +113,29 @@ export function BulkEditModal({ selectedProducts, onClose, onComplete }: BulkEdi
   const renderField = (key: string) => {
     const state = fieldStates[key];
     const isYear = key === 'publication_year';
+    const isDisabledByReclassify = key === 'product_type' && imageContentToggle === 'yes';
 
     return (
       <div key={key} className="flex flex-col gap-1">
         <label className="text-sm font-medium" style={{ color: 'var(--color-text-secondary)' }}>
           {FIELD_LABELS[key]}
+          {isDisabledByReclassify && (
+            <span className="text-xs ml-1" style={{ color: 'var(--color-text-tertiary)' }}>
+              (set by Content Type)
+            </span>
+          )}
         </label>
         <div className="flex items-center gap-2">
           <input
             type={isYear ? 'number' : 'text'}
             value={state.value}
             onChange={(e) => updateField(key, e.target.value)}
-            disabled={state.clear}
-            placeholder={state.clear ? '(will be cleared)' : ''}
+            disabled={state.clear || isDisabledByReclassify}
+            placeholder={state.clear ? '(will be cleared)' : isDisabledByReclassify ? '(set by content type)' : ''}
             className="input flex-1"
             style={{
               height: '40px',
-              opacity: state.clear ? 0.5 : 1,
+              opacity: (state.clear || isDisabledByReclassify) ? 0.5 : 1,
             }}
           />
           <label className="flex items-center gap-1 text-xs whitespace-nowrap cursor-pointer" style={{ color: 'var(--color-text-secondary)' }}>
@@ -172,6 +193,58 @@ export function BulkEditModal({ selectedProducts, onClose, onComplete }: BulkEdi
               <p className="mb-4 text-sm" style={{ color: 'var(--color-text-secondary)' }}>
                 Only fields you fill in or mark as "Clear" will be changed. All other fields remain unchanged.
               </p>
+
+              {/* Reclassification section */}
+              <div
+                className="mb-6 pb-4 border-b"
+                style={{ borderColor: 'var(--color-border)' }}
+              >
+                <div className="flex items-center gap-4">
+                  <div className="flex flex-col gap-1">
+                    <label className="text-sm font-medium" style={{ color: 'var(--color-text-secondary)' }}>
+                      Image Content
+                    </label>
+                    <select
+                      value={imageContentToggle}
+                      onChange={(e) => {
+                        const val = e.target.value as 'unchanged' | 'yes' | 'no';
+                        setImageContentToggle(val);
+                        if (val !== 'yes') {
+                          setContentType('');
+                          setReExtract(false);
+                        }
+                      }}
+                      className="input"
+                      style={{ height: '40px', minWidth: '140px' }}
+                    >
+                      <option value="unchanged">Unchanged</option>
+                      <option value="yes">Yes</option>
+                      <option value="no">No</option>
+                    </select>
+                  </div>
+
+                  {imageContentToggle === 'yes' && (
+                    <div className="flex flex-col gap-1">
+                      <label className="text-sm font-medium" style={{ color: 'var(--color-text-secondary)' }}>
+                        Content Type
+                      </label>
+                      <select
+                        value={contentType}
+                        onChange={(e) => setContentType(e.target.value)}
+                        className="input"
+                        style={{ height: '40px', minWidth: '160px' }}
+                      >
+                        <option value="">Select type...</option>
+                        {CONTENT_TYPES.map(t => (
+                          <option key={t} value={t}>{t}</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Field grid */}
               <div className="grid grid-cols-2 gap-x-6 gap-y-4">
                 <div className="flex flex-col gap-4">
                   {LEFT_FIELDS.map(renderField)}
@@ -189,6 +262,16 @@ export function BulkEditModal({ selectedProducts, onClose, onComplete }: BulkEdi
                   Changes to apply:
                 </h3>
                 <ul className="space-y-1">
+                  {imageContentToggle === 'yes' && (
+                    <li className="text-sm font-medium" style={{ color: 'var(--color-accent)' }}>
+                      {selectedProducts.length} products &rarr; Image Content ({contentType})
+                    </li>
+                  )}
+                  {imageContentToggle === 'no' && (
+                    <li className="text-sm font-medium" style={{ color: 'var(--color-danger)' }}>
+                      {selectedProducts.length} products &rarr; Regular (extracted images will be deleted)
+                    </li>
+                  )}
                   {changedFields.map(([key, state]) => (
                     <li key={key} className="text-sm" style={{ color: 'var(--color-text-secondary)' }}>
                       {state.clear
@@ -198,6 +281,26 @@ export function BulkEditModal({ selectedProducts, onClose, onComplete }: BulkEdi
                   ))}
                 </ul>
               </div>
+
+              {/* Re-extract option */}
+              {imageContentToggle === 'yes' && (
+                <div
+                  className="mb-4 p-3 rounded-md"
+                  style={{
+                    backgroundColor: 'var(--color-surface-raised)',
+                    border: '1px solid var(--color-border)',
+                  }}
+                >
+                  <label className="flex items-center gap-2 text-sm cursor-pointer" style={{ color: 'var(--color-text-secondary)' }}>
+                    <input
+                      type="checkbox"
+                      checked={reExtract}
+                      onChange={(e) => setReExtract(e.target.checked)}
+                    />
+                    Re-extract images for products that already have them
+                  </label>
+                </div>
+              )}
 
               {/* Affected products */}
               <div>
@@ -258,7 +361,7 @@ export function BulkEditModal({ selectedProducts, onClose, onComplete }: BulkEdi
               </button>
               <button
                 onClick={() => setView('preview')}
-                disabled={changedFields.length === 0}
+                disabled={!hasChanges || needsContentType}
                 className="rounded-md px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
                 style={{ backgroundColor: 'var(--color-accent)' }}
               >
