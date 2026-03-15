@@ -26,6 +26,7 @@ import {
   Database,
   Tag,
   Check,
+  FolderOpen,
 } from 'lucide-react';
 import apiClient from '../api/client';
 import type { Product, RunNote } from '../types/product';
@@ -575,6 +576,14 @@ export function ProductDetail({ product, onClose }: ProductDetailProps) {
 
   const openPdf = () => {
     window.open(`/api/v1/products/${product.id}/pdf`, '_blank');
+  };
+
+  const openFolder = async () => {
+    try {
+      await apiClient.post(`/api/v1/products/${product.id}/open-folder`);
+    } catch {
+      // silently fail — folder may not exist
+    }
   };
 
   return (
@@ -1135,6 +1144,16 @@ export function ProductDetail({ product, onClose }: ProductDetailProps) {
                       >
                         <ExternalLink className="h-4 w-4" />
                         Open in New Tab
+                      </button>
+                      <button
+                        onClick={openFolder}
+                        className="inline-flex items-center gap-2 rounded-md border px-4 py-2 text-base font-medium transition-colors"
+                        style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-surface)', color: 'var(--color-text-secondary)' }}
+                        onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = 'var(--color-surface-raised)')}
+                        onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'var(--color-surface)')}
+                      >
+                        <FolderOpen className="h-4 w-4" />
+                        View in Folder
                       </button>
                       <button
                         onClick={() => setIsEditing(true)}

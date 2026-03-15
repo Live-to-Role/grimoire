@@ -1,6 +1,8 @@
 """Product API endpoints."""
 
 import asyncio
+import subprocess
+import sys
 from datetime import datetime, UTC
 from pathlib import Path
 from typing import Literal
@@ -547,6 +549,46 @@ async def get_product_pdf(db: DbSession, product_id: int) -> FileResponse:
             "Accept-Ranges": "bytes",
         },
     )
+
+
+@router.post("/{product_id}/open-folder")
+async def open_product_folder(db: DbSession, product_id: int) -> dict:
+    """Open the product's containing folder in the OS file explorer."""
+    from grimoire.models import WatchedFolder
+
+    query = select(Product).where(Product.id == product_id)
+    result = await db.execute(query)
+    product = result.scalar_one_or_none()
+
+    if not product:
+        raise HTTPException(status_code=404, detail="Product not found")
+
+    folder_path = Path(product.file_path).parent
+
+    # Validate path is within the product's watched folder
+    if product.watched_folder_id:
+        folder_result = await db.execute(
+            select(WatchedFolder).where(WatchedFolder.id == product.watched_folder_id)
+        )
+        watched_folder = folder_result.scalar_one_or_none()
+        if watched_folder:
+            try:
+                validate_path_in_directory(folder_path, watched_folder.path)
+            except PathTraversalError:
+                raise HTTPException(status_code=403, detail="Access denied")
+
+    if not folder_path.exists():
+        raise HTTPException(status_code=404, detail="Folder not found on disk")
+
+    # Open folder in OS file explorer
+    if sys.platform == "win32":
+        subprocess.Popen(["explorer", str(folder_path)])
+    elif sys.platform == "darwin":
+        subprocess.Popen(["open", str(folder_path)])
+    else:
+        subprocess.Popen(["xdg-open", str(folder_path)])
+
+    return {"status": "ok", "folder": str(folder_path)}
 
 
 @router.post("/{product_id}/process", response_model=ProductProcessResponse)
