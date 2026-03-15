@@ -904,10 +904,39 @@ export function Settings() {
             {backupStatus?.destination_configured && (
               <div className="mt-4 pt-4" style={{ borderTop: '1px solid var(--color-border)' }}>
                 <p className="mb-3 text-lg font-medium" style={{ color: 'var(--color-text-primary)' }}>Manual Backup</p>
+
+                {/* In-progress banner */}
+                {(snapshotMutation.isPending || fullBackupMutation.isPending) && (
+                  <div className="mb-3 flex items-center gap-3 rounded-lg p-3" style={{ backgroundColor: 'var(--color-accent-light)', border: '1px solid var(--color-accent)' }}>
+                    <RefreshCw className="h-5 w-5 animate-spin" style={{ color: 'var(--color-accent)' }} />
+                    <div>
+                      <p className="text-base font-medium" style={{ color: 'var(--color-accent)' }}>
+                        {snapshotMutation.isPending ? 'Creating DB snapshot...' : 'Creating full backup — this may take several minutes for large libraries...'}
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Success banner */}
+                {(snapshotMutation.isSuccess || fullBackupMutation.isSuccess) && !snapshotMutation.isPending && !fullBackupMutation.isPending && (
+                  <div className="mb-3 flex items-center gap-3 rounded-lg bg-green-50 p-3" style={{ border: '1px solid rgb(134, 239, 172)' }}>
+                    <Check className="h-5 w-5 text-green-600" />
+                    <p className="text-base font-medium text-green-700">Backup created successfully!</p>
+                  </div>
+                )}
+
+                {/* Error banner */}
+                {(snapshotMutation.isError || fullBackupMutation.isError) && !snapshotMutation.isPending && !fullBackupMutation.isPending && (
+                  <div className="mb-3 flex items-center gap-3 rounded-lg bg-red-50 p-3" style={{ border: '1px solid rgb(252, 165, 165)' }}>
+                    <AlertCircle className="h-5 w-5 text-red-600" />
+                    <p className="text-base font-medium text-red-700">Backup failed. Check the server logs for details.</p>
+                  </div>
+                )}
+
                 <div className="flex gap-2">
                   <button
                     onClick={() => snapshotMutation.mutate()}
-                    disabled={snapshotMutation.isPending}
+                    disabled={snapshotMutation.isPending || fullBackupMutation.isPending}
                     className="inline-flex items-center gap-2 rounded-lg px-3 text-base font-medium text-white disabled:opacity-50"
                     style={{ backgroundColor: 'var(--color-accent)', minHeight: '44px' }}
                     onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = 'var(--color-accent-hover)')}
@@ -918,7 +947,7 @@ export function Settings() {
                   </button>
                   <button
                     onClick={() => fullBackupMutation.mutate()}
-                    disabled={fullBackupMutation.isPending}
+                    disabled={snapshotMutation.isPending || fullBackupMutation.isPending}
                     className="inline-flex items-center gap-2 rounded-lg px-3 text-base font-medium disabled:opacity-50"
                     style={{ backgroundColor: 'var(--color-surface)', border: '1px solid var(--color-border)', color: 'var(--color-text-secondary)', minHeight: '44px' }}
                   >
@@ -926,6 +955,9 @@ export function Settings() {
                     {fullBackupMutation.isPending ? 'Creating...' : 'Full Backup'}
                   </button>
                 </div>
+                <p className="mt-2 text-base" style={{ color: 'var(--color-text-secondary)' }}>
+                  Snapshots back up the database only. Full backups include covers, extracted text, and images.
+                </p>
               </div>
             )}
 
