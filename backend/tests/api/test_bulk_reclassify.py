@@ -22,7 +22,7 @@ async def seeded_tags(db):
 @pytest.fixture
 async def reclassify_products(db, seeded_tags, request):
     """Create test products for reclassification tests."""
-    prefix = request.node.name
+    prefix = request.node.nodeid.replace("/", "_").replace("::", "_")
     products = []
     for i in range(3):
         p = Product(
@@ -355,4 +355,94 @@ class TestReclassifyToImageContent:
         )
         await bulk_update_products(db, req)
         await db.refresh(p)
-        assert p.product_type == "Map"
+        assert p.product_type == "Map"  # content_type wins
+
+
+class TestReclassifyToRegular:
+    @pytest.mark.asyncio
+    async def test_clears_image_content_fields(self, db, seeded_tags, reclassify_products):
+        from grimoire.api.routes.bulk import BulkUpdateRequest, bulk_update_products
+
+        p = reclassify_products[0]
+        p.is_image_content = True
+        p.product_type = "Map"
+        p.images_extracted = True
+        p.image_count = 5
+        await db.flush()
+
+        req = BulkUpdateRequest(
+            product_ids=[p.id],
+            is_image_content=False,
+        )
+        await bulk_update_products(db, req)
+        await db.refresh(p)
+
+        assert p.is_image_content is False
+        assert p.product_type is None
+        assert p.images_extracted is False
+        assert p.image_count is None
+
+    @pytest.mark.asyncio
+    async def test_removes_auto_content_type_tags(self, db, seeded_tags, reclassify_products):
+        from grimoire.api.routes.bulk import BulkUpdateRequest, bulk_update_products
+
+        p = reclassify_products[0]
+        db.add(ProductTag(product_id=p.id, tag_id=seeded_tags["Map"].id, source="auto"))
+        await db.flush()
+
+        req = BulkUpdateRequest(
+            product_ids=[p.id],
+            is_image_content=False,
+        )
+        await bulk_update_products(db, req)
+
+        result = await db.execute(
+            select(ProductTag).where(
+                ProductTag.product_id == p.id,
+                ProductTag.source == "auto",
+            )
+        )
+        assert result.scalar_one_or_none() is None
+
+    @pytest.mark.asyncio
+    async def test_deletes_image_directory(self, db, seeded_tags, reclassify_products, tmp_path):
+        from unittest.mock import patch
+        from grimoire.api.routes.bulk import BulkUpdateRequest, bulk_update_products
+
+        p = reclassify_products[0]
+        p.is_image_content = True
+        p.images_extracted = True
+        await db.flush()
+
+        with patch("grimoire.api.routes.bulk.settings") as mock_settings:
+            mock_settings.data_dir = tmp_path
+            image_dir = tmp_path / "images" / str(p.id)
+            image_dir.mkdir(parents=True)
+            (image_dir / "page_1.png").write_bytes(b"fake")
+
+            req = BulkUpdateRequest(
+                product_ids=[p.id],
+                is_image_content=False,
+            )
+            await bulk_update_products(db, req)
+
+            assert not image_dir.exists()
+
+    @pytest.mark.asyncio
+    async def test_image_dir_missing_no_error(self, db, seeded_tags, reclassify_products, tmp_path):
+        from unittest.mock import patch
+        from grimoire.api.routes.bulk import BulkUpdateRequest, bulk_update_products
+
+        p = reclassify_products[0]
+        p.is_image_content = True
+        await db.flush()
+
+        with patch("grimoire.api.routes.bulk.settings") as mock_settings:
+            mock_settings.data_dir = tmp_path
+
+            req = BulkUpdateRequest(
+                product_ids=[p.id],
+                is_image_content=False,
+            )
+            response = await bulk_update_products(db, req)
+            assert response.affected == 1
