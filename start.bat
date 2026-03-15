@@ -50,7 +50,7 @@ echo   Backend:  http://localhost:8000
 echo   Frontend: http://localhost:5173
 echo   API Docs: http://localhost:8000/api/docs
 echo.
-echo Press Ctrl+C to stop all services.
+echo Press any key to stop all services.
 echo.
 
 REM Start backend
@@ -66,5 +66,12 @@ cd frontend
 start "Grimoire Frontend" cmd /c "npm run dev"
 cd ..
 
-echo All services started. Close the terminal windows to stop.
+echo All services started.
 pause
+
+echo.
+echo Stopping Grimoire...
+taskkill /FI "WINDOWTITLE eq Grimoire Backend*" /F >nul 2>&1
+taskkill /FI "WINDOWTITLE eq Grimoire Worker*" /F >nul 2>&1
+taskkill /FI "WINDOWTITLE eq Grimoire Frontend*" /F >nul 2>&1
+echo Goodbye!
