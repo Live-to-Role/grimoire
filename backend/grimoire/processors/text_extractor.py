@@ -860,31 +860,35 @@ def extract_with_ocr(
     pdf_path = Path(pdf_path)
     markdown_content = []
     
-    # Convert PDF pages to images
+    # Convert PDF pages to images using a temp directory to avoid
+    # MemoryError from piping large image data through subprocess stdout
+    import tempfile
     poppler_path = _get_poppler_path()
-    images = convert_from_path(
-        str(pdf_path),
-        dpi=dpi,
-        first_page=start_page,
-        last_page=end_page,
-        poppler_path=poppler_path,
-    )
-    
-    for i, image in enumerate(images):
-        page_num = start_page + i
-        markdown_content.append(f"## Page {page_num}\n\n")
-        
-        # Run OCR on the image
-        text = pytesseract.image_to_string(image, lang=lang)
-        
-        # Clean up the text
-        text = clean_text(text)
-        
-        if text.strip():
-            markdown_content.append(text + "\n\n")
-        
-        markdown_content.append("\n---\n\n")
-    
+    with tempfile.TemporaryDirectory() as tmpdir:
+        images = convert_from_path(
+            str(pdf_path),
+            dpi=dpi,
+            first_page=start_page,
+            last_page=end_page,
+            poppler_path=poppler_path,
+            output_folder=tmpdir,
+        )
+
+        for i, image in enumerate(images):
+            page_num = start_page + i
+            markdown_content.append(f"## Page {page_num}\n\n")
+
+            # Run OCR on the image
+            text = pytesseract.image_to_string(image, lang=lang)
+
+            # Clean up the text
+            text = clean_text(text)
+
+            if text.strip():
+                markdown_content.append(text + "\n\n")
+
+            markdown_content.append("\n---\n\n")
+
     return "".join(markdown_content)
 
 
