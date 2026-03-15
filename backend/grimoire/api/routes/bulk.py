@@ -1,6 +1,6 @@
 """Bulk operations API endpoints."""
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from fastapi import APIRouter, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
@@ -44,6 +44,23 @@ class BulkUpdateRequest(BaseModel):
     series: str | None = None
     estimated_runtime: str | None = None
     format: str | None = None
+
+    # Reclassification fields
+    is_image_content: bool | None = None
+    content_type: str | None = None
+    re_extract: bool = False
+
+    @model_validator(mode="after")
+    def validate_reclassification(self) -> "BulkUpdateRequest":
+        if self.is_image_content is True:
+            if not self.content_type:
+                raise ValueError("content_type is required when is_image_content is True")
+            from grimoire.services.tag_service import BUILTIN_TAG_NAMES
+            if self.content_type not in BUILTIN_TAG_NAMES:
+                raise ValueError(
+                    f"content_type must be one of: {', '.join(sorted(BUILTIN_TAG_NAMES))}"
+                )
+        return self
 
 
 class BulkDeleteRequest(BaseModel):

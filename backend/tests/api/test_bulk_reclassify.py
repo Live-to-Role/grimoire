@@ -130,3 +130,67 @@ class TestRemoveContentTypeTags:
             select(ProductTag).where(ProductTag.product_id == product.id)
         )
         assert result.scalar_one().source == "user"
+
+
+class TestBulkUpdateRequestValidation:
+    def test_is_image_content_true_requires_content_type(self):
+        from pydantic import ValidationError
+        from grimoire.api.routes.bulk import BulkUpdateRequest
+
+        with pytest.raises(ValidationError, match="content_type is required"):
+            BulkUpdateRequest(
+                product_ids=[1],
+                is_image_content=True,
+            )
+
+    def test_is_image_content_true_with_valid_content_type(self):
+        from grimoire.api.routes.bulk import BulkUpdateRequest
+
+        req = BulkUpdateRequest(
+            product_ids=[1],
+            is_image_content=True,
+            content_type="Map",
+        )
+        assert req.is_image_content is True
+        assert req.content_type == "Map"
+
+    def test_is_image_content_true_rejects_invalid_content_type(self):
+        from pydantic import ValidationError
+        from grimoire.api.routes.bulk import BulkUpdateRequest
+
+        with pytest.raises(ValidationError, match="must be one of"):
+            BulkUpdateRequest(
+                product_ids=[1],
+                is_image_content=True,
+                content_type="InvalidType",
+            )
+
+    def test_is_image_content_false_ignores_content_type(self):
+        from grimoire.api.routes.bulk import BulkUpdateRequest
+
+        req = BulkUpdateRequest(
+            product_ids=[1],
+            is_image_content=False,
+            content_type="Map",
+        )
+        assert req.is_image_content is False
+        assert req.content_type == "Map"  # accepted but ignored by handler
+
+    def test_is_image_content_true_with_product_type_uses_content_type(self):
+        """Spec: product_type is ignored when is_image_content=True (content_type wins)."""
+        from grimoire.api.routes.bulk import BulkUpdateRequest
+
+        req = BulkUpdateRequest(
+            product_ids=[1],
+            is_image_content=True,
+            content_type="Map",
+            product_type="Adventure",
+        )
+        assert req.is_image_content is True
+        assert req.content_type == "Map"
+
+    def test_unchanged_omits_is_image_content(self):
+        from grimoire.api.routes.bulk import BulkUpdateRequest
+
+        req = BulkUpdateRequest(product_ids=[1], game_system="D&D 5e")
+        assert "is_image_content" not in req.model_fields_set
