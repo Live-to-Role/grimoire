@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from grimoire.models import Product, WatchedFolder
 from grimoire.services.exclusion_service import create_exclusion_matcher, increment_rule_match
 from grimoire.services.duplicate_service import batch_check_and_mark_duplicates, check_and_mark_duplicate, is_deleted_duplicate
+from grimoire.services.revision_service import normalize_stem, mark_revision_candidates
 
 logger = logging.getLogger(__name__)
 
@@ -143,6 +144,7 @@ async def scan_folder(
                 watched_folder_id=folder.id,
                 file_modified_at=file_modified,
                 title=pdf_path.stem,
+                normalized_stem=normalize_stem(pdf_path.name),
             )
             db.add(product)
             products.append(product)
@@ -165,6 +167,9 @@ async def scan_folder(
     if remaining:
         await queue_products_for_processing(db, remaining)
 
+    # Revision detection pass
+    revision_count = await mark_revision_candidates(db)
+
     # Publish backup trigger event
     from grimoire.services.event_bus import event_bus
     await event_bus.publish("backup_triggers", {
@@ -177,6 +182,7 @@ async def scan_folder(
         "new_count": len(products),
         "excluded": excluded_count,
         "duplicates": duplicate_count,
+        "revision_candidates": revision_count,
         "errors": error_count,
     }
 
@@ -213,8 +219,8 @@ async def queue_products_for_processing(db: AsyncSession, products: list[Product
     auto_extract_text = settings.get('auto_extract_text_on_scan', False)
     auto_identify = settings.get('auto_identify_on_scan', False)
 
-    # Filter out duplicates
-    eligible = [p for p in products if not p.is_duplicate]
+    # Filter out duplicates and superseded
+    eligible = [p for p in products if not p.is_duplicate and not getattr(p, 'is_superseded', False)]
     if not eligible:
         return {"covers": 0, "text": 0}
 

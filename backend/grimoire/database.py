@@ -2,7 +2,7 @@
 
 from collections.abc import AsyncGenerator
 
-from sqlalchemy import event, text
+from sqlalchemy import event, select, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase
 
@@ -149,12 +149,30 @@ async def _ensure_columns(conn) -> None:
         ("products", "images_extracted", "BOOLEAN DEFAULT 0"),
         ("products", "image_count", "INTEGER"),
         ("processing_queue", "config", "TEXT"),
+        ("products", "normalized_stem", "TEXT"),
+        ("products", "is_superseded", "BOOLEAN DEFAULT 0"),
+        ("products", "superseded_by_id", "INTEGER REFERENCES products(id)"),
     ]
     for table, column, col_type in migrations:
         try:
             await conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {col_type}"))
         except Exception:
             pass  # Column already exists
+
+
+async def _backfill_normalized_stems(session):
+    """One-time backfill: compute normalized_stem for all products missing it."""
+    from grimoire.models.product import Product
+    from grimoire.services.revision_service import normalize_stem
+
+    result = await session.execute(
+        select(Product).where(Product.normalized_stem.is_(None))
+    )
+    products = result.scalars().all()
+    for product in products:
+        product.normalized_stem = normalize_stem(product.file_name)
+    if products:
+        await session.commit()
 
 
 async def init_db() -> None:
@@ -173,3 +191,7 @@ async def init_db() -> None:
     from grimoire.services.tag_service import seed_builtin_tags
     async with async_session_maker() as session:
         await seed_builtin_tags(session)
+
+    # Backfill normalized stems for revision detection
+    async with async_session_maker() as session:
+        await _backfill_normalized_stems(session)

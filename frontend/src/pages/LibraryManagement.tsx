@@ -61,6 +61,13 @@ interface DuplicateStats {
   unique_duplicate_groups: number;
   wasted_space_bytes: number;
   wasted_space_mb: number;
+  revision_candidates: number;
+}
+
+interface RevisionGroup {
+  normalized_stem: string;
+  newer: { id: number; title: string; file_name: string; file_path: string } | null;
+  older: { id: number; title: string; file_name: string; file_path: string }[];
 }
 
 interface ExclusionRule {
@@ -129,6 +136,7 @@ export function LibraryManagement() {
   const [deleteFiles, setDeleteFiles] = useState(false);
   const [showAddRule, setShowAddRule] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<{ type: 'selected' | 'group'; hash?: string } | null>(null);
+  const [duplicateView, setDuplicateView] = useState<'hash' | 'revision'>('hash');
   const [newRule, setNewRule] = useState({
     rule_type: 'folder_name',
     pattern: '',
@@ -287,11 +295,37 @@ export function LibraryManagement() {
 
   const scanDuplicatesMutation = useMutation({
     mutationFn: async () => {
-      await apiClient.post('/duplicates/scan');
+      await apiClient.post('/duplicates/scan?scan_type=all');
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['duplicate-stats'] });
       queryClient.invalidateQueries({ queryKey: ['duplicate-groups'] });
+      queryClient.invalidateQueries({ queryKey: ['revision-groups'] });
+    },
+  });
+
+  const { data: revisionGroups } = useQuery<RevisionGroup[]>({
+    queryKey: ['revision-groups'],
+    queryFn: async () => {
+      const res = await apiClient.get<RevisionGroup[]>('/duplicates?type=revision');
+      return res.data;
+    },
+  });
+
+  const confirmRevisionMutation = useMutation({
+    mutationFn: (productId: number) => apiClient.post(`/duplicates/${productId}/confirm-revision`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['revision-groups'] });
+      queryClient.invalidateQueries({ queryKey: ['duplicate-stats'] });
+      queryClient.invalidateQueries({ queryKey: ['products'] });
+    },
+  });
+
+  const dismissRevisionMutation = useMutation({
+    mutationFn: (productId: number) => apiClient.post(`/duplicates/${productId}/dismiss-revision`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['revision-groups'] });
+      queryClient.invalidateQueries({ queryKey: ['duplicate-stats'] });
     },
   });
 
@@ -633,8 +667,89 @@ export function LibraryManagement() {
               </div>
             </div>
 
+            {/* Sub-filter tabs */}
+            <div className="flex gap-2">
+              <button
+                onClick={() => setDuplicateView('hash')}
+                className="rounded-md border px-4 py-1.5 text-sm font-medium"
+                style={{
+                  background: duplicateView === 'hash' ? 'var(--color-primary)' : 'var(--color-surface)',
+                  color: duplicateView === 'hash' ? 'var(--color-on-primary)' : 'var(--color-text)',
+                  borderColor: 'var(--color-border)',
+                }}
+              >
+                Duplicates {duplicateStats?.unique_duplicate_groups ? `(${duplicateStats.unique_duplicate_groups})` : ''}
+              </button>
+              <button
+                onClick={() => setDuplicateView('revision')}
+                className="rounded-md border px-4 py-1.5 text-sm font-medium"
+                style={{
+                  background: duplicateView === 'revision' ? 'var(--color-primary)' : 'var(--color-surface)',
+                  color: duplicateView === 'revision' ? 'var(--color-on-primary)' : 'var(--color-text)',
+                  borderColor: 'var(--color-border)',
+                }}
+              >
+                Revisions {duplicateStats?.revision_candidates ? `(${duplicateStats.revision_candidates})` : ''}
+              </button>
+            </div>
+
+            {/* Revisions View */}
+            {duplicateView === 'revision' && (
+              <div className="space-y-3">
+                {!revisionGroups || revisionGroups.length === 0 ? (
+                  <p style={{ color: 'var(--color-text-secondary)' }}>No revision candidates found.</p>
+                ) : (
+                  revisionGroups.map((group) => (
+                    <div
+                      key={group.normalized_stem}
+                      className="rounded-lg border p-4"
+                      style={{ borderColor: 'var(--color-border)', background: 'var(--color-surface)' }}
+                    >
+                      <h4 className="mb-2 font-medium" style={{ color: 'var(--color-text)' }}>
+                        {group.newer?.title || group.normalized_stem}
+                      </h4>
+                      {group.newer && (
+                        <div className="mb-2 text-sm" style={{ color: 'var(--color-text-secondary)' }}>
+                          <strong>Newer:</strong> {group.newer.file_name}
+                        </div>
+                      )}
+                      {group.older.map((old) => (
+                        <div
+                          key={old.id}
+                          className="flex items-center justify-between border-t py-2"
+                          style={{ borderColor: 'var(--color-border)' }}
+                        >
+                          <span className="text-sm" style={{ color: 'var(--color-text-secondary)' }}>
+                            Older: {old.file_name}
+                          </span>
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => confirmRevisionMutation.mutate(old.id)}
+                              disabled={confirmRevisionMutation.isPending}
+                              className="rounded border-none px-3 py-1 text-sm text-white"
+                              style={{ background: 'var(--color-success)' }}
+                            >
+                              Confirm
+                            </button>
+                            <button
+                              onClick={() => dismissRevisionMutation.mutate(old.id)}
+                              disabled={dismissRevisionMutation.isPending}
+                              className="rounded border px-3 py-1 text-sm"
+                              style={{ borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
+                            >
+                              Dismiss
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ))
+                )}
+              </div>
+            )}
+
             {/* Bulk Actions Bar */}
-            {selectedDuplicates.size > 0 && (
+            {duplicateView === 'hash' && selectedDuplicates.size > 0 && (
               <div className="flex items-center justify-between rounded-md border p-4" style={{ borderColor: 'var(--color-accent)', backgroundColor: 'var(--color-accent-light)' }}>
                 <div className="flex items-center gap-3">
                   <span className="text-base font-medium" style={{ color: 'var(--color-text-primary)' }}>
@@ -670,7 +785,7 @@ export function LibraryManagement() {
               </div>
             )}
 
-            {duplicateGroups?.groups && duplicateGroups.groups.length > 0 ? (
+            {duplicateView === 'hash' && duplicateGroups?.groups && duplicateGroups.groups.length > 0 ? (
               <div className="space-y-2">
                 {duplicateGroups.groups.map((group) => (
                   <div
@@ -789,12 +904,12 @@ export function LibraryManagement() {
                   </div>
                 ))}
               </div>
-            ) : (
+            ) : duplicateView === 'hash' ? (
               <div className="rounded-xl border p-8 text-center" style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-surface)' }}>
                 <Copy className="mx-auto h-12 w-12" style={{ color: 'var(--color-border)' }} />
                 <p className="mt-2 text-base" style={{ color: 'var(--color-text-secondary)' }}>No duplicates found</p>
               </div>
-            )}
+            ) : null}
           </div>
         )}
 

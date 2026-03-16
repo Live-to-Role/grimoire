@@ -135,7 +135,7 @@ async def list_products(
 ) -> ProductListResponse:
     """List products with filtering and pagination."""
     # Collect all filter conditions
-    conditions = [Product.is_duplicate == False, Product.is_missing == False]
+    conditions = [Product.is_duplicate == False, Product.is_missing == False, Product.is_superseded == False]
 
     if search:
         search_term = f"%{search}%"
