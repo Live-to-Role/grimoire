@@ -3,6 +3,7 @@ Vector embeddings service for semantic search.
 Supports OpenAI, Ollama, and local sentence-transformers embeddings.
 """
 
+import asyncio
 import json
 import os
 from dataclasses import dataclass
@@ -184,7 +185,12 @@ async def generate_embeddings(
             model or "nomic-embed-text",
         )
     elif provider == "local":
-        return embed_with_local(texts, model or "all-MiniLM-L6-v2")
+        # embed_with_local runs SentenceTransformer.encode() — a synchronous,
+        # CPU-bound call (and a one-time model download on first use). Offload
+        # it to a thread so it never blocks the event loop / HTTP handling.
+        return await asyncio.to_thread(
+            embed_with_local, texts, model or "all-MiniLM-L6-v2"
+        )
     else:
         raise ValueError(f"Unknown provider: {provider}")
 

@@ -1,5 +1,7 @@
 """Extraction API endpoints for TOC, tables, and content parsing."""
 
+import asyncio
+
 from pydantic import BaseModel, Field
 from fastapi import APIRouter, HTTPException, Query
 from sqlalchemy import select
@@ -213,11 +215,16 @@ async def get_product_images(
     if not product.file_path:
         raise HTTPException(status_code=400, detail="Product has no file path")
 
+    # Offload sync PDF parsing (fitz.open + image extraction) to a thread so
+    # it never blocks the event loop / other HTTP requests.
     if maps_only:
-        images = extract_maps_only(product.file_path, start_page, end_page)
+        images = await asyncio.to_thread(
+            extract_maps_only, product.file_path, start_page, end_page
+        )
     else:
-        images = extract_images_from_pdf(
-            product.file_path, start_page, end_page, min_width, min_height
+        images = await asyncio.to_thread(
+            extract_images_from_pdf,
+            product.file_path, start_page, end_page, min_width, min_height,
         )
 
     return {
@@ -246,8 +253,9 @@ async def get_product_image_data(
     if not product.file_path:
         raise HTTPException(status_code=400, detail="Product has no file path")
 
-    images = extract_images_from_pdf(
-        product.file_path, start_page, end_page, include_data=True
+    images = await asyncio.to_thread(
+        extract_images_from_pdf,
+        product.file_path, start_page, end_page, include_data=True,
     )
 
     if image_index < 0 or image_index >= len(images):
