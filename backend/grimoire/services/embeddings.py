@@ -96,24 +96,26 @@ async def embed_with_ollama(
     base_url: str,
     model: str = "nomic-embed-text",
 ) -> list[EmbeddingResult]:
-    """Generate embeddings using Ollama API."""
-    results = []
-    async with httpx.AsyncClient(timeout=120.0) as client:
-        for text in texts:
-            response = await client.post(
-                f"{base_url.rstrip('/')}/api/embed",
-                json={
-                    "model": model,
-                    "input": text,
-                },
-            )
-            response.raise_for_status()
-            data = response.json()
-            results.append(EmbeddingResult(
-                embedding=data["embeddings"][0],
-                model=model,
-            ))
-    return results
+    """Generate embeddings using Ollama API (single batched request).
+
+    /api/embed accepts a list input (Ollama >= 0.2.6, July 2024) and
+    returns all vectors at once — one round trip instead of len(texts).
+    """
+    async with httpx.AsyncClient(timeout=300.0) as client:
+        response = await client.post(
+            f"{base_url.rstrip('/')}/api/embed",
+            json={
+                "model": model,
+                "input": texts,
+            },
+        )
+        response.raise_for_status()
+        data = response.json()
+
+    return [
+        EmbeddingResult(embedding=emb, model=model)
+        for emb in data["embeddings"]
+    ]
 
 
 async def _check_ollama_available(base_url: str) -> bool:
