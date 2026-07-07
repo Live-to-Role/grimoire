@@ -81,6 +81,40 @@ def _find_tesseract() -> str | None:
     return None
 
 
+def _find_tessdata() -> str | None:
+    """Locate the Tesseract language-data directory (tessdata).
+
+    PyMuPDF's built-in OCR needs only these files — not tesseract.exe.
+    A directory counts only if it contains at least one *.traineddata.
+    """
+    import os
+
+    def _valid(p: Path) -> bool:
+        return p.is_dir() and any(p.glob("*.traineddata"))
+
+    env = os.environ.get("TESSDATA_PREFIX")
+    if env and _valid(Path(env)):
+        return env
+
+    # Derive from a tesseract install if present
+    tesseract = _find_tesseract()
+    if tesseract:
+        candidate = Path(tesseract).parent / "tessdata"
+        if _valid(candidate):
+            return str(candidate)
+
+    # Common Linux/Docker locations (tesseract-ocr package)
+    for p in (
+        "/usr/share/tesseract-ocr/5/tessdata",
+        "/usr/share/tesseract-ocr/4.00/tessdata",
+        "/usr/share/tessdata",
+    ):
+        if _valid(Path(p)):
+            return p
+
+    return None
+
+
 def _find_poppler() -> str | None:
     """
     Auto-detect poppler binaries directory across platforms.
@@ -881,7 +915,7 @@ def detect_needs_ocr(pdf_path: str | Path, sample_pages: int = 3, min_chars_per_
         }
 
 
-def extract_with_ocr(
+def _extract_with_pdf2image_ocr(
     pdf_path: str | Path,
     start_page: int = 1,
     end_page: int | None = None,
@@ -889,18 +923,18 @@ def extract_with_ocr(
     lang: str = "eng",
 ) -> str:
     """
-    Extract text from PDF using OCR (Tesseract).
-    
+    Extract text from PDF using OCR (Tesseract) via pdf2image/poppler.
+
     Converts PDF pages to images and runs OCR on each page.
-    This is slower but works for image-based/scanned PDFs.
-    
+    This is slower but works as a fallback when PyMuPDF OCR is unavailable.
+
     Args:
         pdf_path: Path to the PDF file
         start_page: Starting page number (1-indexed)
         end_page: Ending page number (1-indexed), None for all pages
         dpi: Resolution for PDF to image conversion (higher = better quality but slower)
         lang: Tesseract language code(s), e.g., "eng" or "eng+fra"
-        
+
     Returns:
         Extracted text in markdown format
     """
@@ -940,6 +974,73 @@ def extract_with_ocr(
             markdown_content.append("\n---\n\n")
 
     return "".join(markdown_content)
+
+
+def extract_with_pymupdf_ocr(
+    pdf_path: str | Path,
+    start_page: int = 1,
+    end_page: int | None = None,
+    dpi: int = 200,
+    lang: str = "eng",
+) -> str:
+    """OCR using MuPDF's integrated Tesseract engine.
+
+    No poppler, no subprocess-per-page, no temp files — MuPDF renders
+    and OCRs in-process using the tessdata language files.
+    """
+    if not PYMUPDF_AVAILABLE:
+        raise ImportError("PyMuPDF not available")
+
+    import os
+
+    tessdata = _find_tessdata()
+    if tessdata is None:
+        raise RuntimeError("tessdata language files not found")
+    os.environ.setdefault("TESSDATA_PREFIX", tessdata)
+
+    markdown_content = []
+    doc = fitz.open(str(pdf_path))
+    try:
+        total_pages = len(doc)
+        if end_page is None:
+            end_page = total_pages
+
+        for page_num in range(start_page - 1, min(end_page, total_pages)):
+            page = doc[page_num]
+            tp = page.get_textpage_ocr(
+                flags=0, language=lang, dpi=dpi, full=True, tessdata=tessdata
+            )
+            text = clean_text(page.get_text(textpage=tp))
+
+            markdown_content.append(f"## Page {page_num + 1}\n\n")
+            if text.strip():
+                markdown_content.append(text + "\n\n")
+            markdown_content.append("\n---\n\n")
+    finally:
+        doc.close()
+
+    return "".join(markdown_content)
+
+
+def extract_with_ocr(
+    pdf_path: str | Path,
+    start_page: int = 1,
+    end_page: int | None = None,
+    dpi: int = 200,
+    lang: str = "eng",
+) -> str:
+    """OCR a PDF: try MuPDF's integrated Tesseract, fall back to
+    pdf2image + pytesseract if tessdata is missing or OCR fails."""
+    try:
+        return extract_with_pymupdf_ocr(pdf_path, start_page, end_page, dpi, lang)
+    except Exception as e:
+        print(f"PyMuPDF OCR failed ({e}), falling back to pdf2image path")
+
+    if not TESSERACT_AVAILABLE:
+        raise ImportError(
+            "OCR unavailable: PyMuPDF OCR failed and pytesseract/pdf2image not installed"
+        )
+    return _extract_with_pdf2image_ocr(pdf_path, start_page, end_page, dpi, lang)
 
 
 def extract_text_with_ocr_fallback(
