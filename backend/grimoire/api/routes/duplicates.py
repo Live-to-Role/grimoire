@@ -17,6 +17,12 @@ from grimoire.services.duplicate_service import (
     clear_deleted_duplicate,
     clear_all_deleted_duplicates,
 )
+from grimoire.services.revision_service import (
+    get_revision_groups,
+    confirm_revision,
+    dismiss_revision,
+    mark_revision_candidates,
+)
 
 router = APIRouter()
 
@@ -33,8 +39,10 @@ class BulkDeleteRequest(BaseModel):
 
 
 @router.get("")
-async def list_duplicate_groups(db: DbSession) -> dict:
+async def list_duplicate_groups(db: DbSession, type: str | None = None):
     """Get all groups of duplicate files."""
+    if type == "revision":
+        return await get_revision_groups(db)
     groups = await get_duplicate_groups(db)
     return {
         "groups": groups,
@@ -45,13 +53,46 @@ async def list_duplicate_groups(db: DbSession) -> dict:
 @router.get("/stats")
 async def duplicate_stats(db: DbSession) -> dict:
     """Get duplicate statistics."""
-    return await get_duplicate_stats(db)
+    stats = await get_duplicate_stats(db)
+    # Add revision candidate count
+    from sqlalchemy import func, select
+    from grimoire.models.product import Product
+    revision_count_result = await db.execute(
+        select(func.count(Product.id)).where(Product.duplicate_reason == "revision")
+    )
+    stats["revision_candidates"] = revision_count_result.scalar() or 0
+    return stats
 
 
 @router.post("/scan")
-async def scan_duplicates(db: DbSession) -> dict:
+async def scan_duplicates(db: DbSession, scan_type: str = "all") -> dict:
     """Scan library for duplicates and mark them."""
-    return await scan_for_duplicates(db)
+    result = {}
+    if scan_type in ("hash", "all"):
+        result["duplicates"] = await scan_for_duplicates(db)
+    if scan_type in ("revision", "all"):
+        result["revision_candidates"] = await mark_revision_candidates(db)
+    return result
+
+
+@router.post("/{product_id}/confirm-revision")
+async def confirm_revision_endpoint(
+    db: DbSession,
+    product_id: int,
+) -> dict:
+    """Confirm a revision candidate: transfer metadata and supersede."""
+    result = await confirm_revision(db, product_id)
+    return result
+
+
+@router.post("/{product_id}/dismiss-revision")
+async def dismiss_revision_endpoint(
+    db: DbSession,
+    product_id: int,
+) -> dict:
+    """Dismiss a revision candidate: clear revision marking."""
+    await dismiss_revision(db, product_id)
+    return {"status": "dismissed"}
 
 
 @router.post("/{product_id}/resolve")

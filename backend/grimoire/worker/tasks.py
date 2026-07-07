@@ -10,13 +10,8 @@ from grimoire.worker.queue import huey
 
 
 def run_async(coro):
-    """Run an async function in a sync context."""
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    try:
-        return loop.run_until_complete(coro)
-    finally:
-        loop.close()
+    """Run an async function in a sync context (Huey worker threads)."""
+    return asyncio.run(coro)
 
 
 @huey.task()

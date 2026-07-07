@@ -28,6 +28,8 @@ class Product(Base):
         Index("ix_products_publisher", "publisher"),
         Index("ix_products_is_duplicate", "is_duplicate"),
         Index("ix_products_is_missing", "is_missing"),
+        Index("ix_products_is_superseded", "is_superseded"),
+        Index("ix_products_normalized_stem", "normalized_stem"),
         Index("ix_products_file_size", "file_size"),
         Index("ix_products_system_type", "game_system", "product_type"),
         Index("ix_products_author", "author"),
@@ -110,7 +112,7 @@ class Product(Base):
     duplicate_of_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("products.id"), nullable=True
     )
-    duplicate_reason: Mapped[str | None] = mapped_column(String(50), nullable=True)  # 'exact_hash', 'same_content'
+    duplicate_reason: Mapped[str | None] = mapped_column(String(50), nullable=True)  # 'exact_hash', 'same_content', 'revision'
 
     # Exclusion/missing status
     is_excluded: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -118,6 +120,13 @@ class Product(Base):
     exclusion_override: Mapped[bool] = mapped_column(Boolean, default=False)  # User forced include
     is_missing: Mapped[bool] = mapped_column(Boolean, default=False)
     missing_since: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    # Revision tracking
+    normalized_stem: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    is_superseded: Mapped[bool] = mapped_column(Boolean, default=False)
+    superseded_by_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("products.id"), nullable=True
+    )
 
     # Run tracking (for campaigns/adventures)
     run_status: Mapped[str | None] = mapped_column(String(20), nullable=True)  # want_to_run, running, completed
@@ -149,6 +158,9 @@ class Product(Base):
     # Self-referential relationship for duplicates
     duplicate_of: Mapped["Product | None"] = relationship(
         "Product", remote_side="Product.id", foreign_keys="Product.duplicate_of_id"
+    )
+    superseded_by: Mapped["Product | None"] = relationship(
+        "Product", remote_side="Product.id", foreign_keys="Product.superseded_by_id"
     )
     
     # Run notes

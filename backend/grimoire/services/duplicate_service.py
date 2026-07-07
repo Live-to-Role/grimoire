@@ -223,13 +223,14 @@ async def scan_for_duplicates(db: AsyncSession) -> dict[str, int]:
         
         # First product is canonical (oldest)
         canonical = group[0]
-        canonical.is_duplicate = False
-        canonical.duplicate_of_id = None
-        canonical.duplicate_reason = None
-        
+        if canonical.duplicate_reason != "revision":
+            canonical.is_duplicate = False
+            canonical.duplicate_of_id = None
+            canonical.duplicate_reason = None
+
         # Rest are duplicates
         for dup in group[1:]:
-            if not dup.is_duplicate:
+            if not dup.is_duplicate and dup.duplicate_reason != "revision":
                 dup.is_duplicate = True
                 dup.duplicate_of_id = canonical.id
                 dup.duplicate_reason = "exact_hash"

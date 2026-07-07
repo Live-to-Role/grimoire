@@ -80,7 +80,12 @@ def embed_with_local(
         raise ImportError("sentence-transformers not installed")
 
     model = get_local_model()
-    embeddings = model.encode(texts, convert_to_numpy=True)
+    embeddings = model.encode(
+        texts,
+        convert_to_numpy=True,
+        batch_size=32,
+        normalize_embeddings=True,
+    )
 
     results = []
     for emb in embeddings:
@@ -96,24 +101,26 @@ async def embed_with_ollama(
     base_url: str,
     model: str = "nomic-embed-text",
 ) -> list[EmbeddingResult]:
-    """Generate embeddings using Ollama API."""
-    results = []
-    async with httpx.AsyncClient(timeout=120.0) as client:
-        for text in texts:
-            response = await client.post(
-                f"{base_url.rstrip('/')}/api/embed",
-                json={
-                    "model": model,
-                    "input": text,
-                },
-            )
-            response.raise_for_status()
-            data = response.json()
-            results.append(EmbeddingResult(
-                embedding=data["embeddings"][0],
-                model=model,
-            ))
-    return results
+    """Generate embeddings using Ollama API (single batched request).
+
+    /api/embed accepts a list input (Ollama >= 0.2.6, July 2024) and
+    returns all vectors at once — one round trip instead of len(texts).
+    """
+    async with httpx.AsyncClient(timeout=300.0) as client:
+        response = await client.post(
+            f"{base_url.rstrip('/')}/api/embed",
+            json={
+                "model": model,
+                "input": texts,
+            },
+        )
+        response.raise_for_status()
+        data = response.json()
+
+    return [
+        EmbeddingResult(embedding=emb, model=model)
+        for emb in data["embeddings"]
+    ]
 
 
 async def _check_ollama_available(base_url: str) -> bool:
@@ -198,23 +205,13 @@ def find_similar(
     """
     Find most similar items to a query embedding (in-memory fallback).
 
-    Args:
-        query_embedding: The query vector
-        embeddings: List of (id, embedding) tuples to search
-        top_k: Number of results to return
-        threshold: Minimum similarity score
-
-    Returns:
-        List of (id, similarity_score) tuples, sorted by score descending
+    Delegates to search_product_vectors for batched numpy computation
+    instead of building arrays pair-by-pair in a Python loop.
     """
-    scores = []
-    for item_id, emb in embeddings:
-        score = cosine_similarity(query_embedding, emb)
-        if score >= threshold:
-            scores.append((item_id, score))
-
-    scores.sort(key=lambda x: x[1], reverse=True)
-    return scores[:top_k]
+    if not embeddings:
+        return []
+    vectors = {item_id: emb for item_id, emb in embeddings}
+    return search_product_vectors(query_embedding, vectors, top_k, threshold)
 
 
 

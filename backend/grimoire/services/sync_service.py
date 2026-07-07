@@ -298,10 +298,14 @@ async def sync_all_products(
             "skipped": 0,
         }
 
-    query = select(Product)
+    query = select(Product).where(
+        Product.is_duplicate == False,
+        Product.is_missing == False,
+        Product.is_superseded == False,
+    )
     if only_unidentified:
         query = query.where(Product.ai_identified == False)
-    
+
     result = await db.execute(query)
     products = list(result.scalars().all())
     

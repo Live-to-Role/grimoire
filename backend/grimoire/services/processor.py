@@ -11,6 +11,20 @@ from grimoire.config import settings
 from grimoire.models import ProcessingQueue, Product
 
 
+def _cover_scale(page_width: float, page_height: float, size: int) -> float:
+    """Render scale so the pixmap is ~1.25x the final thumbnail box.
+
+    Rendering at fixed 2x wastes ~16x the pixels for a letter page;
+    the 1.25 factor leaves headroom for a quality LANCZOS downscale.
+    Capped at 2.0 so tiny pages never render larger than before.
+    """
+    if page_width <= 0 or page_height <= 0:
+        return 1.0
+    box_w, box_h = size, size * 4 // 3
+    scale = min(box_w / page_width, box_h / page_height) * 1.25
+    return min(scale, 2.0)
+
+
 async def queue_cover_extraction(db: AsyncSession, product: Product) -> ProcessingQueue | None:
     """Queue a cover extraction task for a product."""
     if product.cover_extracted:
@@ -46,7 +60,7 @@ def extract_cover_image(pdf_path: Path, output_path: Path, size: int = 300) -> b
 
         page = doc[0]
 
-        zoom = 2.0
+        zoom = _cover_scale(page.rect.width, page.rect.height, size)
         mat = fitz.Matrix(zoom, zoom)
         pix = page.get_pixmap(matrix=mat, alpha=False)
 
