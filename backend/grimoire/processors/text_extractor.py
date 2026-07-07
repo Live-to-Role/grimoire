@@ -209,6 +209,14 @@ except ImportError:
 try:
     import pymupdf4llm
     PYMUPDF4LLM_AVAILABLE = True
+    # Layout mode (pymupdf4llm >= 1.28, via pymupdf_layout) emits parser and
+    # dynamic-OCR notices through pymupdf.message(), which defaults to stdout
+    # and would spam worker logs. Route them to Python logging instead.
+    if PYMUPDF_AVAILABLE:
+        try:
+            fitz.set_messages(pylogging=True)
+        except Exception:
+            pass
 except ImportError:
     PYMUPDF4LLM_AVAILABLE = False
 
