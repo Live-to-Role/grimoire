@@ -9,6 +9,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libffi-dev \
     libmupdf-dev \
     mupdf-tools \
+    libgomp1 \
     curl \
     tesseract-ocr \
     poppler-utils \

@@ -12,7 +12,7 @@ aiofiles>=23.2.1
 # PDF Processing
 pdfplumber>=0.10.3
 pymupdf>=1.23.0
-pymupdf4llm>=0.0.17,<1.0
+pymupdf4llm>=1.28  # >=1.28 enables layout mode (pymupdf_layout + onnxruntime): tables, headings, dynamic OCR
 pillow>=10.2.0
 
 # OCR (optional - for image-based PDFs)
