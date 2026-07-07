@@ -80,7 +80,12 @@ def embed_with_local(
         raise ImportError("sentence-transformers not installed")
 
     model = get_local_model()
-    embeddings = model.encode(texts, convert_to_numpy=True)
+    embeddings = model.encode(
+        texts,
+        convert_to_numpy=True,
+        batch_size=32,
+        normalize_embeddings=True,
+    )
 
     results = []
     for emb in embeddings:
@@ -200,23 +205,13 @@ def find_similar(
     """
     Find most similar items to a query embedding (in-memory fallback).
 
-    Args:
-        query_embedding: The query vector
-        embeddings: List of (id, embedding) tuples to search
-        top_k: Number of results to return
-        threshold: Minimum similarity score
-
-    Returns:
-        List of (id, similarity_score) tuples, sorted by score descending
+    Delegates to search_product_vectors for batched numpy computation
+    instead of building arrays pair-by-pair in a Python loop.
     """
-    scores = []
-    for item_id, emb in embeddings:
-        score = cosine_similarity(query_embedding, emb)
-        if score >= threshold:
-            scores.append((item_id, score))
-
-    scores.sort(key=lambda x: x[1], reverse=True)
-    return scores[:top_k]
+    if not embeddings:
+        return []
+    vectors = {item_id: emb for item_id, emb in embeddings}
+    return search_product_vectors(query_embedding, vectors, top_k, threshold)
 
 
 
