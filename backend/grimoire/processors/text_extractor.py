@@ -172,6 +172,12 @@ try:
 except ImportError:
     MARKITDOWN_AVAILABLE = False
 
+try:
+    import pymupdf4llm
+    PYMUPDF4LLM_AVAILABLE = True
+except ImportError:
+    PYMUPDF4LLM_AVAILABLE = False
+
 MARKER_AVAILABLE = False
 MARKER_MODELS = None
 MARKER_CONVERTER = None
@@ -430,6 +436,28 @@ def extract_with_pymupdf(pdf_path: str | Path, start_page: int = 1, end_page: in
         doc.close()
 
 
+def extract_with_pymupdf4llm(
+    pdf_path: str | Path,
+    start_page: int = 1,
+    end_page: int | None = None,
+) -> str:
+    """Extract markdown using pymupdf4llm.
+
+    Produces real headings (from font sizes), multi-column handling,
+    tables, and lists — replaces the hand-rolled heuristics of the
+    pymupdf/pdfplumber paths for most documents.
+    """
+    if not PYMUPDF4LLM_AVAILABLE:
+        raise ImportError("pymupdf4llm not available")
+
+    total_pages = _get_page_count(pdf_path)
+    if end_page is None:
+        end_page = total_pages
+
+    pages = list(range(start_page - 1, min(end_page, total_pages)))
+    return pymupdf4llm.to_markdown(str(pdf_path), pages=pages, show_progress=False)
+
+
 def extract_with_marker(pdf_path: str | Path, start_page: int = 1, end_page: int | None = None) -> str:
     """Extract text using Marker (ML-based, best for complex layouts)."""
     if not MARKER_AVAILABLE or not MARKER_CONVERTER:
@@ -664,6 +692,15 @@ def extract_text_to_markdown(
         except Exception as e:
             print(f"Marker extraction failed: {e}")
 
+    if markdown_text is None and PYMUPDF4LLM_AVAILABLE:
+        try:
+            candidate = extract_with_pymupdf4llm(pdf_path, start_page, end_page)
+            if candidate and candidate.strip():
+                markdown_text = candidate
+                method_used = "pymupdf4llm"
+        except Exception as e:
+            print(f"pymupdf4llm extraction failed: {e}")
+
     if markdown_text is None and use_pymupdf and PYMUPDF_AVAILABLE:
         try:
             markdown_text = extract_with_pymupdf(pdf_path, start_page, end_page)
@@ -706,6 +743,7 @@ def get_available_extractors() -> dict:
     """Return which extractors are available."""
     return {
         "marker": MARKER_AVAILABLE,
+        "pymupdf4llm": PYMUPDF4LLM_AVAILABLE,
         "pymupdf": PYMUPDF_AVAILABLE,
         "markitdown": MARKITDOWN_AVAILABLE,
         "pdfplumber": True,
