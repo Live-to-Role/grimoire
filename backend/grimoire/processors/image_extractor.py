@@ -120,7 +120,7 @@ def extract_images_from_page(
                 continue
 
             # Calculate hash for deduplication
-            img_hash = hashlib.md5(image_data).hexdigest()[:12]
+            img_hash = hashlib.blake2b(image_data, digest_size=8).hexdigest()
 
             # Check if full page
             is_full = (
@@ -280,6 +280,8 @@ def extract_images(pdf_path: Path, output_dir: Path) -> dict:
     total_pages = len(doc)
     images = []
     image_index = 0
+    seen_xrefs: set[int] = set()
+    seen_hashes: set[str] = set()
 
     for page_num, page in enumerate(doc):
         page_images = page.get_images(full=True)
@@ -287,14 +289,21 @@ def extract_images(pdf_path: Path, output_dir: Path) -> dict:
         if page_images:
             for img_info in page_images:
                 xref = img_info[0]
+                if xref in seen_xrefs:
+                    continue  # same object reused on another page
+                seen_xrefs.add(xref)
                 try:
-                    extracted = _extract_image_by_xref(doc, xref, output_dir, image_index)
+                    extracted = _extract_image_by_xref(
+                        doc, xref, output_dir, image_index, seen_hashes
+                    )
                     if extracted:
                         extracted["page"] = page_num + 1
                         images.append(extracted)
                         image_index += 1
                 except Exception as e:
-                    logger.warning(f"Failed to extract image xref {xref} from page {page_num + 1}: {e}")
+                    logger.warning(
+                        f"Failed to extract image xref {xref} from page {page_num + 1}: {e}"
+                    )
         else:
             extracted = _render_page(page, output_dir, image_index, page_num)
             if extracted:
@@ -312,13 +321,26 @@ def extract_images(pdf_path: Path, output_dir: Path) -> dict:
     return manifest
 
 
-def _extract_image_by_xref(doc, xref: int, output_dir: Path, index: int) -> dict | None:
-    """Extract a single image by its xref and save as WebP."""
+def _extract_image_by_xref(
+    doc, xref: int, output_dir: Path, index: int,
+    seen_hashes: set[str] | None = None,
+) -> dict | None:
+    """Extract a single image by its xref and save as WebP.
+
+    Returns None for images whose bytes were already saved (dedup).
+    """
     base_image = doc.extract_image(xref)
     if not base_image or not base_image.get("image"):
         return None
 
     image_bytes = base_image["image"]
+
+    if seen_hashes is not None:
+        img_hash = hashlib.blake2b(image_bytes, digest_size=8).hexdigest()
+        if img_hash in seen_hashes:
+            return None
+        seen_hashes.add(img_hash)
+
     width = base_image.get("width", 0)
     height = base_image.get("height", 0)
     original_ext = base_image.get("ext", "png")
@@ -348,10 +370,21 @@ def _extract_image_by_xref(doc, xref: int, output_dir: Path, index: int) -> dict
     }
 
 
+def _render_scale(page_width: float, page_height: float, max_px: int = 2048) -> float:
+    """2x render scale, capped so no output dimension exceeds max_px.
+
+    Prevents enormous pixmaps for large-format pages (poster maps)."""
+    max_dim = max(page_width, page_height)
+    if max_dim <= 0:
+        return 1.0
+    return min(2.0, max_px / max_dim)
+
+
 def _render_page(page, output_dir: Path, index: int, page_num: int) -> dict | None:
     """Render a page as an image (fallback when no embedded images found)."""
     try:
-        mat = fitz.Matrix(2, 2)
+        scale = _render_scale(page.rect.width, page.rect.height)
+        mat = fitz.Matrix(scale, scale)
         pix = page.get_pixmap(matrix=mat)
         filename = f"{index + 1:03d}.webp"
         output_path = output_dir / filename
