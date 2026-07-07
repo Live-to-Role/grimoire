@@ -5,6 +5,11 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from grimoire.database import Base
 import grimoire.models  # noqa: F401 — registers all models with Base.metadata
+from tests.pdf_fixtures import (  # noqa: F401
+    repeated_image_pdf,
+    scanned_pdf,
+    text_pdf,
+)
 
 
 @pytest.fixture(scope="session")
