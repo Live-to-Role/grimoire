@@ -602,6 +602,19 @@ def extract_with_pdfplumber(
     return ''.join(markdown_content)
 
 
+def _get_page_count(pdf_path: str | Path) -> int:
+    """Count pages cheaply. PyMuPDF only reads the xref table;
+    pdfplumber (pdfminer) parses the whole document just to count."""
+    if PYMUPDF_AVAILABLE:
+        doc = fitz.open(str(pdf_path))
+        try:
+            return len(doc)
+        finally:
+            doc.close()
+    with pdfplumber.open(str(pdf_path)) as pdf:
+        return len(pdf.pages)
+
+
 def extract_text_to_markdown(
     pdf_path: str | Path,
     start_page: int = 1,
@@ -636,8 +649,7 @@ def extract_text_to_markdown(
     if not pdf_path.exists():
         return {"error": f"File not found: {pdf_path}"}
 
-    with pdfplumber.open(str(pdf_path)) as pdf:
-        total_pages = len(pdf.pages)
+    total_pages = _get_page_count(pdf_path)
 
     if end_page is None:
         end_page = total_pages
@@ -928,14 +940,13 @@ def extract_text_with_ocr_fallback(
             return {"error": "OCR requested but pytesseract/pdf2image not available"}
         
         try:
-            with pdfplumber.open(str(pdf_path)) as pdf:
-                total_pages = len(pdf.pages)
-            
+            total_pages = _get_page_count(pdf_path)
+
             if end_page is None:
                 end_page = total_pages
-                
+
             markdown_text = extract_with_ocr(pdf_path, start_page, end_page, ocr_dpi, ocr_lang)
-            
+
             return {
                 "markdown": markdown_text,
                 "total_pages": total_pages,
@@ -948,46 +959,45 @@ def extract_text_with_ocr_fallback(
         except Exception as e:
             return {"error": f"OCR extraction failed: {e}"}
     
-    # First try standard extraction
+    # Detect FIRST (cheap: samples 3 pages) so image-based PDFs never
+    # pay for a full standard extraction that gets thrown away.
+    detection = detect_needs_ocr(pdf_path)
+
+    if detection["needs_ocr"] and TESSERACT_AVAILABLE:
+        try:
+            total_pages = _get_page_count(pdf_path)
+            if end_page is None:
+                end_page = total_pages
+
+            markdown_text = extract_with_ocr(pdf_path, start_page, end_page, ocr_dpi, ocr_lang)
+
+            return {
+                "markdown": markdown_text,
+                "total_pages": total_pages,
+                "pages_extracted": f"{start_page}-{end_page}",
+                "method": "tesseract_ocr",
+                "char_count": len(markdown_text),
+                "ocr_used": True,
+                "ocr_reason": detection["reason"],
+            }
+        except Exception as e:
+            result = extract_text_to_markdown(pdf_path, start_page, end_page, **kwargs)
+            if "error" in result:
+                return result
+            result["ocr_used"] = False
+            result["ocr_reason"] = f"OCR attempted but failed: {e}"
+            return result
+
     result = extract_text_to_markdown(pdf_path, start_page, end_page, **kwargs)
-    
     if "error" in result:
         return result
-    
-    # Check if we got meaningful content
-    detection = detect_needs_ocr(pdf_path)
-    
-    if detection["needs_ocr"]:
-        if TESSERACT_AVAILABLE:
-            try:
-                with pdfplumber.open(str(pdf_path)) as pdf:
-                    total_pages = len(pdf.pages)
-                
-                if end_page is None:
-                    end_page = total_pages
-                    
-                markdown_text = extract_with_ocr(pdf_path, start_page, end_page, ocr_dpi, ocr_lang)
-                
-                return {
-                    "markdown": markdown_text,
-                    "total_pages": total_pages,
-                    "pages_extracted": f"{start_page}-{end_page}",
-                    "method": "tesseract_ocr",
-                    "char_count": len(markdown_text),
-                    "ocr_used": True,
-                    "ocr_reason": detection["reason"],
-                }
-            except Exception as e:
-                # Fall back to original result if OCR fails
-                result["ocr_used"] = False
-                result["ocr_reason"] = f"OCR attempted but failed: {e}"
-                return result
-        else:
-            result["ocr_used"] = False
-            result["ocr_reason"] = f"OCR needed ({detection['reason']}) but pytesseract not available"
-            result["needs_ocr"] = True
-            return result
-    
+
     result["ocr_used"] = False
-    result["ocr_reason"] = detection["reason"]
+    if detection["needs_ocr"]:
+        result["ocr_reason"] = (
+            f"OCR needed ({detection['reason']}) but pytesseract not available"
+        )
+        result["needs_ocr"] = True
+    else:
+        result["ocr_reason"] = detection["reason"]
     return result
