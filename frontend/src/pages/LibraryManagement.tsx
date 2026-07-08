@@ -37,6 +37,8 @@ interface LibraryStats {
     text_extracted: number;
     ai_identified: number;
     ai_identify_failed?: number;
+    image_content?: number;
+    unextractable?: number;
   };
 }
 
@@ -397,6 +399,29 @@ export function LibraryManagement() {
       const res = await apiClient.post('/queue/text-extraction/queue-all', {}, {
         params: { force: true },
       });
+      return res.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['library-management-stats'] });
+      queryClient.invalidateQueries({ queryKey: ['text-extraction-stats'] });
+    },
+  });
+
+  const reclassifyFailuresMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiClient.post('/queue/reclassify-failures');
+      return res.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['library-management-stats'] });
+      queryClient.invalidateQueries({ queryKey: ['text-extraction-stats'] });
+      queryClient.invalidateQueries({ queryKey: ['queue-stats'] });
+    },
+  });
+
+  const retryUnextractableMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiClient.post('/queue/text-extraction/retry-unextractable');
       return res.data;
     },
     onSuccess: () => {
@@ -1411,6 +1436,38 @@ export function LibraryManagement() {
                   />
                 </div>
               </div>
+
+              {((stats.processing.image_content ?? 0) > 0 || (stats.processing.unextractable ?? 0) > 0) && (
+                <div className="mt-4 flex items-center justify-between rounded-md p-3" style={{ backgroundColor: 'var(--color-surface-raised)' }}>
+                  <p className="text-sm" style={{ color: 'var(--color-text-secondary)' }}>
+                    {stats.processing.image_content ?? 0} image collections · {stats.processing.unextractable ?? 0} unextractable — excluded from extraction
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => reclassifyFailuresMutation.mutate()}
+                      disabled={reclassifyFailuresMutation.isPending}
+                      className="inline-flex items-center gap-2 rounded-md border px-3 text-sm font-medium disabled:opacity-50"
+                      style={{ minHeight: '40px', borderColor: 'var(--color-border)', color: 'var(--color-text-secondary)', backgroundColor: 'var(--color-surface)' }}
+                      title="Classify existing failed items: flag image-only/unextractable, keep transient failures retryable"
+                    >
+                      {reclassifyFailuresMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Filter className="h-4 w-4" />}
+                      Reclassify failed queue
+                    </button>
+                    {(stats.processing.unextractable ?? 0) > 0 && (
+                      <button
+                        onClick={() => retryUnextractableMutation.mutate()}
+                        disabled={retryUnextractableMutation.isPending}
+                        className="inline-flex items-center gap-2 rounded-md border px-3 text-sm font-medium disabled:opacity-50"
+                        style={{ minHeight: '40px', borderColor: 'var(--color-border)', color: 'var(--color-text-secondary)', backgroundColor: 'var(--color-surface)' }}
+                        title="Clear the unextractable flag and re-queue those PDFs for extraction"
+                      >
+                        {retryUnextractableMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+                        Retry unextractable
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
 
               {stats.total_products - stats.processing.text_extracted > 0 && (
                 <div className="mt-4 flex items-center justify-between rounded-md bg-blue-50 p-4">
