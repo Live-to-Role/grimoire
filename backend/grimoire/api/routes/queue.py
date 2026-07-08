@@ -418,6 +418,38 @@ async def reclassify_failures(db: DbSession) -> dict:
     return {"flagged": flagged, "cleared": cleared, "left_retryable": left_retryable}
 
 
+@router.post("/text-extraction/retry-unextractable")
+async def retry_unextractable(db: DbSession) -> dict:
+    """Clear the text_unextractable flag and re-queue those products for text
+    extraction — the explicit override for when extraction quality improves."""
+    result = await db.execute(
+        select(Product).where(Product.text_unextractable == True)
+    )
+    products = list(result.scalars().all())
+
+    requeued = 0
+    for product in products:
+        product.text_unextractable = False
+        product.extraction_error = None
+
+        existing = await db.execute(
+            select(ProcessingQueue).where(
+                ProcessingQueue.product_id == product.id,
+                ProcessingQueue.task_type == "text",
+                ProcessingQueue.status.in_(["pending", "processing"]),
+            )
+        )
+        if existing.scalar_one_or_none():
+            continue
+        db.add(ProcessingQueue(
+            product_id=product.id, task_type="text", priority=5, status="pending",
+        ))
+        requeued += 1
+
+    await db.commit()
+    return {"requeued": requeued, "cleared_flags": len(products)}
+
+
 @router.post("/fts/rebuild-all")
 async def rebuild_fts_index(
     db: DbSession,
