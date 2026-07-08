@@ -67,6 +67,12 @@ async def library_stats(db: DbSession) -> dict:
     ai_result = await db.execute(ai_query)
     ai_identified = ai_result.scalar() or 0
 
+    image_content_query = select(func.count(Product.id)).where(Product.is_image_content == True)
+    image_content = (await db.execute(image_content_query)).scalar() or 0
+
+    unextractable_query = select(func.count(Product.id)).where(Product.text_unextractable == True)
+    unextractable = (await db.execute(unextractable_query)).scalar() or 0
+
     # Count products whose AI identification permanently failed
     from grimoire.models import ProcessingQueue
     ai_failed_query = (
@@ -92,6 +98,8 @@ async def library_stats(db: DbSession) -> dict:
             "text_extracted": text_extracted,
             "ai_identified": ai_identified,
             "ai_identify_failed": ai_identify_failed,
+            "image_content": image_content,
+            "unextractable": unextractable,
         },
     }
 
