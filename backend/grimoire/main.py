@@ -26,17 +26,6 @@ async def lifespan(app: FastAPI):
     # from grimoire.services.watcher import start_watcher, stop_watcher
     # await start_watcher()
     
-    # Start queue worker for PDF processing
-    from grimoire.services.queue_processor import run_queue_worker
-    queue_stop_event = asyncio.Event()
-    queue_task = asyncio.create_task(
-        run_queue_worker(
-            poll_interval=2.0,
-            batch_size=10,
-            stop_event=queue_stop_event,
-        )
-    )
-    
     # Start contribution queue processor for Codex submissions
     from grimoire.services.contribution_queue_processor import (
         start_queue_processor,
@@ -65,14 +54,6 @@ async def lifespan(app: FastAPI):
     # Stop contribution queue processor
     stop_queue_processor()
 
-    # Stop queue worker
-    queue_stop_event.set()
-    queue_task.cancel()
-    try:
-        await queue_task
-    except asyncio.CancelledError:
-        pass
-    
     # Watcher disabled
     # await stop_watcher()
 
