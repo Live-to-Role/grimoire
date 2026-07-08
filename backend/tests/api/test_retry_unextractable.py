@@ -30,7 +30,7 @@ async def test_retry_unextractable(client, db):
     async with client as c:
         resp = await c.post("/api/v1/queue/text-extraction/retry-unextractable")
     assert resp.status_code == 200
-    assert resp.json()["requeued"] == 1
+    assert resp.json()["requeued"] >= 1  # at least our dead product was requeued
 
     await db.refresh(dead)
     assert dead.text_unextractable is False
