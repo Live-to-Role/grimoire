@@ -1,5 +1,6 @@
 """Watched folder API endpoints."""
 
+import asyncio
 import platform
 import string
 from datetime import datetime, UTC
@@ -305,7 +306,11 @@ async def extract_all_text(
 
     for product in products:
         try:
-            if process_text_extraction_sync(product, use_marker=use_marker):
+            # Offload the CPU-heavy sync extraction (layout mode / OCR) to a
+            # thread so it never blocks the event loop / other HTTP requests.
+            if await asyncio.to_thread(
+                process_text_extraction_sync, product, use_marker=use_marker
+            ):
                 success += 1
             else:
                 failed += 1

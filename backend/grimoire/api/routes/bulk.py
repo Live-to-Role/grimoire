@@ -1,5 +1,6 @@
 """Bulk operations API endpoints."""
 
+import asyncio
 import logging
 import shutil
 
@@ -376,7 +377,11 @@ async def bulk_extract_text(
 
     for product in products:
         try:
-            if process_text_extraction_sync(product, use_marker=use_marker):
+            # Offload the CPU-heavy sync extraction (layout mode / OCR) to a
+            # thread so it never blocks the event loop / other HTTP requests.
+            if await asyncio.to_thread(
+                process_text_extraction_sync, product, use_marker=use_marker
+            ):
                 affected += 1
             else:
                 errors.append(f"Failed to extract: {product.file_name}")
