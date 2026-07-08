@@ -392,6 +392,19 @@ export function LibraryManagement() {
     },
   });
 
+  const forceReextractAllMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiClient.post('/queue/text-extraction/queue-all', {}, {
+        params: { force: true },
+      });
+      return res.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['library-management-stats'] });
+      queryClient.invalidateQueries({ queryKey: ['text-extraction-stats'] });
+    },
+  });
+
   const identifyAllMutation = useMutation({
     mutationFn: async (provider: string) => {
       const res = await apiClient.post('/ai/identify-all', {}, {
@@ -1355,11 +1368,36 @@ export function LibraryManagement() {
                     Extract text from PDFs to enable searching and AI identification.
                   </p>
                 </div>
-                <div className="text-right">
-                  <p className="text-2xl font-bold" style={{ color: 'var(--color-text-primary)' }}>
-                    {stats.processing.text_extracted} / {stats.total_products}
-                  </p>
-                  <p className="text-base" style={{ color: 'var(--color-text-secondary)' }}>products extracted</p>
+                <div className="flex flex-col items-end gap-2">
+                  <div className="text-right">
+                    <p className="text-2xl font-bold" style={{ color: 'var(--color-text-primary)' }}>
+                      {stats.processing.text_extracted} / {stats.total_products}
+                    </p>
+                    <p className="text-base" style={{ color: 'var(--color-text-secondary)' }}>products extracted</p>
+                  </div>
+                  <button
+                    onClick={() => {
+                      if (
+                        confirm(
+                          'Re-extract text for ALL products, including ones already extracted? ' +
+                            'This re-queues every PDF and can take a long time. Turn off "I\'m working" to let it process.'
+                        )
+                      ) {
+                        forceReextractAllMutation.mutate();
+                      }
+                    }}
+                    disabled={forceReextractAllMutation.isPending}
+                    className="inline-flex items-center gap-2 rounded-md border px-3 text-sm font-medium disabled:opacity-50"
+                    style={{ minHeight: '40px', borderColor: 'var(--color-border)', color: 'var(--color-text-secondary)', backgroundColor: 'var(--color-surface)' }}
+                    title="Re-extract every PDF (force) to pick up improved extraction quality"
+                  >
+                    {forceReextractAllMutation.isPending ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <RefreshCw className="h-4 w-4" />
+                    )}
+                    Re-extract All
+                  </button>
                 </div>
               </div>
 
@@ -1406,6 +1444,16 @@ export function LibraryManagement() {
                   <p className="text-sm">
                     Queued {queueAllForExtractionMutation.data?.created || 0} products.
                     {queueAllForExtractionMutation.data?.skipped > 0 && ` ${queueAllForExtractionMutation.data.skipped} already queued.`}
+                  </p>
+                </div>
+              )}
+
+              {forceReextractAllMutation.isSuccess && (
+                <div className="mt-4 rounded-md bg-green-50 p-4 text-green-800">
+                  <p className="font-medium">Re-extraction queued!</p>
+                  <p className="text-sm">
+                    Queued {forceReextractAllMutation.data?.created || 0} products for re-extraction.
+                    {forceReextractAllMutation.data?.skipped > 0 && ` ${forceReextractAllMutation.data.skipped} skipped (already queued).`}
                   </p>
                 </div>
               )}
