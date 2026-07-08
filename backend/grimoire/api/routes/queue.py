@@ -304,12 +304,18 @@ async def queue_all_for_text_extraction(
     force: bool = Query(False, description="Re-queue already extracted products"),
 ) -> dict:
     """Queue all products that need text extraction."""
-    # Find products without text extraction
+    # Find products that still need text extraction. Always skip image-only and
+    # permanently-unextractable PDFs (even under force) — use the "Retry
+    # unextractable" action to reconsider those explicitly.
+    skip_flagged = (
+        Product.is_image_content == False,
+        Product.text_unextractable == False,
+    )
     if force:
-        query = select(Product).order_by(Product.file_size.desc())
+        query = select(Product).where(*skip_flagged).order_by(Product.file_size.desc())
     else:
         query = select(Product).where(
-            Product.text_extracted == False
+            Product.text_extracted == False, *skip_flagged
         ).order_by(Product.file_size.desc())
     
     result = await db.execute(query)
