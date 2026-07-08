@@ -83,24 +83,27 @@ async def get_queue_stats(db: DbSession) -> QueueStats:
     type_result = await db.execute(type_query)
     stats.pending_by_type = {row[0]: row[1] for row in type_result.all()}
 
-    from grimoire.services.queue_processor import is_queue_paused
-    return {**stats.model_dump(), "paused": is_queue_paused()}
+    from grimoire.services.queue_processor import is_processing_paused
+    return {**stats.model_dump(), "paused": await is_processing_paused()}
 
 
 @router.post("/pause")
 async def pause_processing_queue() -> dict:
-    """Pause the queue worker. In-flight tasks finish, but no new tasks start."""
-    from grimoire.services.queue_processor import pause_queue, is_queue_paused
-    pause_queue()
-    return {"paused": is_queue_paused()}
+    """Enable "I'm working" mode — pause background processing.
+
+    In-flight tasks finish; the worker stops fetching new ones.
+    """
+    from grimoire.services.queue_processor import set_processing_paused
+    await set_processing_paused(True)
+    return {"paused": True}
 
 
 @router.post("/resume")
 async def resume_processing_queue() -> dict:
-    """Resume the queue worker."""
-    from grimoire.services.queue_processor import resume_queue, is_queue_paused
-    resume_queue()
-    return {"paused": is_queue_paused()}
+    """Disable "I'm working" mode — resume background processing."""
+    from grimoire.services.queue_processor import set_processing_paused
+    await set_processing_paused(False)
+    return {"paused": False}
 
 
 @router.get("/events")
