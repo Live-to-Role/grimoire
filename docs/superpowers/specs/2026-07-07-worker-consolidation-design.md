@@ -135,6 +135,32 @@ New module `grimoire/worker/run.py`:
   (`POST /queue/pause`), OFF ⇒ processing runs (`POST /queue/resume`).
 - Reflects state from the polled stats so it stays correct across reloads.
 
+## Resource Considerations (Raspberry Pi / low-RAM target)
+
+The Folio design (the eventual generalization of Grimoire,
+`docs/superpowers/specs/2026-03-13-folio-design.md`) states the target runtime
+includes low-power, low-RAM devices such as a Raspberry Pi 4 (~1GB RAM;
+sentence-transformers needs ~300MB during model loading). This reinforces every
+choice above and adds one constraint:
+
+- **Out-of-process worker, sequential processing, and the "I'm working" pause
+  matter more, not less, on a 4-core Pi.** A single heavy task can consume the
+  whole machine, so keeping the API process free of heavy work is essential
+  there — not just a nicety on a big workstation.
+- **Load the embedding model in one process.** Embedding *generation* runs only
+  in the worker, so the ~300MB model loads there. **Caveat:** the API process
+  still calls `generate_embeddings` for semantic-search *query* embedding, which
+  would load the model a second time in the API process. On a 1GB Pi, 2×300MB is
+  untenable. Not fixed here (see follow-ups), but recorded so we don't regress.
+- **Graceful fallback** when no embedding provider is available is already
+  handled and must be preserved.
+
+**Forward-compat (multi-topic future):** Folio routes queue work to per-topic
+SQLite databases via a `TopicEngineManager`. The new worker should obtain its
+session through the existing `async_session_maker` factory (not a hardcoded
+engine), so a topic-aware factory can slot in later. We build none of that now —
+this is only a "don't foreclose it" note.
+
 ## Data Changes
 
 - One new `Setting` row: `processing_paused` (default `true`). No schema
@@ -159,6 +185,10 @@ New module `grimoire/worker/run.py`:
 - `sqlite-vec` indexed vector search.
 - Auto-resume (vs. prompt) on idle, as an optional setting.
 - Moving `busy_timeout`/pragma tuning (already adequate).
+- **Single-process model load for query embedding** — route semantic-search
+  query embedding through the worker or a network provider (Ollama/OpenAI) so the
+  API process doesn't also load the local ~300MB model. Matters on low-RAM
+  targets (Pi); irrelevant on a workstation.
 
 ## Files Touched (anticipated)
 
