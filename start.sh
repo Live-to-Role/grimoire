@@ -74,7 +74,11 @@ cd backend
 PYTHONPATH=. python3 -m uvicorn grimoire.main:app --host 0.0.0.0 --port 8000 --reload &
 BACKEND_PID=$!
 
-# Start Huey worker
+# Start dedicated queue worker (owns heavy ProcessingQueue draining, out of the API process)
+PYTHONPATH=. python3 -m grimoire.worker.run &
+QUEUE_WORKER_PID=$!
+
+# Start Huey worker (folder scan scheduling only)
 PYTHONPATH=. python3 -m huey.bin.huey_consumer grimoire.worker.tasks.huey -w 2 -k thread &
 WORKER_PID=$!
 cd ..
@@ -89,8 +93,8 @@ cd ..
 cleanup() {
     echo ""
     echo "Stopping Grimoire..."
-    kill $BACKEND_PID $WORKER_PID $FRONTEND_PID 2>/dev/null
-    wait $BACKEND_PID $WORKER_PID $FRONTEND_PID 2>/dev/null
+    kill $BACKEND_PID $QUEUE_WORKER_PID $WORKER_PID $FRONTEND_PID 2>/dev/null
+    wait $BACKEND_PID $QUEUE_WORKER_PID $WORKER_PID $FRONTEND_PID 2>/dev/null
     echo "Goodbye!"
 }
 trap cleanup EXIT INT TERM
