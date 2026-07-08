@@ -355,6 +355,69 @@ async def queue_all_for_text_extraction(
     }
 
 
+@router.post("/reclassify-failures")
+async def reclassify_failures(db: DbSession) -> dict:
+    """One-time cleanup: flag image-only / permanently-unextractable products and
+    remove their dead failed items; leave transient/provider failures retryable."""
+    from grimoire.services.extraction_classifier import classify_extraction_failure
+
+    result = await db.execute(
+        select(ProcessingQueue).where(
+            ProcessingQueue.status == "failed",
+            ProcessingQueue.task_type.in_(["text", "ocr_text", "ai_identify"]),
+        )
+    )
+    items = list(result.scalars().all())
+
+    product_ids = {item.product_id for item in items}
+    products: dict[int, Product] = {}
+    if product_ids:
+        prod_result = await db.execute(select(Product).where(Product.id.in_(product_ids)))
+        products = {p.id: p for p in prod_result.scalars().all()}
+
+    flagged = 0
+    cleared = 0
+    left_retryable = 0
+
+    for item in items:
+        product = products.get(item.product_id)
+        if product is None:
+            await db.delete(item)
+            cleared += 1
+            continue
+
+        permanent = (
+            product.is_image_content
+            or product.text_unextractable
+            or classify_extraction_failure(item.error_message) == "permanent"
+        )
+
+        # ai_identify on a product with no usable text can never succeed.
+        ai_dead = item.task_type == "ai_identify" and (
+            not product.text_extracted
+            or product.is_image_content
+            or product.text_unextractable
+        )
+
+        if permanent and item.task_type in ("text", "ocr_text"):
+            if not product.is_image_content and not product.text_unextractable:
+                product.text_unextractable = True
+                product.extraction_error = (
+                    item.error_message or "unextractable"
+                )[:500]
+                flagged += 1
+            await db.delete(item)
+            cleared += 1
+        elif ai_dead:
+            await db.delete(item)
+            cleared += 1
+        else:
+            left_retryable += 1
+
+    await db.commit()
+    return {"flagged": flagged, "cleared": cleared, "left_retryable": left_retryable}
+
+
 @router.post("/fts/rebuild-all")
 async def rebuild_fts_index(
     db: DbSession,
