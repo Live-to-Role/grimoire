@@ -953,11 +953,15 @@ async def run_queue_worker(
             logger.info("Queue worker stopping")
             break
 
-        # Wait if paused (check every second so we can still stop)
-        while not _pause_event.is_set():
+        # Wait while paused ("I'm working" mode). Re-read the DB flag each cycle
+        # so the API's pause/resume takes effect across the process boundary.
+        while await is_processing_paused():
             if stop_event and stop_event.is_set():
                 break
             await asyncio.sleep(1.0)
+
+        if stop_event and stop_event.is_set():
+            continue
 
         try:
             async with async_session_maker() as db:
