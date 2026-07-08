@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useQueueEvents } from '../hooks/useQueueEvents';
 import {
   X,
   Loader2,
@@ -13,15 +12,7 @@ import {
   ImageOff,
 } from 'lucide-react';
 import api from '../api/client';
-
-interface QueueStats {
-  pending: number;
-  processing: number;
-  completed: number;
-  failed: number;
-  total: number;
-  pending_by_type?: Record<string, number>;
-}
+import type { QueueStats } from '../hooks/useQueueStatus';
 
 interface QueueItem {
   id: number;
@@ -60,9 +51,6 @@ export function ProcessingQueue({ onClose }: ProcessingQueueProps) {
   const [filter, setFilter] = useState<string | null>(null);
   const [expandedError, setExpandedError] = useState<number | null>(null);
   const queryClient = useQueryClient();
-
-  // SSE connection for real-time updates (falls back to polling below)
-  useQueueEvents();
 
   const { data: stats, isLoading: statsLoading } = useQuery<QueueStats>({
     queryKey: ['queue-stats'],
