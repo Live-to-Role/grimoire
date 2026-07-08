@@ -91,7 +91,7 @@ export function ProcessingStatusWidget() {
         <button
           role="switch"
           aria-checked={paused}
-          aria-label='Toggle "I&apos;m working" mode'
+          aria-label="Toggle I'm working mode"
           onClick={onToggle}
           disabled={pause.isPending || resume.isPending}
           className="relative h-6 w-11 shrink-0 rounded-full transition-colors disabled:opacity-50"
