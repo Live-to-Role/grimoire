@@ -1,6 +1,7 @@
 """Queue processor service - processes items from the ProcessingQueue table."""
 
 import asyncio
+import json
 import logging
 import time
 from datetime import datetime, UTC
@@ -70,6 +71,52 @@ def resume_queue():
 def is_queue_paused() -> bool:
     """Check if the queue is currently paused."""
     return not _pause_event.is_set()
+
+
+# DB-backed "I'm working" pause flag. Stored in the settings table so the API
+# process and the dedicated worker process share it across the process boundary.
+PROCESSING_PAUSED_KEY = "processing_paused"
+
+
+async def is_processing_paused(session_maker=None) -> bool:
+    """Return whether background processing is paused. Defaults to True (paused).
+
+    Opens its own DB session (or a provided one, for tests) so it works from any
+    process. Default-True implements "the app starts paused".
+    """
+    from grimoire.models import Setting
+
+    maker = session_maker or async_session_maker
+    async with maker() as session:
+        result = await session.execute(
+            select(Setting).where(Setting.key == PROCESSING_PAUSED_KEY)
+        )
+        setting = result.scalar_one_or_none()
+
+    if setting is None:
+        return True
+    try:
+        return bool(json.loads(setting.value))
+    except (json.JSONDecodeError, TypeError):
+        return True
+
+
+async def set_processing_paused(paused: bool, session_maker=None) -> None:
+    """Persist the "I'm working" pause flag."""
+    from grimoire.models import Setting
+
+    maker = session_maker or async_session_maker
+    value = json.dumps(bool(paused))
+    async with maker() as session:
+        result = await session.execute(
+            select(Setting).where(Setting.key == PROCESSING_PAUSED_KEY)
+        )
+        setting = result.scalar_one_or_none()
+        if setting is None:
+            session.add(Setting(key=PROCESSING_PAUSED_KEY, value=value))
+        else:
+            setting.value = value
+        await session.commit()
 
 
 def register_handler(task_type: str):
