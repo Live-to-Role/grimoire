@@ -791,39 +791,3 @@ async def deduplicate_queue(
     
     return {"deleted": deleted, "message": f"Removed {deleted} duplicate queue items"}
 
-
-@router.post("/process")
-async def process_queue_items(
-    db: DbSession,
-    max_items: int = Query(10, ge=1, le=100000, description="Max items to process"),
-) -> dict:
-    """Process pending items in the queue."""
-    from grimoire.services.queue_processor import get_pending_batch, process_queue_item
-
-    items = await get_pending_batch(db, max_items)
-    succeeded = 0
-    failed = 0
-
-    for item in items:
-        success = await process_queue_item(item.id)
-        if success:
-            succeeded += 1
-        else:
-            failed += 1
-
-    return {
-        "processed": len(items),
-        "succeeded": succeeded,
-        "failed": failed,
-    }
-
-
-@router.post("/{item_id}/process")
-async def process_single_item(
-    item_id: int,
-) -> dict:
-    """Process a single queue item immediately."""
-    from grimoire.services.queue_processor import process_queue_item
-    
-    success = await process_queue_item(item_id)
-    return {"success": success, "item_id": item_id}
