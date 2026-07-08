@@ -26,7 +26,7 @@ cd "$SCRIPT_DIR"
 # Create data directories (inside backend/ where the database lives)
 mkdir -p backend/data/covers
 
-# Install backend dependencies if needed
+# Set up Python venv if needed
 if [ ! -d "backend/.venv" ]; then
     echo "Setting up Python virtual environment..."
     python3 -m venv backend/.venv
@@ -34,8 +34,15 @@ fi
 
 source backend/.venv/bin/activate
 
-echo "Installing backend dependencies..."
-pip install -q -r backend/requirements.txt
+# Install/update backend deps only when requirements.txt changes
+# (cmp -s exits non-zero if the files differ or the stamp is missing)
+if ! cmp -s backend/requirements.txt backend/.venv/.requirements.stamp; then
+    echo "Installing backend dependencies..."
+    pip install -r backend/requirements.txt
+    cp backend/requirements.txt backend/.venv/.requirements.stamp
+else
+    echo "Backend dependencies already up to date."
+fi
 
 # Install frontend dependencies if needed
 if [ ! -d "frontend/node_modules" ]; then

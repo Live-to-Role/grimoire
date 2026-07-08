@@ -27,10 +27,18 @@ if not exist "backend\.venv" (
 
 call backend\.venv\Scripts\activate.bat
 
-echo Installing backend dependencies...
-pip install -q -r backend\requirements.txt
+REM Install/update backend deps only when requirements.txt changes
+REM (fc returns errorlevel 1 if the files differ or the stamp is missing)
+fc /b backend\requirements.txt backend\.venv\.requirements.stamp >nul 2>&1
+if errorlevel 1 (
+    echo Installing backend dependencies...
+    pip install -r backend\requirements.txt
+    copy /y backend\requirements.txt backend\.venv\.requirements.stamp >nul
+) else (
+    echo Backend dependencies already up to date.
+)
 
-REM Install frontend dependencies if needed
+REM Install frontend dependencies on first run
 if not exist "frontend\node_modules" (
     echo Installing frontend dependencies...
     cd frontend
