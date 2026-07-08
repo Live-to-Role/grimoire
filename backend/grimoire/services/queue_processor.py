@@ -904,6 +904,7 @@ async def _auto_requeue_embeddings(db: AsyncSession, batch_size: int = 100) -> i
         Product.text_extracted == True,
         Product.extracted_text_path.isnot(None),
         Product.text_unextractable == False,
+        Product.is_image_content == False,
     )
     if embedded_ids:
         products_query = products_query.where(Product.id.notin_(embedded_ids))

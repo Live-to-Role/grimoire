@@ -432,6 +432,18 @@ async def retry_unextractable(db: DbSession) -> dict:
         product.text_unextractable = False
         product.extraction_error = None
 
+        # Remove stale failed text items so the queue reflects the fresh retry
+        # (otherwise the old failure lingers and inflates the failed count).
+        stale = await db.execute(
+            select(ProcessingQueue).where(
+                ProcessingQueue.product_id == product.id,
+                ProcessingQueue.task_type == "text",
+                ProcessingQueue.status == "failed",
+            )
+        )
+        for item in stale.scalars().all():
+            await db.delete(item)
+
         existing = await db.execute(
             select(ProcessingQueue).where(
                 ProcessingQueue.product_id == product.id,

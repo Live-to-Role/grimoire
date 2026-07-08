@@ -27,6 +27,12 @@ async def test_retry_unextractable(client, db):
     db.add_all([dead, ok])
     await db.commit()
 
+    # A stale failed text item from the earlier attempt should be cleared, not
+    # left alongside the fresh pending one.
+    db.add(ProcessingQueue(product_id=dead.id, task_type="text", status="failed",
+                           error_message="no text after ocr"))
+    await db.commit()
+
     async with client as c:
         resp = await c.post("/api/v1/queue/text-extraction/retry-unextractable")
     assert resp.status_code == 200
@@ -41,4 +47,6 @@ async def test_retry_unextractable(client, db):
             ProcessingQueue.product_id == dead.id, ProcessingQueue.task_type == "text"
         )
     )
-    assert len(list(items.scalars().all())) == 1
+    rows = list(items.scalars().all())
+    assert len(rows) == 1                 # stale failed item removed
+    assert rows[0].status == "pending"    # replaced by a fresh pending retry
