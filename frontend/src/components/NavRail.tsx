@@ -10,11 +10,11 @@ import {
   Image,
 } from 'lucide-react';
 import { useThemeContext } from '../contexts/ThemeContext';
+import { useQueueStatus } from '../hooks/useQueueStatus';
 
 interface NavRailProps {
   activeView: string;
   onViewChange: (view: string) => void;
-  queueCount?: number;
 }
 
 const navItems = [
@@ -26,8 +26,10 @@ const navItems = [
   { id: 'tools', label: 'Tools', icon: Wrench },
 ];
 
-export function NavRail({ activeView, onViewChange, queueCount }: NavRailProps) {
+export function NavRail({ activeView, onViewChange }: NavRailProps) {
   const { effectiveTheme, toggleTheme } = useThemeContext();
+  const { data: queueStatus } = useQueueStatus();
+  const queueCount = (queueStatus?.pending ?? 0) + (queueStatus?.processing ?? 0);
 
   return (
     <nav
@@ -130,8 +132,10 @@ export function NavRail({ activeView, onViewChange, queueCount }: NavRailProps) 
 }
 
 /** Bottom tab bar for tablet/mobile viewports */
-export function NavBottomBar({ activeView, onViewChange, queueCount }: NavRailProps) {
+export function NavBottomBar({ activeView, onViewChange }: NavRailProps) {
   const { effectiveTheme, toggleTheme } = useThemeContext();
+  const { data: queueStatus } = useQueueStatus();
+  const queueCount = (queueStatus?.pending ?? 0) + (queueStatus?.processing ?? 0);
 
   const bottomItems = [
     ...navItems,
