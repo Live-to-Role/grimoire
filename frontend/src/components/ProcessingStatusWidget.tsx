@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Loader2, Pause, Play } from 'lucide-react';
 import { useQueueStatus } from '../hooks/useQueueStatus';
 import { useProcessingControls } from '../hooks/useProcessingControls';
@@ -16,10 +16,14 @@ export function ProcessingStatusWidget() {
   const isIdle = useIdleTimer();
   const [dismissed, setDismissed] = useState(false);
 
-  // Once the user is active again, allow the prompt to appear on the next idle.
-  useEffect(() => {
+  // When the user becomes active again, allow the prompt to reappear after the
+  // next full idle interval. Adjusting state during render (guarded by the
+  // previous value) is React's documented alternative to a setState-in-effect.
+  const [wasIdle, setWasIdle] = useState(isIdle);
+  if (wasIdle !== isIdle) {
+    setWasIdle(isIdle);
     if (!isIdle) setDismissed(false);
-  }, [isIdle]);
+  }
 
   if (!status) return null;
 
