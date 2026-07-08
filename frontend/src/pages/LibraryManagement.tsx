@@ -13,6 +13,7 @@ import {
   HardDrive,
   Info,
   Loader2,
+  Pause,
   Play,
   RefreshCw,
   Trash2,
@@ -20,6 +21,8 @@ import {
   X,
 } from 'lucide-react';
 import apiClient from '../api/client';
+import { useQueueStatus } from '../hooks/useQueueStatus';
+import { useProcessingControls } from '../hooks/useProcessingControls';
 
 interface LibraryStats {
   total_products: number;
@@ -150,6 +153,9 @@ export function LibraryManagement() {
   const [selectedProvider, setSelectedProvider] = useState<string>('ollama');
   const [showPrivacyNotice, setShowPrivacyNotice] = useState(false);
 
+  const { data: queueStatus } = useQueueStatus();
+  const { resume } = useProcessingControls();
+
   const { data: stats } = useQuery({
     queryKey: ['library-management-stats'],
     queryFn: async () => {
@@ -268,19 +274,6 @@ export function LibraryManagement() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['app-settings'] });
       queryClient.invalidateQueries({ queryKey: ['semantic-search-status'] });
-    },
-  });
-
-  const processQueueMutation = useMutation({
-    mutationFn: async (maxItems: number) => {
-      const res = await apiClient.post('/queue/process', {}, {
-        params: { max_items: maxItems },
-      });
-      return res.data;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['text-extraction-stats'] });
-      queryClient.invalidateQueries({ queryKey: ['library-management-stats'] });
     },
   });
 
@@ -1315,29 +1308,37 @@ export function LibraryManagement() {
               <div className="rounded-xl border border-blue-200 bg-blue-50 p-4">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
-                    <Loader2 className="h-5 w-5 animate-spin text-blue-600" />
+                    {queueStatus?.paused ? (
+                      <Pause className="h-5 w-5 text-blue-600" />
+                    ) : (
+                      <Loader2 className="h-5 w-5 animate-spin text-blue-600" />
+                    )}
                     <div>
                       <p className="font-medium text-blue-900">
-                        Queue Active: {extractionStats.queue_pending} pending, {extractionStats.queue_processing} processing
+                        Queue: {extractionStats.queue_pending} pending, {extractionStats.queue_processing} processing
                       </p>
                       <p className="text-sm text-blue-700">
-                        Processing in background. Stats refresh every 10 seconds.
+                        {queueStatus?.paused
+                          ? 'Background processing is paused ("I\'m working"). Resume to start.'
+                          : 'Processing in the background.'}
                       </p>
                     </div>
                   </div>
-                  <button
-                    onClick={() => processQueueMutation.mutate(appSettings?.extraction_batch_size || 100)}
-                    disabled={processQueueMutation.isPending}
-                    className="inline-flex items-center gap-2 rounded-md bg-blue-600 px-4 text-base font-medium text-white hover:bg-blue-700 disabled:opacity-50"
-                    style={{ minHeight: '44px' }}
-                  >
-                    {processQueueMutation.isPending ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <Play className="h-4 w-4" />
-                    )}
-                    Process Batch Now
-                  </button>
+                  {queueStatus?.paused && (
+                    <button
+                      onClick={() => resume.mutate()}
+                      disabled={resume.isPending}
+                      className="inline-flex items-center gap-2 rounded-md bg-blue-600 px-4 text-base font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+                      style={{ minHeight: '44px' }}
+                    >
+                      {resume.isPending ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Play className="h-4 w-4" />
+                      )}
+                      Resume
+                    </button>
+                  )}
                 </div>
               </div>
             )}
