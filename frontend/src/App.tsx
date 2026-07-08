@@ -9,6 +9,7 @@ import { LibraryManagement } from './pages/LibraryManagement';
 import { NavRail, NavBottomBar } from './components/NavRail';
 import { FilterDrawer } from './components/FilterDrawer';
 import { ProcessingQueue } from './components/ProcessingQueue';
+import { ProcessingStatusWidget } from './components/ProcessingStatusWidget';
 import { MaintenanceTools } from './components/MaintenanceTools';
 import type { ProductFilters } from './api/products';
 
@@ -79,6 +80,7 @@ function App() {
             )}
           </main>
           <NavBottomBar activeView={activeView} onViewChange={setActiveView} />
+          <ProcessingStatusWidget />
           <FilterDrawer
             isOpen={filterDrawerOpen}
             onClose={() => setFilterDrawerOpen(false)}
