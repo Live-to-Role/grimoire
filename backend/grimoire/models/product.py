@@ -98,6 +98,11 @@ class Product(Base):
     images_extracted: Mapped[bool] = mapped_column(Boolean, default=False)
     image_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
+    # Extraction disposition: set when a PDF is permanently unextractable
+    # (encrypted/corrupt/no text after OCR). Excluded from re-queue paths.
+    text_unextractable: Mapped[bool] = mapped_column(Boolean, default=False)
+    extraction_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+
     # AI confidence scores
     identification_confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
     system_detection_confidence: Mapped[float | None] = mapped_column(Float, nullable=True)

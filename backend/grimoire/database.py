@@ -148,6 +148,8 @@ async def _ensure_columns(conn) -> None:
         ("products", "is_image_content", "BOOLEAN DEFAULT 0"),
         ("products", "images_extracted", "BOOLEAN DEFAULT 0"),
         ("products", "image_count", "INTEGER"),
+        ("products", "text_unextractable", "BOOLEAN DEFAULT 0"),
+        ("products", "extraction_error", "TEXT"),
         ("processing_queue", "config", "TEXT"),
         ("products", "normalized_stem", "TEXT"),
         ("products", "is_superseded", "BOOLEAN DEFAULT 0"),
