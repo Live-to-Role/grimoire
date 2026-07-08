@@ -1413,7 +1413,7 @@ export function LibraryManagement() {
                     }}
                     disabled={forceReextractAllMutation.isPending}
                     className="inline-flex items-center gap-2 rounded-md border px-3 text-sm font-medium disabled:opacity-50"
-                    style={{ minHeight: '40px', borderColor: 'var(--color-border)', color: 'var(--color-text-secondary)', backgroundColor: 'var(--color-surface)' }}
+                    style={{ minHeight: '40px', borderColor: 'var(--color-accent)', color: 'var(--color-accent)', backgroundColor: 'var(--color-surface)' }}
                     title="Re-extract every PDF (force) to pick up improved extraction quality"
                   >
                     {forceReextractAllMutation.isPending ? (
@@ -1447,7 +1447,7 @@ export function LibraryManagement() {
                       onClick={() => reclassifyFailuresMutation.mutate()}
                       disabled={reclassifyFailuresMutation.isPending}
                       className="inline-flex items-center gap-2 rounded-md border px-3 text-sm font-medium disabled:opacity-50"
-                      style={{ minHeight: '40px', borderColor: 'var(--color-border)', color: 'var(--color-text-secondary)', backgroundColor: 'var(--color-surface)' }}
+                      style={{ minHeight: '40px', borderColor: 'var(--color-accent)', color: 'var(--color-accent)', backgroundColor: 'var(--color-surface)' }}
                       title="Classify existing failed items: flag image-only/unextractable, keep transient failures retryable"
                     >
                       {reclassifyFailuresMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Filter className="h-4 w-4" />}
@@ -1458,7 +1458,7 @@ export function LibraryManagement() {
                         onClick={() => retryUnextractableMutation.mutate()}
                         disabled={retryUnextractableMutation.isPending}
                         className="inline-flex items-center gap-2 rounded-md border px-3 text-sm font-medium disabled:opacity-50"
-                        style={{ minHeight: '40px', borderColor: 'var(--color-border)', color: 'var(--color-text-secondary)', backgroundColor: 'var(--color-surface)' }}
+                        style={{ minHeight: '40px', borderColor: 'var(--color-accent)', color: 'var(--color-accent)', backgroundColor: 'var(--color-surface)' }}
                         title="Clear the unextractable flag and re-queue those PDFs for extraction"
                       >
                         {retryUnextractableMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
