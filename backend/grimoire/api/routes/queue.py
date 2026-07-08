@@ -22,6 +22,9 @@ class QueueStats(BaseModel):
     failed: int = 0
     total: int = 0
     pending_by_type: dict[str, int] = {}
+    # "I'm working" pause flag. Declared here so it survives FastAPI's
+    # response_model filtering (the /stats handler is annotated -> QueueStats).
+    paused: bool = True
 
 
 class QueueItemResponse(BaseModel):
