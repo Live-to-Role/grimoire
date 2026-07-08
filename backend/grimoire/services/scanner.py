@@ -249,7 +249,12 @@ async def queue_products_for_processing(db: AsyncSession, products: list[Product
             ))
             queued_covers += 1
 
-        if auto_extract_text and not product.text_extracted:
+        if (
+            auto_extract_text
+            and not product.text_extracted
+            and not product.is_image_content
+            and not product.text_unextractable
+        ):
             if (product.id, "text") not in existing_tasks:
                 db.add(ProcessingQueue(
                     product_id=product.id,
@@ -259,7 +264,13 @@ async def queue_products_for_processing(db: AsyncSession, products: list[Product
                 ))
                 queued_text += 1
 
-        if auto_identify and product.text_extracted and not product.ai_identified:
+        if (
+            auto_identify
+            and product.text_extracted
+            and not product.ai_identified
+            and not product.is_image_content
+            and not product.text_unextractable
+        ):
             if (product.id, "ai_identify") not in existing_tasks:
                 db.add(ProcessingQueue(
                     product_id=product.id,

@@ -148,6 +148,15 @@ async def get_setting(db: AsyncSession, key: str, default=None):
     return value
 
 
+def is_processing_disposition_blocked(product) -> bool:
+    """True if a product is image-only or permanently unextractable and must be
+    skipped by every text-extraction / AI-identify re-queue path."""
+    return bool(
+        getattr(product, "is_image_content", False)
+        or getattr(product, "text_unextractable", False)
+    )
+
+
 async def queue_ai_identify_if_enabled(db: AsyncSession, product: Product) -> bool:
     """Queue AI identification task if auto-identify is enabled and a provider is available."""
     auto_identify = await get_setting(db, "auto_identify_on_scan", False)
@@ -156,6 +165,10 @@ async def queue_ai_identify_if_enabled(db: AsyncSession, product: Product) -> bo
 
     # Check if already identified
     if product.ai_identified:
+        return False
+
+    # AI-identify needs real extracted text and a content-bearing PDF.
+    if not product.text_extracted or is_processing_disposition_blocked(product):
         return False
 
     # Check if any AI provider is actually available before queuing
@@ -847,6 +860,7 @@ async def _auto_requeue_embeddings(db: AsyncSession, batch_size: int = 100) -> i
     products_query = select(Product).where(
         Product.text_extracted == True,
         Product.extracted_text_path.isnot(None),
+        Product.text_unextractable == False,
     )
     if embedded_ids:
         products_query = products_query.where(Product.id.notin_(embedded_ids))
