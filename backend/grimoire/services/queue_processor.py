@@ -53,26 +53,6 @@ async def _commit_with_retry(db: AsyncSession, max_retries: int = 5) -> None:
 # Task type handlers
 TASK_HANDLERS = {}
 
-# Pause control — set = running, clear = paused
-_pause_event = asyncio.Event()
-_pause_event.set()  # Start unpaused
-
-
-def pause_queue():
-    """Pause the queue worker (finishes in-flight tasks, stops fetching new ones)."""
-    _pause_event.clear()
-
-
-def resume_queue():
-    """Resume the queue worker."""
-    _pause_event.set()
-
-
-def is_queue_paused() -> bool:
-    """Check if the queue is currently paused."""
-    return not _pause_event.is_set()
-
-
 # DB-backed "I'm working" pause flag. Stored in the settings table so the API
 # process and the dedicated worker process share it across the process boundary.
 PROCESSING_PAUSED_KEY = "processing_paused"
