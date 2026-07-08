@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from grimoire.database import async_session_maker
 from grimoire.models import ProcessingQueue, Product
+from grimoire.processors.text_extractor import extract_with_ocr, TESSERACT_AVAILABLE
 
 logger = logging.getLogger(__name__)
 
@@ -56,6 +57,9 @@ TASK_HANDLERS = {}
 # DB-backed "I'm working" pause flag. Stored in the settings table so the API
 # process and the dedicated worker process share it across the process boundary.
 PROCESSING_PAUSED_KEY = "processing_paused"
+
+# Below this many non-whitespace chars, an OCR result counts as "no text".
+MIN_EXTRACTED_CHARS = 20
 
 
 async def is_processing_paused(session_maker=None) -> bool:
@@ -200,6 +204,22 @@ async def queue_ai_identify_if_enabled(db: AsyncSession, product: Product) -> bo
     return True
 
 
+def _diagnose_pdf_unextractable(path: str) -> str | None:
+    """Return a permanent-failure reason if the PDF can't be opened/decrypted,
+    else None (treat as transient and retry). Runs in a worker thread."""
+    import fitz
+    try:
+        doc = fitz.open(path)
+    except Exception:
+        return "corrupt pdf"
+    try:
+        if doc.is_encrypted and not doc.authenticate(""):
+            return "encrypted"
+    finally:
+        doc.close()
+    return None
+
+
 @register_handler("text")
 async def handle_text_task(db: AsyncSession, product: Product) -> bool:
     """Handle text extraction task.
@@ -281,7 +301,21 @@ async def handle_text_task(db: AsyncSession, product: Product) -> bool:
         # Queue AI identification if enabled
         await queue_ai_identify_if_enabled(db, product)
         await db.commit()
-    return success
+        return True
+
+    # Extraction failed. A missing file is transient — retry, do not flag.
+    if not pdf_path.exists():
+        return False
+
+    # Diagnose whether the PDF is permanently unextractable (encrypted/corrupt)
+    # vs a transient error we should retry.
+    reason = await asyncio.to_thread(_diagnose_pdf_unextractable, str(pdf_path))
+    if reason:
+        product.text_unextractable = True
+        product.extraction_error = reason
+        await db.commit()
+        raise TaskError(f"Product {product.id} '{product.file_name}': {reason}")
+    return False
 
 
 @register_handler("ocr_text")
@@ -291,7 +325,6 @@ async def handle_ocr_text_task(db: AsyncSession, product: Product) -> bool:
     This is a separate queue for slow OCR processing.
     """
     from grimoire.services.fts_service import update_search_vector
-    from grimoire.processors.text_extractor import extract_with_ocr, TESSERACT_AVAILABLE
     from grimoire.config import settings
     from pathlib import Path
     import json
@@ -309,6 +342,14 @@ async def handle_ocr_text_task(db: AsyncSession, product: Product) -> bool:
         markdown_text = await asyncio.to_thread(
             extract_with_ocr, pdf_path, dpi=200, lang="eng"
         )
+
+        if len((markdown_text or "").strip()) < MIN_EXTRACTED_CHARS:
+            product.text_unextractable = True
+            product.extraction_error = "no text after ocr"
+            await db.commit()
+            raise TaskError(
+                f"Product {product.id} '{product.file_name}': no text after OCR"
+            )
 
         # File I/O in thread too
         def _save_ocr_result():
@@ -351,6 +392,8 @@ async def handle_ocr_text_task(db: AsyncSession, product: Product) -> bool:
         logger.info(f"OCR extraction completed for product {product.id}: {len(markdown_text)} chars")
         return True
         
+    except TaskError:
+        raise
     except Exception as e:
         logger.error(f"OCR extraction failed for product {product.id}: {e}")
         return False
