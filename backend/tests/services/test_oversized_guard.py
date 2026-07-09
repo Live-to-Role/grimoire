@@ -48,3 +48,70 @@ def test_missing_file_size_returns_none():
 def test_constants_have_expected_values():
     assert MAX_EXTRACTION_FILE_MB == 250
     assert MAX_EXTRACTION_PAGES == 1000
+
+
+from grimoire.models.product import Product
+from grimoire.services.queue_processor import (
+    TaskError,
+    handle_ocr_text_task,
+    handle_text_task,
+)
+
+
+@pytest.mark.asyncio
+async def test_text_handler_flags_and_raises_on_oversized(db):
+    # 300 MB > 250 MB. file_path points nowhere; the guard must fire before
+    # any file access, so no real PDF is needed.
+    product = Product(
+        file_path="/nonexistent/huge.pdf",
+        file_name="huge.pdf",
+        file_size=300 * 1024 * 1024,
+        file_hash="ovg-text-1",
+    )
+    db.add(product)
+    await db.commit()
+
+    with pytest.raises(TaskError):
+        await handle_text_task(db, product)
+
+    await db.refresh(product)
+    assert product.text_unextractable is True
+    assert "oversized" in (product.extraction_error or "")
+
+
+@pytest.mark.asyncio
+async def test_ocr_handler_flags_and_raises_on_oversized(db):
+    product = Product(
+        file_path="/nonexistent/huge2.pdf",
+        file_name="huge2.pdf",
+        file_size=300 * 1024 * 1024,
+        file_hash="ovg-ocr-1",
+    )
+    db.add(product)
+    await db.commit()
+
+    with pytest.raises(TaskError):
+        await handle_ocr_text_task(db, product)
+
+    await db.refresh(product)
+    assert product.text_unextractable is True
+    assert "oversized" in (product.extraction_error or "")
+
+
+@pytest.mark.asyncio
+async def test_text_handler_does_not_flag_normal_size(db, tmp_path):
+    # A small, missing-on-disk file is transient (returns False), not flagged.
+    product = Product(
+        file_path=str(tmp_path / "small.pdf"),
+        file_name="small.pdf",
+        file_size=1 * 1024 * 1024,
+        file_hash="ovg-text-ok",
+    )
+    db.add(product)
+    await db.commit()
+
+    result = await handle_text_task(db, product)
+
+    assert result is False
+    await db.refresh(product)
+    assert not product.text_unextractable

@@ -244,7 +244,7 @@ def _diagnose_pdf_unextractable(path: str) -> str | None:
 @register_handler("text")
 async def handle_text_task(db: AsyncSession, product: Product) -> bool:
     """Handle text extraction task.
-    
+
     If the PDF is detected as image-based (needs OCR), queues an ocr_text task instead.
     After successful extraction, queues AI identification if enabled.
     """
@@ -252,7 +252,15 @@ async def handle_text_task(db: AsyncSession, product: Product) -> bool:
     from grimoire.services.fts_service import update_search_vector
     from grimoire.processors.text_extractor import detect_needs_ocr
     from pathlib import Path
-    
+
+    # Guard: skip PDFs too large/long to extract before any file open or OCR.
+    reason = _oversized_skip_reason(product)
+    if reason:
+        product.text_unextractable = True
+        product.extraction_error = reason
+        await db.commit()
+        raise TaskError(f"Product {product.id} '{product.file_name}': {reason}")
+
     # Check if this is image content (maps, stock art) or needs OCR
     pdf_path = Path(product.file_path)
     if pdf_path.exists():
@@ -342,14 +350,22 @@ async def handle_text_task(db: AsyncSession, product: Product) -> bool:
 @register_handler("ocr_text")
 async def handle_ocr_text_task(db: AsyncSession, product: Product) -> bool:
     """Handle OCR text extraction task for image-based PDFs.
-    
+
     This is a separate queue for slow OCR processing.
     """
     from grimoire.services.fts_service import update_search_vector
     from grimoire.config import settings
     from pathlib import Path
     import json
-    
+
+    # Guard: skip PDFs too large/long to extract before any file open or OCR.
+    reason = _oversized_skip_reason(product)
+    if reason:
+        product.text_unextractable = True
+        product.extraction_error = reason
+        await db.commit()
+        raise TaskError(f"Product {product.id} '{product.file_name}': {reason}")
+
     if not TESSERACT_AVAILABLE:
         logger.error("OCR task failed: pytesseract/pdf2image not available")
         return False
