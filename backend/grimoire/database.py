@@ -154,6 +154,8 @@ async def _ensure_columns(conn) -> None:
         ("products", "normalized_stem", "TEXT"),
         ("products", "is_superseded", "BOOLEAN DEFAULT 0"),
         ("products", "superseded_by_id", "INTEGER REFERENCES products(id)"),
+        ("product_embeddings", "page_start", "INTEGER"),
+        ("product_embeddings", "page_end", "INTEGER"),
     ]
     for table, column, col_type in migrations:
         try:

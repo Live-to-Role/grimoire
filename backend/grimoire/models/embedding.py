@@ -31,7 +31,12 @@ class ProductEmbedding(Base):
     
     embedding_model = Column(String(100), nullable=False)
     embedding_dim = Column(Integer, nullable=False)
-    
+
+    # 1-based page range this chunk came from (NULL for metadata preamble
+    # chunks and legacy flat extractions)
+    page_start = Column(Integer, nullable=True)
+    page_end = Column(Integer, nullable=True)
+
     created_at = Column(DateTime, default=lambda: datetime.now(UTC))
 
     product = relationship("Product", backref="embeddings")

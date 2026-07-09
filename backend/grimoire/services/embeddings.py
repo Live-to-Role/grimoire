@@ -287,30 +287,25 @@ def build_metadata_preamble(product: Any) -> str:
     return "\n".join(parts) + "\n\n"
 
 
-def chunk_text(text: str, chunk_size: int = 500, overlap: int = 50) -> list[str]:
-    """
-    Split text into overlapping chunks for embedding.
+def _chunks_with_spans(
+    text: str, chunk_size: int = 1000, overlap: int = 100
+) -> list[tuple[str, tuple[int, int]]]:
+    """Chunk text and report each chunk's (start, end) char span in the input.
 
-    Args:
-        text: Text to chunk
-        chunk_size: Target size of each chunk in characters
-        overlap: Number of characters to overlap between chunks
-
-    Returns:
-        List of text chunks
+    Same boundary heuristics as the original chunk_text: prefer to break at a
+    sentence end found within the last 100 chars of the window.
     """
     if len(text) <= chunk_size:
-        return [text]
+        stripped = text.strip()
+        return [(stripped, (0, len(text)))] if stripped else []
 
-    chunks = []
+    out: list[tuple[str, tuple[int, int]]] = []
     start = 0
 
     while start < len(text):
         end = start + chunk_size
 
-        # Try to break at sentence boundary
         if end < len(text):
-            # Look for sentence end within last 100 chars
             search_start = max(end - 100, start)
             for punct in ['. ', '! ', '? ', '\n\n', '\n']:
                 pos = text.rfind(punct, search_start, end)
@@ -318,10 +313,78 @@ def chunk_text(text: str, chunk_size: int = 500, overlap: int = 50) -> list[str]
                     end = pos + len(punct)
                     break
 
-        chunks.append(text[start:end].strip())
+        chunk = text[start:end].strip()
+        if chunk:
+            out.append((chunk, (start, min(end, len(text)))))
         start = end - overlap
 
-    return [c for c in chunks if c]
+    return out
+
+
+def chunk_text(text: str, chunk_size: int = 1000, overlap: int = 100) -> list[str]:
+    """Split text into overlapping chunks for embedding."""
+    return [chunk for chunk, _ in _chunks_with_spans(text, chunk_size, overlap)]
+
+
+_PAGE_JOIN = "\n\n"
+
+
+def chunk_text_with_pages(
+    pages: list[dict], chunk_size: int = 1000, overlap: int = 100
+) -> list[tuple[str, int, int]]:
+    """Chunk per-page markdown into (chunk_text, page_start, page_end) tuples.
+
+    Concatenates page texts with tracked offsets, chunks the joined text with
+    the standard algorithm, then maps each chunk's char span back to a
+    (page_start, page_end) range. Cross-page chunks get a real range.
+    """
+    import bisect
+
+    page_starts: list[int] = []
+    page_numbers: list[int] = []
+    parts: list[str] = []
+    pos = 0
+    for p in pages:
+        page_starts.append(pos)
+        page_numbers.append(p["page"])
+        parts.append(p["markdown"])
+        pos += len(p["markdown"]) + len(_PAGE_JOIN)
+    full = _PAGE_JOIN.join(parts)
+
+    def page_at(offset: int) -> int:
+        i = bisect.bisect_right(page_starts, offset) - 1
+        return page_numbers[max(i, 0)]
+
+    return [
+        (chunk, page_at(span[0]), page_at(max(span[1] - 1, span[0])))
+        for chunk, span in _chunks_with_spans(full, chunk_size, overlap)
+    ]
+
+
+def build_chunks_for_product(
+    preamble: str,
+    pages: list[dict] | None,
+    flat_text: str,
+    chunk_size: int = 1000,
+    overlap: int = 100,
+) -> list[tuple[str, int | None, int | None]]:
+    """Build the full chunk list for a product: metadata preamble chunk(s)
+    first (page NULL), then page-mapped content chunks — or flat chunks with
+    NULL pages when no page anchors exist (legacy extractions).
+
+    The preamble stays chunk 0 so compute_weighted_average_vector's
+    metadata_weight keeps boosting it.
+    """
+    chunks: list[tuple[str, int | None, int | None]] = []
+    if preamble and preamble.strip():
+        for c in chunk_text(preamble, chunk_size, overlap):
+            chunks.append((c, None, None))
+    if pages:
+        chunks.extend(chunk_text_with_pages(pages, chunk_size, overlap))
+    else:
+        for c in chunk_text(flat_text, chunk_size, overlap):
+            chunks.append((c, None, None))
+    return chunks
 
 
 # In-memory cache for product search vectors

@@ -62,8 +62,8 @@ class EmbedProductRequest(BaseModel):
     """Request to generate embeddings for a product."""
     provider: str | None = Field(None, description="Embedding provider (openai, local)")
     model: str | None = Field(None, description="Specific model to use")
-    chunk_size: int = Field(500, ge=100, le=2000)
-    overlap: int = Field(50, ge=0, le=200)
+    chunk_size: int = Field(1000, ge=100, le=2000)
+    overlap: int = Field(100, ge=0, le=200)
 
 
 class SemanticSearchRequest(BaseModel):
@@ -392,7 +392,7 @@ async def embed_batch(
     product_ids: list[int] = Query(..., description="Product IDs to embed"),
     provider: str | None = Query(None),
     model: str | None = Query(None),
-    chunk_size: int = Query(500, ge=100, le=2000),
+    chunk_size: int = Query(1000, ge=100, le=2000),
 ) -> dict:
     """Generate embeddings for multiple products."""
     success = 0
@@ -419,7 +419,7 @@ async def embed_batch(
                 delete(ProductEmbedding).where(ProductEmbedding.product_id == product_id)
             )
             
-            chunks = chunk_text(text, chunk_size, 50)
+            chunks = chunk_text(text, chunk_size, 100)
             embeddings = await generate_embeddings(chunks, provider, model)
             
             for i, (chunk, emb_result) in enumerate(zip(chunks, embeddings)):
