@@ -296,6 +296,13 @@ def _chunks_with_spans(
     sentence end found within the last 100 chars of the window.
     """
     if len(text) <= chunk_size:
+        # Deliberate: strip here to match the long path, which already
+        # .strip()s every chunk it produces — the short path should not be
+        # the only one returning unstripped text. This also means empty or
+        # whitespace-only input returns [] rather than [text], which is why
+        # chunk_text_with_pages([]) is safe: the joined text short-circuits
+        # to [] here and page_at() is never reached. Not identical to the
+        # pre-refactor `return [text]`.
         stripped = text.strip()
         return [(stripped, (0, len(text)))] if stripped else []
 

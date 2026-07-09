@@ -63,3 +63,22 @@ def test_build_chunks_flat_fallback_when_no_pages():
 def test_empty_preamble_skipped():
     result = build_chunks_for_product("", _pages([500]), "")
     assert result[0][1] == 1  # first chunk is content, not preamble
+
+
+def test_chunk_text_short_input_is_stripped():
+    # Short-circuit path (len <= chunk_size) must strip, matching the long
+    # path's per-chunk .strip() — this is intentional, not a bug.
+    assert chunk_text("  hello world  ") == ["hello world"]
+
+
+def test_chunk_text_empty_and_whitespace_only_return_empty_list():
+    # Deliberately NOT [""] or ["   "] — empty/whitespace-only input yields
+    # no chunks at all under the short-circuit path.
+    assert chunk_text("") == []
+    assert chunk_text("   ") == []
+
+
+def test_chunk_text_with_pages_empty_list_is_safe():
+    # Empty pages -> joined text is "" -> short-circuits to [] before the
+    # page-mapping (page_at) ever runs.
+    assert chunk_text_with_pages([]) == []
