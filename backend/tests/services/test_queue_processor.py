@@ -30,6 +30,8 @@ async def test_text_task_runs_in_thread():
     product = MagicMock()
     product.id = 1
     product.file_path = "/fake/path.pdf"
+    product.file_size = 1000          # ~1 KB, well under the size limit
+    product.page_count = None         # page check only fires when populated
     db = AsyncMock()
 
     to_thread_calls = []
