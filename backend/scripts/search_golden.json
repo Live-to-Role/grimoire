@@ -1,0 +1,8 @@
+{
+  "_readme": "Fill 'queries' with ~10-20 real searches. 'expect' entries are product IDs (int) or case-insensitive title substrings (str). A query counts as a hit if ANY expected entry appears in the top k results.",
+  "queries": [
+    {"query": "Undead adventure for 3rd level characters", "expect": ["<fill in a book title you own>"], "k": 10},
+    {"query": "dcc funnel adventure", "expect": ["Sailors on the Starless Sea"], "k": 10},
+    {"query": "city intrigue campaign", "expect": ["<fill in>"], "k": 10}
+  ]
+}
