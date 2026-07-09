@@ -856,26 +856,27 @@ async def process_queue_item(item_id: int) -> bool:
 async def get_next_pending_item(db: AsyncSession, task_type: str | None = None) -> ProcessingQueue | None:
     """
     Get the next pending item from the queue.
-    
+
     Priority order:
-    1. By created_at (oldest first - FIFO within queue)
-    2. By file_size as tiebreaker (largest first for same timestamp)
+    1. By priority (highest first)
+    2. By file_size (smallest first — drain fast majority, avoiding head-of-line blocking)
+    3. By created_at (oldest first - FIFO within same priority and size)
     """
     query = (
         select(ProcessingQueue)
         .join(Product, ProcessingQueue.product_id == Product.id)
         .where(ProcessingQueue.status == "pending")
     )
-    
+
     if task_type:
         query = query.where(ProcessingQueue.task_type == task_type)
-    
+
     query = query.order_by(
         ProcessingQueue.priority.desc(),
+        Product.file_size.asc(),  # Smallest files first — drain fast majority
         ProcessingQueue.created_at.asc(),
-        Product.file_size.desc()  # Largest files first as tiebreaker
     ).limit(1)
-    
+
     result = await db.execute(query)
     return result.scalar_one_or_none()
 
@@ -886,13 +887,16 @@ async def get_pending_batch(db: AsyncSession, batch_size: int) -> list[Processin
 
     Returns up to batch_size items. Priority order:
     1. Highest priority number first
-    2. Oldest created_at first (FIFO within same priority)
+    2. Smallest file size first — drain fast majority, avoiding head-of-line blocking
+    3. Oldest created_at first (FIFO within same priority and size)
     """
     query = (
         select(ProcessingQueue)
+        .join(Product, ProcessingQueue.product_id == Product.id)
         .where(ProcessingQueue.status == "pending")
         .order_by(
             ProcessingQueue.priority.desc(),
+            Product.file_size.asc(),  # smallest files first — drain fast majority
             ProcessingQueue.created_at.asc(),
         )
         .limit(batch_size)

@@ -115,3 +115,40 @@ async def test_text_handler_does_not_flag_normal_size(db, tmp_path):
     assert result is False
     await db.refresh(product)
     assert not product.text_unextractable
+
+
+from grimoire.models.queue import ProcessingQueue
+from grimoire.services.queue_processor import get_pending_batch
+
+
+@pytest.mark.asyncio
+async def test_pending_batch_orders_smallest_file_first(db):
+    # Three products at the same priority with distinct file sizes, inserted
+    # largest-first. The drain query must return them smallest-file-first.
+    sizes = [500_000, 100_000, 300_000]  # insertion order: 500k, 100k, 300k
+    product_ids = []
+    for i, size in enumerate(sizes):
+        p = Product(
+            file_path=f"/x/ord{i}.pdf",
+            file_name=f"ord{i}.pdf",
+            file_size=size,
+            file_hash=f"ord-{i}",
+        )
+        db.add(p)
+        await db.commit()
+        product_ids.append(p.id)
+        db.add(ProcessingQueue(
+            product_id=p.id, task_type="text", priority=6, status="pending",
+        ))
+    await db.commit()
+
+    batch = await get_pending_batch(db, batch_size=1000)
+
+    # Filter to just the items we created; their relative order must be
+    # ascending by file_size regardless of other rows in the shared test DB.
+    mine = [item for item in batch if item.product_id in product_ids]
+    ordered_sizes = [sizes[product_ids.index(item.product_id)] for item in mine]
+    assert ordered_sizes == sorted(ordered_sizes), (
+        f"expected ascending file sizes, got {ordered_sizes}"
+    )
+    assert ordered_sizes[0] == 100_000
