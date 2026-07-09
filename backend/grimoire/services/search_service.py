@@ -188,3 +188,185 @@ def merge_candidates(
             seen.add(pid)
             merged.append(pid)
     return merged[:cap]
+
+
+# --- Full search flow --------------------------------------------------------
+
+from grimoire.services.embeddings import generate_embeddings  # noqa: E402
+from grimoire.services.fts_service import search_fts  # noqa: E402
+from grimoire.services.hybrid_search import reciprocal_rank_fusion  # noqa: E402
+from grimoire.services.query_interpreter import Interpretation, interpret_query  # noqa: E402
+
+
+def build_interpreted_conditions(interp: Interpretation) -> list:
+    """Lenient conditions for interpreter-derived filters: (== value) OR NULL.
+    A misparse or unlabeled product must not vanish silently. Explicit
+    FilterDrawer filters stay strict (build_semantic_filter_conditions)."""
+    conditions = []
+    if interp.game_system:
+        conditions.append(
+            (Product.game_system == interp.game_system) | (Product.game_system.is_(None))
+        )
+    if interp.product_type:
+        conditions.append(
+            (Product.product_type == interp.product_type) | (Product.product_type.is_(None))
+        )
+    if interp.level_min is not None:
+        conditions.append(
+            (Product.level_range_max >= interp.level_min) | (Product.level_range_max.is_(None))
+        )
+    if interp.level_max is not None:
+        conditions.append(
+            (Product.level_range_min <= interp.level_max) | (Product.level_range_min.is_(None))
+        )
+    return conditions
+
+
+async def _allowed_ids(db, conditions: list, request) -> set[int] | None:
+    """Evaluate filters SQL-side once; None means unfiltered."""
+    from grimoire.models import ProductTag
+
+    extra = list(conditions)
+    if request.tags:
+        tag_ids = [int(t.strip()) for t in request.tags.split(",") if t.strip()]
+        if tag_ids:
+            tag_subq = select(ProductTag.product_id).where(ProductTag.tag_id.in_(tag_ids))
+            extra.append(Product.id.in_(tag_subq))
+    if request.collection:
+        from grimoire.models.collection import CollectionProduct
+        coll_subq = select(CollectionProduct.product_id).where(
+            CollectionProduct.collection_id == request.collection
+        )
+        extra.append(Product.id.in_(coll_subq))
+
+    if not extra:
+        return None
+    result = await db.execute(select(Product.id).where(*extra))
+    return set(result.scalars().all())
+
+
+async def search(db, request) -> dict:
+    """Two-stage semantic search. request is a SemanticSearchRequest."""
+    from sqlalchemy.orm import selectinload
+    from grimoire.models import ProductTag
+    from grimoire.api.routes.products import product_to_response
+    from grimoire.api.routes.semantic import build_semantic_filter_conditions
+
+    # 1. Interpret (explicit drawer filters win over interpreted ones)
+    interp: Interpretation | None = None
+    semantic_query = request.query
+    if getattr(request, "interpret", True):
+        interp = await interpret_query(db, request.query)
+        if request.game_system:
+            interp.game_system = None
+        if request.product_type:
+            interp.product_type = None
+        if request.level_min is not None or request.level_max is not None:
+            interp.level_min = None
+            interp.level_max = None
+        semantic_query = interp.semantic_query or request.query
+
+    # 2. Pre-filter: strict explicit conditions + lenient interpreted ones
+    conditions = build_semantic_filter_conditions(request)
+    if interp is not None:
+        conditions += build_interpreted_conditions(interp)
+    allowed = await _allowed_ids(db, conditions, request)
+
+    # 3. Embed the (refined) query
+    query_embeddings = await generate_embeddings([semantic_query], None, request.model)
+    query_vector = query_embeddings[0].embedding
+
+    # 4. Stage 1 candidates: SV top-N union BM25 top-N
+    ids, matrix = await get_sv_index(db)
+    sv_candidates = sv_top_candidates(
+        query_vector, ids, matrix, allowed, CANDIDATES_PER_SOURCE
+    )
+
+    keyword_ranking: list[tuple[int, float]] = []
+    try:
+        fts_results = await search_fts(
+            db, semantic_query,
+            game_system=request.game_system,
+            product_type=request.product_type,
+            limit=CANDIDATES_PER_SOURCE,
+        )
+        keyword_ranking = [
+            (r["id"], r["relevance_score"]) for r in fts_results
+            if allowed is None or r["id"] in allowed
+        ]
+    except Exception:
+        logger.warning("FTS failed during search; continuing semantic-only")
+
+    # Zero search vectors anywhere -> pure FTS fallback
+    if matrix is None and not sv_candidates:
+        candidate_ids = [pid for pid, _ in keyword_ranking]
+        semantic_ranking: list[tuple[int, float, str, int | None]] = []
+    else:
+        candidate_ids = merge_candidates(sv_candidates, keyword_ranking)
+
+        # 5. Stage 2: chunk-level re-rank over candidates only
+        per_product = await load_candidate_chunks(db, candidate_ids, len(query_vector))
+        reranked = rerank_by_chunks(query_vector, per_product)
+        semantic_ranking = [r for r in reranked if r[1] >= CHUNK_SCORE_THRESHOLD]
+
+    best_chunk = {pid: (text, page) for pid, _, text, page in semantic_ranking}
+
+    # 6. Fuse chunk ranking with keyword ranking
+    fused = reciprocal_rank_fusion(
+        [(pid, score) for pid, score, _, _ in semantic_ranking],
+        keyword_ranking,
+        semantic_weight=SEMANTIC_RRF_WEIGHT,
+        keyword_weight=KEYWORD_RRF_WEIGHT,
+    )
+    if fused and fused[0][1] > 0:
+        top_score = fused[0][1]
+        fused = [(pid, s / top_score) for pid, s in fused]
+
+    semantic_ids = {pid for pid, *_ in semantic_ranking}
+    keyword_ids = {pid for pid, _ in keyword_ranking}
+
+    matched_ids = [pid for pid, _ in fused][: request.top_k]
+    score_map = dict(fused)
+
+    if not matched_ids:
+        return {
+            "query": request.query,
+            "results": [],
+            "total_matches": 0,
+            "interpretation": interp.to_dict() if interp else None,
+        }
+
+    # 7. Hydrate products and build response items
+    products_result = await db.execute(
+        select(Product)
+        .where(Product.id.in_(matched_ids))
+        .options(selectinload(Product.product_tags).selectinload(ProductTag.tag))
+    )
+    products = {p.id: p for p in products_result.scalars().all()}
+
+    results = []
+    for pid in matched_ids:
+        product = products.get(pid)
+        if not product:
+            continue
+        item = product_to_response(product).model_dump()
+        item["score"] = round(score_map[pid], 4)
+        chunk_text, page = best_chunk.get(pid, (None, None))
+        item["matched_page"] = page
+        item["snippet"] = (
+            chunk_text[:150] + "..." if chunk_text and len(chunk_text) > 150 else chunk_text
+        )
+        if pid in semantic_ids and pid in keyword_ids:
+            item["match_type"] = "both"
+        elif pid in semantic_ids:
+            item["match_type"] = "semantic"
+        else:
+            item["match_type"] = "keyword"
+        results.append(item)
+
+    return {
+        "query": request.query,
+        "results": results,
+        "total_matches": len(results),
+        "interpretation": interp.to_dict() if interp else None,
+    }
