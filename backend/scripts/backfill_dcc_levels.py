@@ -18,12 +18,18 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-_MODULE_NUM_RE = re.compile(r"dcc\W{0,3}#?\s*0*(\d+)\b", re.IGNORECASE)
+_MODULE_NUM_RE = re.compile(r"dcc\W{0,3}#?\s*0*(\d+\.\d+(?!\d)|\d+\b)", re.IGNORECASE)
 
 
 def parse_module_number(text: str) -> str | None:
-    """Extract a DCC module number ('DCC #67', 'DCC 067', 'dcc-035') as a
-    canonical no-leading-zeros string, or None."""
+    """Extract a DCC module number ('DCC #67', 'DCC 067', 'dcc-035', 'DCC #91.1')
+    as a canonical no-leading-zeros string (decimal sub-module suffix preserved
+    verbatim, e.g. '91.1'), or None.
+
+    The integer-only branch requires a trailing word boundary (rejects e.g.
+    'dcc35a.pdf' as ambiguous). The decimal branch does NOT require one,
+    because real file names glue the sub-module suffix directly onto the
+    title with no separator (e.g. 'DCC91.1Barako.pdf' -> '91.1')."""
     m = _MODULE_NUM_RE.search(text or "")
     return m.group(1) if m else None
 
@@ -99,7 +105,10 @@ async def run(dry_run: bool) -> None:
                 unmatched.append(p)
 
         for p, (csv_title, lmin, lmax), how in matched:
-            print(f"  [{how:>14}] {p.title or p.file_name!r} -> levels {lmin}-{lmax} ({csv_title})")
+            print(
+                f"  [{how:>14}] title={p.title!r} file={p.file_name!r} "
+                f"-> levels {lmin}-{lmax} ({csv_title})"
+            )
             if not dry_run:
                 p.level_range_min = lmin
                 p.level_range_max = lmax

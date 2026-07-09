@@ -10,6 +10,8 @@ from scripts.backfill_dcc_levels import normalize_title, parse_module_number
     ("dcc-035-gazetteer.pdf", "35"),
     ("DCC RPG Core Rulebook", None),          # no module number
     ("Sailors on the Starless Sea", None),
+    ("DCC #91.1 Barako", "91.1"),             # decimal sub-module
+    ("dcc-091.2-lairs.pdf", "91.2"),          # decimal sub-module, leading-zero integer part
 ])
 def test_parse_module_number(text, expected):
     assert parse_module_number(text) == expected
