@@ -500,6 +500,54 @@ def extract_with_pymupdf4llm(
     return pymupdf4llm.to_markdown(str(pdf_path), pages=pages, show_progress=False)
 
 
+def extract_with_pymupdf4llm_pages(
+    pdf_path: str | Path,
+    start_page: int = 1,
+    end_page: int | None = None,
+) -> list[dict]:
+    """Extract per-page markdown using pymupdf4llm's page_chunks mode.
+
+    Returns a list of {"page": <1-based page number>, "markdown": str}.
+    Page numbers come from the indices we request, not from pymupdf4llm
+    metadata, so they are correct regardless of library version.
+    """
+    if not PYMUPDF4LLM_AVAILABLE:
+        raise ImportError("pymupdf4llm not available")
+
+    total_pages = _get_page_count(pdf_path)
+    if end_page is None:
+        end_page = total_pages
+
+    page_indices = list(range(start_page - 1, min(end_page, total_pages)))
+    chunks = pymupdf4llm.to_markdown(
+        str(pdf_path), pages=page_indices, page_chunks=True, show_progress=False
+    )
+    return [
+        {"page": idx + 1, "markdown": chunk["text"]}
+        for idx, chunk in zip(page_indices, chunks)
+    ]
+
+
+_PAGE_MARKER_RE = re.compile(r"^## Page (\d+)\s*$", re.MULTILINE)
+
+
+def split_pages_by_markers(markdown: str) -> list[dict] | None:
+    """Split markdown into per-page segments on the '## Page N' headings the
+    pymupdf/pdfplumber/OCR extractors emit. Returns None when no markers exist
+    (marker/markitdown output). Segments concatenate back to the input exactly;
+    any front matter before the first marker attaches to the first page.
+    """
+    matches = list(_PAGE_MARKER_RE.finditer(markdown))
+    if not matches:
+        return None
+    pages = []
+    for i, m in enumerate(matches):
+        start = 0 if i == 0 else m.start()
+        end = matches[i + 1].start() if i + 1 < len(matches) else len(markdown)
+        pages.append({"page": int(m.group(1)), "markdown": markdown[start:end]})
+    return pages
+
+
 def extract_with_marker(pdf_path: str | Path, start_page: int = 1, end_page: int | None = None) -> str:
     """Extract text using Marker (ML-based, best for complex layouts)."""
     if not MARKER_AVAILABLE or not MARKER_CONVERTER:
@@ -734,11 +782,15 @@ def extract_text_to_markdown(
         except Exception as e:
             print(f"Marker extraction failed: {e}")
 
+    pages_list: list[dict] | None = None
+
     if markdown_text is None and PYMUPDF4LLM_AVAILABLE:
         try:
-            candidate = extract_with_pymupdf4llm(pdf_path, start_page, end_page)
+            page_entries = extract_with_pymupdf4llm_pages(pdf_path, start_page, end_page)
+            candidate = "\n\n".join(p["markdown"] for p in page_entries)
             if candidate and candidate.strip():
                 markdown_text = candidate
+                pages_list = page_entries
                 method_used = "pymupdf4llm"
         except Exception as e:
             print(f"pymupdf4llm extraction failed: {e}")
@@ -772,13 +824,20 @@ def extract_text_to_markdown(
         except Exception as e:
             return {"error": f"All extraction methods failed: {e}"}
 
-    return {
+    result = {
         "markdown": markdown_text,
         "total_pages": total_pages,
         "pages_extracted": f"{start_page}-{end_page}",
         "method": method_used,
         "char_count": len(markdown_text),
     }
+    # pymupdf/pdfplumber emit "## Page N" headings — recover pages from those
+    # when the page_chunks path didn't run.
+    if pages_list is None:
+        pages_list = split_pages_by_markers(markdown_text)
+    if pages_list:
+        result["pages"] = pages_list
+    return result
 
 
 def get_available_extractors() -> dict:

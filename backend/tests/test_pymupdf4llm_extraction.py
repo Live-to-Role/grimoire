@@ -35,7 +35,9 @@ def test_empty_output_falls_through_to_next_backend(text_pdf, monkeypatch):
     from grimoire.processors import text_extractor
 
     monkeypatch.setattr(
-        text_extractor, "extract_with_pymupdf4llm", lambda *a, **k: "   \n  "
+        text_extractor,
+        "extract_with_pymupdf4llm_pages",
+        lambda *a, **k: [{"page": 1, "markdown": "   \n  "}],
     )
     result = text_extractor.extract_text_to_markdown(text_pdf)
     assert result["method"] != "pymupdf4llm"
