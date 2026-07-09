@@ -403,6 +403,8 @@ async def handle_ocr_text_task(db: AsyncSession, product: Product) -> bool:
             text_dir.mkdir(parents=True, exist_ok=True)
             text_file = text_dir / f"{product.id}.json"
 
+            from grimoire.processors.text_extractor import split_pages_by_markers
+
             result = {
                 "markdown": markdown_text,
                 "total_pages": total_pages,
@@ -411,6 +413,9 @@ async def handle_ocr_text_task(db: AsyncSession, product: Product) -> bool:
                 "char_count": len(markdown_text),
                 "ocr_used": True,
             }
+            pages = split_pages_by_markers(markdown_text)
+            if pages:
+                result["pages"] = pages
 
             with open(text_file, "w", encoding="utf-8") as f:
                 json.dump(result, f, ensure_ascii=False, indent=2)

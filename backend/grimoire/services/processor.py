@@ -261,3 +261,26 @@ def get_extracted_text(product: Product) -> str | None:
             return data.get("markdown")
     except Exception:
         return None
+
+
+def get_extracted_pages(product: Product) -> list[dict] | None:
+    """Get per-page extracted markdown for a product.
+
+    Returns the "pages" list ([{"page": int, "markdown": str}, ...]) when the
+    extraction JSON carries page anchors, or None for legacy flat files.
+    """
+    import json
+
+    if not product.text_extracted or not product.extracted_text_path:
+        return None
+
+    text_path = Path(product.extracted_text_path)
+    if not text_path.exists():
+        return None
+
+    try:
+        with open(text_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+            return data.get("pages")
+    except Exception:
+        return None
