@@ -61,6 +61,12 @@ PROCESSING_PAUSED_KEY = "processing_paused"
 # Below this many non-whitespace chars, an OCR result counts as "no text".
 MIN_EXTRACTED_CHARS = 20
 
+# Extraction cost guard: skip PDFs above these thresholds at worker pickup
+# (before any file open / detection / OCR) so one giant scanned file can't
+# stall the whole sequential queue.
+MAX_EXTRACTION_FILE_MB = 250
+MAX_EXTRACTION_PAGES = 1000
+
 
 async def is_processing_paused(session_maker=None) -> bool:
     """Return whether background processing is paused. Defaults to True (paused).
@@ -150,6 +156,21 @@ async def get_setting(db: AsyncSession, key: str, default=None):
 
     _settings_cache[key] = (now, value)
     return value
+
+
+def _oversized_skip_reason(product) -> str | None:
+    """Return a reason string if a product is too large to extract, else None.
+
+    Size is the primary guard and never opens the file. The page check only
+    fires when `page_count` is already populated (set during cover extraction);
+    a None page_count is not treated as a reason to open the PDF.
+    """
+    size_mb = (product.file_size or 0) / (1024 * 1024)
+    if size_mb > MAX_EXTRACTION_FILE_MB:
+        return f"oversized: {size_mb:.0f} MB (limit {MAX_EXTRACTION_FILE_MB} MB)"
+    if product.page_count and product.page_count > MAX_EXTRACTION_PAGES:
+        return f"oversized: {product.page_count} pages (limit {MAX_EXTRACTION_PAGES})"
+    return None
 
 
 def is_processing_disposition_blocked(product) -> bool:
