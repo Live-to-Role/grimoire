@@ -44,7 +44,7 @@ Four legs, one branch:
 - The metadata preamble (unchanged content, `build_metadata_preamble`) becomes chunk(s) with `page_start = page_end = NULL`.
 - `ProductEmbedding` gains nullable `page_start`, `page_end` integer columns via the established `_ensure_columns()` pattern in `database.py`.
 - Both embed paths (`handle_embed_task` in `queue_processor.py` and `POST /semantic/embed/{id}` / `embed-batch` in `routes/semantic.py`) use the page-aware chunker when `pages` exist, falling back to flat chunking (NULL pages) otherwise.
-- **Chunk size: 1000 chars, overlap 100** (was 500/50). Rationale: nomic-embed-text takes 8k tokens so ~250-token chunks stay topical; halves chunk count (~3.7M → ~1.8M) and therefore stage-2 re-rank I/O; pairs better with top-3-mean scoring than tiny fragments. Old 500-char chunks keep working during the transition — nothing checks chunk length.
+- **Chunk size: 1000 chars, overlap 100** (was 500/50) — the `chunk_text` defaults, `handle_embed_task`'s hardcoded `500, 50`, and `EmbedProductRequest.chunk_size`'s default all move to the new values. Rationale: nomic-embed-text takes 8k tokens so ~250-token chunks stay topical; halves chunk count (~3.7M → ~1.8M) and therefore stage-2 re-rank I/O; pairs better with top-3-mean scoring than tiny fragments. Old 500-char chunks keep working during the transition — nothing checks chunk length.
 
 ## Phase 1 — Query Interpretation
 
@@ -85,7 +85,7 @@ New `services/search_service.py` owns the flow; the `/semantic/search` route han
 
 1. **Interpret** (per Phase 1) → merged filters + `semantic_query`; embed `semantic_query` (provider from settings, unchanged).
 2. **Pre-filter:** evaluate all filter conditions SQL-side once → `allowed_ids` set (`None` when unfiltered). Filters constrain candidate gathering, not just post-hoc trimming.
-3. **Stage 1 — candidates:** top 150 averaged-vector matches (restricted to `allowed_ids`, no threshold) ∪ top 150 BM25 (`search_fts`, post-filtered by `allowed_ids`), capped at 200 products. The SV matrix gets a real in-memory cache (12.7k × 768 float32 ≈ 39 MB), invalidated by the existing `invalidate_vector_cache()` — today's code reloads every SV row per search.
+3. **Stage 1 — candidates:** top 150 averaged-vector matches (restricted to `allowed_ids`, no threshold) ∪ top 150 BM25 (`search_fts`, post-filtered by `allowed_ids`), capped at 200 products — all SV candidates kept, remainder filled from BM25 in rank order. The SV matrix gets a real in-memory cache (12.7k × 768 float32 ≈ 39 MB), invalidated by the existing `invalidate_vector_cache()` — today's code reloads every SV row per search.
 4. **Stage 2 — chunk re-rank:** load `ProductEmbedding` rows for candidate ids where `embedding_dim` matches the query vector (stale MiniLM chunks skipped by construction). Product score = mean of top-3 chunk cosine similarities (max when fewer than 3 chunks). Per-product chunk matrices in a bounded LRU cache (keyed product_id + model), invalidated alongside the SV cache.
 5. **Fuse:** `reciprocal_rank_fusion(chunk_ranking, bm25_ranking)`; weights are named tunable constants, tuned via the eval harness.
 6. **Threshold on meaningful scores:** minimum best-chunk similarity (initial 0.45, eval-tuned) applies to semantic candidates. Products with no valid chunks survive on BM25 rank alone (graceful mid-re-embed degradation). If zero search vectors exist at all, fall back to pure FTS results instead of returning nothing.
