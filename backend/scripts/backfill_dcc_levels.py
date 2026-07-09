@@ -20,6 +20,17 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 _MODULE_NUM_RE = re.compile(r"dcc\W{0,3}#?\s*0*(\d+\.\d+(?!\d)|\d+\b)", re.IGNORECASE)
 
+# Products the user reviewed in the dry-run and chose to exclude: a rules
+# sourcebook false-matched by module number, plus map/card/DM-screen
+# accessories that are not the adventure itself (would inherit a misleading
+# level). Matched by exact file_name.
+_EXCLUDED_FILE_NAMES = {
+    "DCC3-AdvancedEquipmentOptions.pdf",
+    "DCC54-Card-Inserts.pdf",
+    "DCC55-Maps.pdf",
+    "DCC39-DM-Screen-2.pdf",
+}
+
 
 def parse_module_number(text: str) -> str | None:
     """Extract a DCC module number ('DCC #67', 'DCC 067', 'dcc-035', 'DCC #91.1')
@@ -81,6 +92,9 @@ async def run(dry_run: bool) -> None:
 
         matched, unmatched = [], []
         for p in candidates:
+            if p.file_name in _EXCLUDED_FILE_NAMES:
+                print(f"  [       EXCLUDED] title={p.title!r} file={p.file_name!r}")
+                continue
             entry = None
             how = ""
             num = parse_module_number(p.title or "") or parse_module_number(p.file_name or "")
