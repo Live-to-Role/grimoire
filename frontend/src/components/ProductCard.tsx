@@ -13,9 +13,10 @@ interface ProductCardProps {
   selected?: boolean;
   onSelectionChange?: (productId: number, selected: boolean) => void;
   score?: number;
+  snippet?: string;
 }
 
-export function ProductCard({ product, onClick, viewMode = 'grid', selectable, selected, onSelectionChange, score }: ProductCardProps) {
+export function ProductCard({ product, onClick, viewMode = 'grid', selectable, selected, onSelectionChange, score, snippet }: ProductCardProps) {
   const [queued, setQueued] = useState(false);
   const [coverError, setCoverError] = useState(false);
 
@@ -109,6 +110,14 @@ export function ProductCard({ product, onClick, viewMode = 'grid', selectable, s
             {product.publisher && <span>{product.publisher}</span>}
             {product.page_count && <span>· {product.page_count} pages</span>}
           </div>
+          {snippet && (
+            <p
+              className="mt-1 text-xs italic line-clamp-2"
+              style={{ color: 'var(--color-text-secondary)' }}
+            >
+              {snippet}
+            </p>
+          )}
         </div>
 
         <div className="flex items-center gap-2">
@@ -269,6 +278,15 @@ export function ProductCard({ product, onClick, viewMode = 'grid', selectable, s
         <h3 className="line-clamp-2 text-lg font-semibold" style={{ color: 'var(--color-text-primary)' }}>
           {product.title || product.file_name}
         </h3>
+
+        {snippet && (
+          <p
+            className="mt-1 text-xs italic line-clamp-2"
+            style={{ color: 'var(--color-text-secondary)' }}
+          >
+            {snippet}
+          </p>
+        )}
 
         {product.publisher && (
           <p className="mt-1 text-base font-medium" style={{ color: 'var(--color-text-secondary)' }}>

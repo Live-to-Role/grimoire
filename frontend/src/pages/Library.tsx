@@ -53,6 +53,10 @@ export function Library({
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [showBulkEdit, setShowBulkEdit] = useState(false);
   const [queuePaused, setQueuePaused] = useState(false);
+  // When the user removes an interpretation chip, we re-issue the search with
+  // interpret=false plus the remaining interpreted filters made explicit.
+  const [interpretDisabled, setInterpretDisabled] = useState(false);
+  const [chipFilters, setChipFilters] = useState<Partial<ProductFilters>>({});
 
   const debouncedSearch = useDebounce(searchInput, 300);
 
@@ -90,8 +94,9 @@ export function Library({
     isLoading: semanticLoading,
     error: semanticError,
   } = useQuery({
-    queryKey: ['semantic-search', activeSearch, effectiveFilters],
-    queryFn: () => semanticSearch(activeSearch, 20, effectiveFilters),
+    queryKey: ['semantic-search', activeSearch, effectiveFilters, chipFilters, interpretDisabled],
+    queryFn: () =>
+      semanticSearch(activeSearch, 20, { ...effectiveFilters, ...chipFilters }, { interpret: !interpretDisabled }),
     enabled: activeSearch.length > 0 && searchSemantic,
     staleTime: 60000,
   });
@@ -102,6 +107,18 @@ export function Library({
     const map: Record<number, number> = {};
     for (const r of semanticData.results) {
       map[r.id] = r.score;
+    }
+    return map;
+  }, [semanticData]);
+
+  // Build snippet map (page-prefixed) from semantic results
+  const snippetMap = useMemo(() => {
+    if (!semanticData?.results) return undefined;
+    const map: Record<number, string> = {};
+    for (const r of semanticData.results) {
+      if (r.snippet) {
+        map[r.id] = r.matched_page ? `p. ${r.matched_page}: ${r.snippet}` : r.snippet;
+      }
     }
     return map;
   }, [semanticData]);
@@ -118,6 +135,8 @@ export function Library({
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
+    setInterpretDisabled(false);
+    setChipFilters({});
     if (searchContent || searchSemantic) {
       setActiveSearch(searchInput);
     } else {
@@ -130,6 +149,8 @@ export function Library({
     setSearchInput('');
     setActiveSearch('');
     setFilters((prev) => ({ ...prev, search: undefined }));
+    setInterpretDisabled(false);
+    setChipFilters({});
   };
 
   // Flatten infinite query pages into a single array
@@ -418,6 +439,57 @@ export function Library({
                   </button>
                 )}
               </div>
+              {searchSemantic && semanticData?.interpretation && !interpretDisabled && (() => {
+                const interp = semanticData.interpretation;
+                const chips: { key: string; label: string; asFilters: Partial<ProductFilters> }[] = [];
+                if (interp.level_min !== null || interp.level_max !== null) {
+                  const label = interp.level_min === interp.level_max
+                    ? `Level ${interp.level_min}`
+                    : `Levels ${interp.level_min ?? '?'}–${interp.level_max ?? '?'}`;
+                  chips.push({
+                    key: 'level', label,
+                    asFilters: {
+                      level_min: interp.level_min != null ? String(interp.level_min) : undefined,
+                      level_max: interp.level_max != null ? String(interp.level_max) : undefined,
+                    },
+                  });
+                }
+                if (interp.game_system) {
+                  chips.push({ key: 'system', label: `System: ${interp.game_system}`, asFilters: { game_system: interp.game_system } });
+                }
+                if (interp.product_type) {
+                  chips.push({ key: 'type', label: `Type: ${interp.product_type}`, asFilters: { product_type: interp.product_type } });
+                }
+                if (chips.length === 0) return null;
+                const removeChip = (removedKey: string) => {
+                  const remaining = chips.filter((c) => c.key !== removedKey);
+                  setChipFilters(Object.assign({}, ...remaining.map((c) => c.asFilters)));
+                  setInterpretDisabled(true);
+                };
+                return (
+                  <div className="mb-3 flex flex-wrap items-center gap-2">
+                    <span className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>
+                      Interpreted:
+                    </span>
+                    {chips.map((chip) => (
+                      <button
+                        key={chip.key}
+                        onClick={() => removeChip(chip.key)}
+                        className="flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs"
+                        style={{
+                          backgroundColor: 'var(--color-surface-raised)',
+                          color: 'var(--color-text-primary)',
+                          border: '1px solid var(--color-border)',
+                        }}
+                        title="Remove this filter and search again"
+                      >
+                        {chip.label}
+                        <span aria-hidden>×</span>
+                      </button>
+                    ))}
+                  </div>
+                );
+              })()}
               {searchSemantic && semanticData && semanticData.total_matches < 3 && activeSearch && (
                 <div
                   className="mb-4 rounded-lg p-3 text-sm"
@@ -448,6 +520,7 @@ export function Library({
                 selectedIds={selectedIds}
                 onSelectionChange={handleSelectionChange}
                 scoreMap={searchSemantic ? scoreMap : undefined}
+                snippetMap={searchSemantic ? snippetMap : undefined}
               />
             </>
           ) : null}
