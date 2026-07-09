@@ -1,0 +1,142 @@
+number,title,level_min,level_max
+0,Legends are Made Not Born,0,0
+1,Idylls of the Rat King,1,3
+2,The Lost Vault of Tsathzar Rho,1,1
+3,The Mysterious Tower,3,5
+3.5,The Haunted Lighthouse,4,6
+4,Bloody Jack's Gold,10,12
+5,Aerie of the Crow God,7,9
+6,Temple of the Dragon Cult,8,10
+7,The Secret of Smuggler's Cove,5,7
+8,Mysteries of the Drow,7,9
+10,The Sunless Garden,6,8
+11,The Dragonfiend Pact,2,2
+12,The Blackguard's Revenge,9,11
+12.5,The Iron Crypt of the Heretics,11,13
+13,Crypt of the Devil Lich,15,15
+15,Lost Tomb of the Sphinx Queen,14,15
+16,Curse of the Emerald Cobra,6,8
+17,Legacy of the Savage Kings,4,6
+17.5,War of the Witch Queen,7,9
+18,Citadel of the Demon Prince,12,13
+19,The Volcano Caves,7,9
+20,Shadows in Freeport,6,8
+20.5,The Mask of Death,5,7
+21,Assault on Stormbringer Castle,12,14
+22,The Stormbringer Juggernaut,14,16
+23,The Sunken Ziggurat,5,7
+24,Legend of the Ripper,1,3
+25,The Dread Crypt of Srihoz,9,11
+26,The Scaly God,4,6
+27,Revenge of the Rat King,4,6
+28,Into the Wilds,1,3
+30,Vault of the Dragon Kings,10,10
+30.5,Trek From The Vault,9,11
+31,The Transmuter's Last Touch,1,2
+32,The Golden Palace of Zahadran,14,16
+33,Belly of the Great Beast,21,24
+34,Cage of Delirium,6,8
+36,Talons of the Horned King,3,5
+37,The Slithering Overlord,4,6
+38,Escape from the Forest of Lanterns,7,9
+39,The Ruins of Castle Churo,1,3
+40,Devil in the Mists,7,9
+41,The Lost Arrows of Aristemis,1,3
+42,Secret of the Stonearm,2,3
+43,Curse of the Barrens,3,5
+44,Dreaming Caverns of the Duergar,1,3
+45,Malice of the Medusa,1,3
+47,Tears of the Genie,6,8
+49,Palace in the Wastes,6,7
+50,Vault of the Iron Overlord,7,9
+51,Castle Whiterock,1,15
+51.5,The Sinister Secret of Whiterock,1,3
+53,Sellswords of Punjar,1,1
+54,Forges of the Mountain King,1,1
+55,Isle of the Sea Drake,1,1
+56,Scions of Punjar,4,4
+57,Wyvern Mountain,4,4
+58,The Forgotten Portal,4,4
+59,Mists of Madness,1,1
+60,Thrones of Punjar,7,9
+61,Citadel of the Corruptor,7,9
+62,Shrine of the Fallen Lama,10,12
+63,The Warbringer's Son,1,1
+64,Codex of the Damned,5,5
+65,Caves of the Crawling Lord,8,8
+66,The Vampire's Vengeance,6,7
+66.5,Doom of the Savage Kings,1,1
+67,Sailors on the Starless Sea,0,0
+68,The People of the Pit,1,1
+69,The Emerald Enchanter,2,2
+70,Jewels of the Carnifex,3,3
+71,The 13th Skull,4,4
+72,Beyond the Black Gate,5,5
+73,Emirikol Was Framed,4,4
+74,Blades Against Death,4,4
+75,The Sea Queen Escapes,3,3
+76,Colossus Arise,8,8
+76.5,Well of the Worm,1,1
+77,The Croaking Fane,3,3
+77.5,The Tower Out of Time,2,2
+78,Fate's Fell Hand,2,2
+79,Frozen in Time,1,1
+79.5,The Tower of the Black Pearl,1,1
+80,Intrigue at the Court of Chaos,1,1
+80.5,Glipkerio's Gambit,2,2
+81,The One who Watches from Below,1,1
+82,Bride of the Black Manse,3,3
+82.5,Dragora's Dungeon,1,1
+83,The Chained Coffin,5,5
+83.1,Tales of the Shudder Mountain,4,5
+83.2,Death Among the Pines,3,3
+84,Peril on the Purple Planet,4,4
+84.1,The Rock Awakens,4,4
+84.2,Synthetic Swordsmen of the Purple Planet,5,5
+84.3,Sky Masters of the Purple Planet,6,6
+85,The Making of the Ghost Ring,4,4
+86,Hole in the Sky,0,0
+87,Against the Atomic Overlord,5,5
+87.5,Grimtooth's Museum of Death,1,1
+88,The 998th Conclave of Wizards,6,6
+88.5,Curse of the Kingspire,2,2
+90,The Dread God Al-Khazadar,4,4
+91,Journey to the Center of Aereth,4,4
+91.1,The Lost City of Barako,6,6
+91.2,Lairs of Lost Agharta,6,6
+92,Through the Dragonwall,3,3
+92.5,Dread on Demon Crown Hill,2,2
+93,Moon-Slaves of the Cannibal Kingdom,2,2
+94,Neon Knights,3,3
+95,Enter the Dagon,5,5
+96,The Tower of Faces,6,6
+97,The Queen of Elfland's Son,1,1
+98,Imprisoned in the God-Skull,6,6
+99,The Star Wound of Abaddon,3,3
+100,The Music of the Spheres is Chaos,5,5
+101,The Veiled Vaults of the Onyx Queen,0,0
+102,Dweller Between the Worlds,1,1
+103,Bloom of the Blood Garden,0,0
+104,Return to the Starless Sea,0,0
+105,By Mitra's Bones Meet Thy Doom,2,2
+106,Trials of the Trapmaster's Tomb,0,0
+107,Forgotten Dangers,1,3
+108,The Seventh Thrall of Sezrekan,0,0
+109,Beneath the Isle of Serpents,2,2
+110,Sacrificial Pyre of Thracia,1,1
+111,Grave Robbers of Thracia,0,0
+112,Mother of Monsters,2,2
+lankhmar-1,Gang Lords of Lankhmar,1,1
+lankhmar-2,The Fence's Fortuitous Folly,2,2
+lankhmar-3,Acting Up in Lankhmar,2,2
+lankhmar-4,Violence for Votishal,4,4
+lankhmar-5,Blasphemy & Larceny in Lankhmar,5,5
+lankhmar-6,Cheating Death,1,1
+lankhmar-8,The Land of the Eight Cities,3,3
+lankhmar-9,Grave Matters,2,2
+lankhmar-10,Unholy Nights in Lankhmar,2,2
+lankhmar-11,The Rats of Ilthmar,3,3
+lankhmar-12,Mercy on the Day of the Eel,2,2
+lankhmar-13,Treachery in the Beggar City,3,3
+lankhmar-14,Thieves of Cold Corner,3,3
+lankhmar-15,The House of Jade and Shadow,1,1
