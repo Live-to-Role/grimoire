@@ -152,3 +152,42 @@ async def test_pending_batch_orders_smallest_file_first(db):
         f"expected ascending file sizes, got {ordered_sizes}"
     )
     assert ordered_sizes[0] == 100_000
+
+
+@pytest.mark.asyncio
+async def test_pending_batch_surfaces_orphaned_queue_rows(db):
+    # SQLite FK enforcement is off and there is no ORM cascade from
+    # Product -> ProcessingQueue, so deleting a product can leave its
+    # pending queue rows orphaned (product_id points nowhere). Before the
+    # smallest-first join was added, get_pending_batch had no join and
+    # returned these rows, letting the worker mark them failed
+    # ("Product not found") and self-clean. An INNER join silently
+    # excludes them, so they'd linger as pending forever. Assert the
+    # orphan still surfaces so it can keep self-cleaning.
+    product = Product(
+        file_path="/x/orphan.pdf",
+        file_name="orphan.pdf",
+        file_size=123_456,
+        file_hash="orphan-queue-row-1",
+    )
+    db.add(product)
+    await db.commit()
+    orphan_product_id = product.id
+
+    queue_item = ProcessingQueue(
+        product_id=orphan_product_id, task_type="text", priority=6, status="pending",
+    )
+    db.add(queue_item)
+    await db.commit()
+
+    # Delete the product directly, leaving the queue row's product_id dangling.
+    await db.delete(product)
+    await db.commit()
+
+    batch = await get_pending_batch(db, batch_size=1000)
+
+    mine = [item for item in batch if item.product_id == orphan_product_id]
+    assert len(mine) == 1, (
+        f"expected orphaned queue row for product_id={orphan_product_id} "
+        f"to surface in get_pending_batch, got {len(mine)} matches"
+    )

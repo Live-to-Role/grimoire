@@ -164,6 +164,10 @@ def _oversized_skip_reason(product) -> str | None:
     Size is the primary guard and never opens the file. The page check only
     fires when `page_count` is already populated (set during cover extraction);
     a None page_count is not treated as a reason to open the PDF.
+
+    Assumes a real Product with a numeric `file_size`; tests mocking a
+    product must set `file_size` explicitly, or `MagicMock > int` will trip
+    the guard.
     """
     size_mb = (product.file_size or 0) / (1024 * 1024)
     if size_mb > MAX_EXTRACTION_FILE_MB:
@@ -892,7 +896,15 @@ async def get_pending_batch(db: AsyncSession, batch_size: int) -> list[Processin
     """
     query = (
         select(ProcessingQueue)
-        .join(Product, ProcessingQueue.product_id == Product.id)
+        # LEFT OUTER join (not inner): SQLite FK enforcement is off and there is
+        # no ORM cascade from Product -> ProcessingQueue, so deleting a product
+        # (dedup resolution, bulk delete, folder delete) can orphan its pending
+        # queue rows. An inner join would silently hide those rows forever; the
+        # outer join lets them surface (Product.file_size is NULL, which SQLite
+        # sorts first under ASC) so the worker still picks them up, fails them
+        # with "Product not found", and self-cleans — same as before this join
+        # was added.
+        .outerjoin(Product, ProcessingQueue.product_id == Product.id)
         .where(ProcessingQueue.status == "pending")
         .order_by(
             ProcessingQueue.priority.desc(),
