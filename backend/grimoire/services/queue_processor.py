@@ -494,7 +494,7 @@ async def handle_fts_index_task(db: AsyncSession, product: Product) -> bool:
 async def handle_embed_task(db: AsyncSession, product: Product) -> bool:
     """Handle embedding generation task for semantic search."""
     from grimoire.services.processor import get_extracted_text
-    from grimoire.services.embeddings import generate_embeddings, chunk_text, build_metadata_preamble
+    from grimoire.services.embeddings import generate_embeddings, build_metadata_preamble, build_chunks_for_product
     from grimoire.models import ProductEmbedding
     from sqlalchemy import delete
 
@@ -507,47 +507,49 @@ async def handle_embed_task(db: AsyncSession, product: Product) -> bool:
         raise TaskError(f"Product {product.id} has no extracted_text_path")
 
     # Read file from disk in thread to avoid blocking the event loop
-    def _read_extracted_text(path: str) -> str | None:
+    def _read_extracted_text(path: str) -> tuple[str | None, list[dict] | None]:
         import json
         from pathlib import Path
         text_path = Path(path)
         if not text_path.exists():
-            return None
+            return None, None
         try:
             with open(text_path, "r", encoding="utf-8") as f:
                 data = json.load(f)
-                return data.get("markdown")
+                return data.get("markdown"), data.get("pages")
         except Exception:
-            return None
+            return None, None
 
-    text = await asyncio.to_thread(_read_extracted_text, extracted_text_path)
+    text, pages = await asyncio.to_thread(_read_extracted_text, extracted_text_path)
     if not text:
         raise TaskError(
             f"Product {product.id} '{product.file_name}' has no embeddable text "
             f"(file: {extracted_text_path})"
         )
 
-    # Prepend metadata so embeddings capture game system, publisher, etc.
+    # Metadata preamble becomes its own leading chunk(s); content chunks carry
+    # page anchors when the extraction JSON has them.
     preamble = build_metadata_preamble(product)
-    text = preamble + text
+    chunk_tuples = build_chunks_for_product(preamble, pages, text)
 
     # Chunk and embed BEFORE touching the DB to avoid holding a write
     # transaction open during the slow Ollama/OpenAI call.
-    chunks = chunk_text(text, 500, 50)
-    embeddings = await generate_embeddings(chunks)
+    embeddings = await generate_embeddings([c for c, _, _ in chunk_tuples])
 
     # Now do all DB writes quickly
     await db.execute(
         delete(ProductEmbedding).where(ProductEmbedding.product_id == product.id)
     )
 
-    for i, (chunk, emb_result) in enumerate(zip(chunks, embeddings)):
+    for i, ((chunk, page_start, page_end), emb_result) in enumerate(zip(chunk_tuples, embeddings)):
         embedding_record = ProductEmbedding(
             product_id=product.id,
             chunk_index=i,
             chunk_text=chunk[:1000],
             embedding_model=emb_result.model,
             embedding_dim=len(emb_result.embedding),
+            page_start=page_start,
+            page_end=page_end,
         )
         embedding_record.set_embedding_vector(emb_result.embedding)
         db.add(embedding_record)

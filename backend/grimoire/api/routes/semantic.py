@@ -10,7 +10,6 @@ from grimoire.services.processor import get_extracted_text
 from grimoire.services.embeddings import (
     generate_embeddings,
     find_similar,
-    chunk_text,
     SENTENCE_TRANSFORMERS_AVAILABLE,
 )
 from grimoire.processors.ai_identifier import (
@@ -179,33 +178,37 @@ async def embed_product(
             detail="Product has no extracted text"
         )
 
-    # Prepend metadata so embeddings capture game system, publisher, etc.
-    from grimoire.services.embeddings import build_metadata_preamble
+    from grimoire.services.processor import get_extracted_pages
+    from grimoire.services.embeddings import build_metadata_preamble, build_chunks_for_product
+    pages = get_extracted_pages(product)
     preamble = build_metadata_preamble(product)
-    text = preamble + text
+    chunk_tuples = build_chunks_for_product(
+        preamble, pages, text, request.chunk_size, request.overlap
+    )
 
     # Delete existing embeddings
     await db.execute(
         delete(ProductEmbedding).where(ProductEmbedding.product_id == product_id)
     )
 
-    # Chunk the text
-    chunks = chunk_text(text, request.chunk_size, request.overlap)
-
     # Generate embeddings
     try:
-        embeddings = await generate_embeddings(chunks, request.provider, request.model)
+        embeddings = await generate_embeddings(
+            [c for c, _, _ in chunk_tuples], request.provider, request.model
+        )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
     # Store embeddings
-    for i, (chunk, emb_result) in enumerate(zip(chunks, embeddings)):
+    for i, ((chunk, page_start, page_end), emb_result) in enumerate(zip(chunk_tuples, embeddings)):
         embedding_record = ProductEmbedding(
             product_id=product_id,
             chunk_index=i,
             chunk_text=chunk[:1000],  # Store truncated for reference
             embedding_model=emb_result.model,
             embedding_dim=len(emb_result.embedding),
+            page_start=page_start,
+            page_end=page_end,
         )
         embedding_record.set_embedding_vector(emb_result.embedding)
         db.add(embedding_record)
@@ -238,7 +241,7 @@ async def embed_product(
 
     return {
         "product_id": product_id,
-        "chunks_embedded": len(chunks),
+        "chunks_embedded": len(chunk_tuples),
         "model": embeddings[0].model if embeddings else None,
         "embedding_dim": len(embeddings[0].embedding) if embeddings else None,
     }
@@ -418,17 +421,26 @@ async def embed_batch(
             await db.execute(
                 delete(ProductEmbedding).where(ProductEmbedding.product_id == product_id)
             )
-            
-            chunks = chunk_text(text, chunk_size, 100)
-            embeddings = await generate_embeddings(chunks, provider, model)
-            
-            for i, (chunk, emb_result) in enumerate(zip(chunks, embeddings)):
+
+            from grimoire.services.processor import get_extracted_pages
+            from grimoire.services.embeddings import build_metadata_preamble, build_chunks_for_product
+            pages = get_extracted_pages(product)
+            chunk_tuples = build_chunks_for_product(
+                build_metadata_preamble(product), pages, text, chunk_size, 100
+            )
+            embeddings = await generate_embeddings(
+                [c for c, _, _ in chunk_tuples], provider, model
+            )
+
+            for i, ((chunk, page_start, page_end), emb_result) in enumerate(zip(chunk_tuples, embeddings)):
                 embedding_record = ProductEmbedding(
                     product_id=product_id,
                     chunk_index=i,
                     chunk_text=chunk[:1000],
                     embedding_model=emb_result.model,
                     embedding_dim=len(emb_result.embedding),
+                    page_start=page_start,
+                    page_end=page_end,
                 )
                 embedding_record.set_embedding_vector(emb_result.embedding)
                 db.add(embedding_record)
