@@ -1,8 +1,10 @@
 """Tests for image content classification heuristics."""
 import pytest
 
+from grimoire.processors import image_classifier
 from grimoire.processors.image_classifier import (
     classify_by_name,
+    detect_image_content,
     _has_book_indicators,
     _normalize_for_matching,
     matches_image_publisher,
@@ -99,3 +101,51 @@ def test_publisher_no_match_regular_book():
     assert not matches_image_publisher(
         "Players_Handbook.pdf", r"D:\Drivethrurpg\Wizards\Players_Handbook.pdf"
     )
+
+
+def test_classify_heroicmaps_camelcase_now_matches():
+    # Regression: '\bmaps\b' previously missed 'HeroicMaps'
+    assert classify_by_name("HeroicMaps_FireWyrm_GRID.pdf", "/x/HeroicMaps_FireWyrm_GRID.pdf") == "Map"
+
+
+def test_classify_tiles_keyword():
+    assert classify_by_name("Village_tiles.pdf", "/x/Village_tiles.pdf") == "Map"
+
+
+def test_classify_no_signal_still_none():
+    assert classify_by_name("Forest_river.pdf", "/x/Forest_river.pdf") is None
+
+
+def test_detect_blacklist_short_circuits_without_opening_file(monkeypatch):
+    # If content analysis were reached it would run on a missing path and return
+    # is_image_content=False. A True result proves the blacklist short-circuited.
+    def _boom(*a, **k):
+        raise AssertionError("_analyze_content must not be called for blacklist hits")
+    monkeypatch.setattr(image_classifier, "_analyze_content", _boom)
+
+    result = detect_image_content(
+        "/does/not/exist.pdf",
+        "HeroicMaps_Cliffs.pdf",
+        r"D:\Drivethrurpg\Heroic Maps\HeroicMaps_Cliffs.pdf",
+    )
+    assert result["is_image_content"] is True
+    assert result["classification"] == "Map"
+
+
+def test_detect_keyword_but_text_heavy_not_diverted(monkeypatch):
+    # Name matches 'map' keyword but content is mostly text -> NOT image content.
+    monkeypatch.setattr(
+        image_classifier,
+        "_analyze_content",
+        lambda *a, **k: {
+            "total_pages": 100, "pages_sampled": 10,
+            "image_dominant_pages": 1, "total_images": 2,
+            "total_text_chars": 50000, "avg_chars_per_page": 5000,
+        },
+    )
+    result = detect_image_content(
+        "/x/Dungeon_Map_Guide.pdf",
+        "Dungeon_Map_Guide.pdf",
+        "/x/Dungeon_Map_Guide.pdf",
+    )
+    assert result["is_image_content"] is False

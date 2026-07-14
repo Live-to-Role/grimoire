@@ -26,6 +26,7 @@ _CLASSIFICATION_RULES = [
         r"\bmap\b", r"\bmaps\b", r"cartograph", r"battlemap", r"battle\s*map",
         r"dungeon\s*map", r"floorplan", r"floor\s*plan", r"overland\s*map",
         r"world\s*map", r"city\s*map", r"town\s*map", r"hex\s*map",
+        r"\btile\b", r"\btiles\b", r"geomorph", r"\bgrid\b",
     ]),
     ("Token", [r"\btoken\b", r"\btokens\b", r"token\s*pack", r"token\s*set"]),
     ("Portrait", [r"\bportrait\b", r"\bportraits\b"]),
@@ -85,7 +86,10 @@ def classify_by_name(filename: str, file_path: str) -> str | None:
 
     Returns classification label if matched, None if no match.
     """
-    search_text = f"{filename} {file_path}"
+    if matches_image_publisher(filename, file_path):
+        return "Map"
+
+    search_text = _normalize_for_matching(f"{filename} {file_path}")
 
     for label, patterns in _CLASSIFICATION_RULES:
         for pattern in patterns:
@@ -134,6 +138,16 @@ def detect_image_content(
         - reason: str
         - stats: dict with analysis details
     """
+    # Known image-content publishers are decisive: classify as Map with no
+    # content analysis and no file open. Accepts a small false-positive risk.
+    if matches_image_publisher(filename, file_path):
+        return {
+            "is_image_content": True,
+            "classification": "Map",
+            "reason": "Matched known image-content publisher",
+            "stats": {},
+        }
+
     name_classification = classify_by_name(filename, file_path)
     is_book = _has_book_indicators(filename, file_path)
 
