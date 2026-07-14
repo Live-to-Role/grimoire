@@ -68,7 +68,7 @@ class EmbedProductRequest(BaseModel):
 class SemanticSearchRequest(BaseModel):
     """Request for semantic search."""
     query: str = Field(..., min_length=1, max_length=1000)
-    top_k: int = Field(10, ge=1, le=100)
+    top_k: int = Field(50, ge=1, le=200)
     threshold: float = Field(0.5, ge=0.0, le=1.0)
     provider: str | None = Field(None)
     model: str | None = Field(None)

@@ -31,7 +31,7 @@ export async function getSemanticSearchStatus(): Promise<SemanticSearchStatus> {
 
 export async function semanticSearch(
   query: string,
-  topK: number = 20,
+  topK: number = 50,
   filters: Partial<ProductFilters> = {},
   options: { interpret?: boolean } = {},
 ): Promise<SemanticSearchResponse> {

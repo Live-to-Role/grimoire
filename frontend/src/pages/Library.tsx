@@ -88,15 +88,19 @@ export function Library({
     staleTime: 300000,
   });
 
+  // Number of semantic results to request (adjustable via the Show selector + Load more)
+  const [resultLimit, setResultLimit] = useState(50);
+
   // Semantic search query
   const {
     data: semanticData,
     isLoading: semanticLoading,
+    isFetching: semanticFetching,
     error: semanticError,
   } = useQuery({
-    queryKey: ['semantic-search', activeSearch, effectiveFilters, chipFilters, interpretDisabled],
+    queryKey: ['semantic-search', activeSearch, effectiveFilters, chipFilters, interpretDisabled, resultLimit],
     queryFn: () =>
-      semanticSearch(activeSearch, 20, { ...effectiveFilters, ...chipFilters }, { interpret: !interpretDisabled }),
+      semanticSearch(activeSearch, resultLimit, { ...effectiveFilters, ...chipFilters }, { interpret: !interpretDisabled }),
     enabled: activeSearch.length > 0 && searchSemantic,
     staleTime: 60000,
   });
@@ -137,6 +141,7 @@ export function Library({
     e.preventDefault();
     setInterpretDisabled(false);
     setChipFilters({});
+    setResultLimit(50);
     if (searchContent || searchSemantic) {
       setActiveSearch(searchInput);
     } else {
@@ -151,6 +156,7 @@ export function Library({
     setFilters((prev) => ({ ...prev, search: undefined }));
     setInterpretDisabled(false);
     setChipFilters({});
+    setResultLimit(50);
   };
 
   // Flatten infinite query pages into a single array
@@ -430,13 +436,41 @@ export function Library({
                 </p>
                 </div>
                 {isSearching && (
-                  <button
-                    onClick={clearSearch}
-                    className="text-sm font-medium"
-                    style={{ color: 'var(--color-accent)' }}
-                  >
-                    Clear search
-                  </button>
+                  <div className="flex items-center gap-3">
+                    {searchSemantic && (
+                      <label
+                        className="flex items-center gap-1.5 text-sm"
+                        style={{ color: 'var(--color-text-secondary)' }}
+                      >
+                        Show
+                        <select
+                          value={resultLimit}
+                          onChange={(e) => setResultLimit(Number(e.target.value))}
+                          className="rounded px-1.5 py-0.5 text-sm cursor-pointer"
+                          style={{
+                            backgroundColor: 'var(--color-surface-raised)',
+                            color: 'var(--color-text-primary)',
+                            border: '1px solid var(--color-border)',
+                          }}
+                        >
+                          {Array.from(new Set([20, 50, 100, 200, resultLimit]))
+                            .sort((a, b) => a - b)
+                            .map((n) => (
+                              <option key={n} value={n}>
+                                {n}
+                              </option>
+                            ))}
+                        </select>
+                      </label>
+                    )}
+                    <button
+                      onClick={clearSearch}
+                      className="text-sm font-medium"
+                      style={{ color: 'var(--color-accent)' }}
+                    >
+                      Clear search
+                    </button>
+                  </div>
                 )}
               </div>
               {searchSemantic && semanticData?.interpretation && !interpretDisabled && (() => {
@@ -522,6 +556,25 @@ export function Library({
                 scoreMap={searchSemantic ? scoreMap : undefined}
                 snippetMap={searchSemantic ? snippetMap : undefined}
               />
+              {searchSemantic &&
+                semanticData &&
+                semanticData.results.length >= resultLimit &&
+                resultLimit < 200 && (
+                  <div className="mt-4 flex justify-center">
+                    <button
+                      onClick={() => setResultLimit((n) => Math.min(n + 50, 200))}
+                      disabled={semanticFetching}
+                      className="rounded-lg px-4 py-2 text-sm font-medium disabled:opacity-50"
+                      style={{
+                        backgroundColor: 'var(--color-surface-raised)',
+                        color: 'var(--color-text-primary)',
+                        border: '1px solid var(--color-border)',
+                      }}
+                    >
+                      {semanticFetching ? 'Loading…' : 'Load more'}
+                    </button>
+                  </div>
+                )}
             </>
           ) : null}
         </div>
