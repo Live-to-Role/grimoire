@@ -211,14 +211,11 @@ def build_interpreted_conditions(interp: Interpretation) -> list:
         conditions.append(
             (Product.product_type == interp.product_type) | (Product.product_type.is_(None))
         )
-    if interp.level_min is not None:
-        conditions.append(
-            (Product.level_range_max >= interp.level_min) | (Product.level_range_max.is_(None))
-        )
-    if interp.level_max is not None:
-        conditions.append(
-            (Product.level_range_min <= interp.level_max) | (Product.level_range_min.is_(None))
-        )
+    # Level is intentionally NOT auto-applied. Only ~16% of products carry level
+    # data, so filtering on an interpreted level (even leniently — keeping NULLs)
+    # mostly excludes good topical matches for little ranking benefit. The level
+    # is still detected for the UI chip and applied only when the user opts in
+    # (via the chip / FilterDrawer, which go through build_semantic_filter_conditions).
     return conditions
 
 

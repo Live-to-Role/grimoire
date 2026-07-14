@@ -91,8 +91,10 @@ async def test_chunk_rerank_beats_diluted_average(db, fake_search_env):
     assert out["interpretation"]["level_min"] == 3
 
 
-async def test_lenient_interpreted_level_filter_keeps_nulls(db, fake_search_env):
-    # level 10 product excluded; NULL-level product kept (lenient semantics)
+async def test_interpreted_level_is_not_auto_filtered(db, fake_search_env):
+    # Interpreted level is DETECTED but not auto-applied as a filter: sparse level
+    # data (only ~16% of the library) would wrongly exclude good topical matches.
+    # Both the level-10 book and the unlabeled book must surface; level is opt-in.
     high = await _mk_product(db, "flow-high", "Epic Level 10", 10, 12,
                              sv_vec=UNDEAD, chunks=[("undead epic", UNDEAD, 1)])
     unlabeled = await _mk_product(db, "flow-null", "Mystery Book", None, None,
@@ -102,7 +104,8 @@ async def test_lenient_interpreted_level_filter_keeps_nulls(db, fake_search_env)
     out = await search_service.search(db, req)
     ids = [r["id"] for r in out["results"]]
     assert unlabeled.id in ids
-    assert high.id not in ids
+    assert high.id in ids  # level 10-12 no longer excluded by the interpreted level
+    assert out["interpretation"]["level_min"] == 3  # still detected, just not applied
 
 
 async def test_bm25_only_product_survives_without_valid_chunks(db, fake_search_env, monkeypatch):

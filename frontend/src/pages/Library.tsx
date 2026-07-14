@@ -475,30 +475,35 @@ export function Library({
               </div>
               {searchSemantic && semanticData?.interpretation && !interpretDisabled && (() => {
                 const interp = semanticData.interpretation;
+                // System/type are auto-applied as lenient filters and removable.
                 const chips: { key: string; label: string; asFilters: Partial<ProductFilters> }[] = [];
-                if (interp.level_min !== null || interp.level_max !== null) {
-                  const label = interp.level_min === interp.level_max
-                    ? `Level ${interp.level_min}`
-                    : `Levels ${interp.level_min ?? '?'}–${interp.level_max ?? '?'}`;
-                  chips.push({
-                    key: 'level', label,
-                    asFilters: {
-                      level_min: interp.level_min != null ? String(interp.level_min) : undefined,
-                      level_max: interp.level_max != null ? String(interp.level_max) : undefined,
-                    },
-                  });
-                }
                 if (interp.game_system) {
                   chips.push({ key: 'system', label: `System: ${interp.game_system}`, asFilters: { game_system: interp.game_system } });
                 }
                 if (interp.product_type) {
                   chips.push({ key: 'type', label: `Type: ${interp.product_type}`, asFilters: { product_type: interp.product_type } });
                 }
-                if (chips.length === 0) return null;
+                // Level is detected but NOT auto-applied (only ~16% of the library
+                // has level data, so filtering on it wrongly drops good matches).
+                // Offer it as a one-click opt-in filter instead.
+                const hasLevel = interp.level_min !== null || interp.level_max !== null;
+                const levelAlreadyApplied = Boolean(effectiveFilters.level_min || effectiveFilters.level_max);
+                const showLevel = hasLevel && !levelAlreadyApplied;
+                const levelLabel = interp.level_min === interp.level_max
+                  ? `Level ${interp.level_min}`
+                  : `Levels ${interp.level_min ?? '?'}–${interp.level_max ?? '?'}`;
+                if (chips.length === 0 && !showLevel) return null;
                 const removeChip = (removedKey: string) => {
                   const remaining = chips.filter((c) => c.key !== removedKey);
                   setChipFilters(Object.assign({}, ...remaining.map((c) => c.asFilters)));
                   setInterpretDisabled(true);
+                };
+                const applyLevel = () => {
+                  setFilters((prev) => ({
+                    ...prev,
+                    level_min: interp.level_min != null ? String(interp.level_min) : undefined,
+                    level_max: interp.level_max != null ? String(interp.level_max) : undefined,
+                  }));
                 };
                 return (
                   <div className="mb-3 flex flex-wrap items-center gap-2">
@@ -521,6 +526,21 @@ export function Library({
                         <span aria-hidden>×</span>
                       </button>
                     ))}
+                    {showLevel && (
+                      <button
+                        onClick={applyLevel}
+                        className="flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs"
+                        style={{
+                          backgroundColor: 'transparent',
+                          color: 'var(--color-accent)',
+                          border: '1px dashed var(--color-accent)',
+                        }}
+                        title="Detected in your query — click to add it as a level filter"
+                      >
+                        <span aria-hidden>+</span>
+                        {levelLabel}
+                      </button>
+                    )}
                   </div>
                 );
               })()}
