@@ -1,7 +1,7 @@
 """Tests for image content classification heuristics."""
 import pytest
 
-from grimoire.processors.image_classifier import classify_by_name, _has_book_indicators
+from grimoire.processors.image_classifier import classify_by_name, _has_book_indicators, _normalize_for_matching
 
 
 def test_classify_map_by_filename():
@@ -59,3 +59,15 @@ def test_false_positives_from_user_report():
         # Crowdfund has "edition" but that's a book indicator
         if result is not None:
             pytest.fail(f"{filename} was classified as '{result}' but should be None")
+
+
+def test_normalize_splits_camelcase():
+    assert _normalize_for_matching("HeroicMaps") == "Heroic Maps"
+
+
+def test_normalize_treats_separators_as_spaces():
+    assert _normalize_for_matching("Village_tiles-pack") == "Village tiles pack"
+
+
+def test_normalize_leaves_plain_words():
+    assert _normalize_for_matching("forest river") == "forest river"

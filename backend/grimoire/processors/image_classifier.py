@@ -47,6 +47,18 @@ _BOOK_INDICATORS = [
 ]
 
 
+def _normalize_for_matching(text: str) -> str:
+    """Normalize a filename/path for keyword and publisher matching.
+
+    Inserts a space at camelCase boundaries so 'HeroicMaps' becomes
+    'Heroic Maps' (fixing word-boundary regex misses on concatenated
+    publisher names), and treats '_' and '-' as spaces.
+    """
+    spaced = re.sub(r"(?<=[a-z0-9])(?=[A-Z])", " ", text)
+    spaced = re.sub(r"[_\-]+", " ", spaced)
+    return spaced
+
+
 def classify_by_name(filename: str, file_path: str) -> str | None:
     """
     Check filename/path for image content keywords.
