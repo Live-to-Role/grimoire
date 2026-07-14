@@ -1,7 +1,12 @@
 """Tests for image content classification heuristics."""
 import pytest
 
-from grimoire.processors.image_classifier import classify_by_name, _has_book_indicators, _normalize_for_matching
+from grimoire.processors.image_classifier import (
+    classify_by_name,
+    _has_book_indicators,
+    _normalize_for_matching,
+    matches_image_publisher,
+)
 
 
 def test_classify_map_by_filename():
@@ -71,3 +76,26 @@ def test_normalize_treats_separators_as_spaces():
 
 def test_normalize_leaves_plain_words():
     assert _normalize_for_matching("forest river") == "forest river"
+
+
+def test_publisher_match_on_folder_path():
+    # Real DB path form: folder 'Heroic Maps', filename 'HeroicMaps_*'
+    assert matches_image_publisher(
+        "HeroicMaps_FireWyrm_GRID.pdf",
+        r"D:\Drivethrurpg\Heroic Maps\HeroicMaps_FireWyrm_GRID.pdf",
+    )
+
+
+def test_publisher_match_camelcase_filename_only():
+    # Even without the folder, the camelCase filename normalizes to a hit
+    assert matches_image_publisher("HeroicMaps_Cliffs.pdf", "/misc/HeroicMaps_Cliffs.pdf")
+
+
+def test_publisher_match_0one_games():
+    assert matches_image_publisher("dungeon.pdf", r"D:\Drivethrurpg\0one Games\dungeon.pdf")
+
+
+def test_publisher_no_match_regular_book():
+    assert not matches_image_publisher(
+        "Players_Handbook.pdf", r"D:\Drivethrurpg\Wizards\Players_Handbook.pdf"
+    )

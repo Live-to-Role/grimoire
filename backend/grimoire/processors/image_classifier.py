@@ -59,6 +59,26 @@ def _normalize_for_matching(text: str) -> str:
     return spaced
 
 
+# Known all-image-content publishers. A path/filename match is DECISIVE:
+# classify as Map with no content analysis. Append as more are found.
+_IMAGE_CONTENT_PUBLISHERS = [
+    "heroic maps",
+    "map alchemists",
+    "black scrolls games",
+    "0one games",
+    "animated dungeon maps",
+]
+
+
+def matches_image_publisher(filename: str, file_path: str) -> bool:
+    """True if the file lives under (or is named after) a known all-image
+    publisher. Matches lowercase blacklist substrings against the normalized
+    path+filename so one entry catches both 'Heroic Maps' folders and
+    'HeroicMaps' filenames."""
+    normalized = _normalize_for_matching(f"{filename} {file_path}").lower()
+    return any(pub in normalized for pub in _IMAGE_CONTENT_PUBLISHERS)
+
+
 def classify_by_name(filename: str, file_path: str) -> str | None:
     """
     Check filename/path for image content keywords.
