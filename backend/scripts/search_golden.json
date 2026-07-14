@@ -1,8 +1,20 @@
 {
-  "_readme": "Fill 'queries' with ~10-20 real searches. 'expect' entries are product IDs (int) or case-insensitive title substrings (str). A query counts as a hit if ANY expected entry appears in the top k results.",
+  "_readme": "A query is a HIT if ANY expected entry (product ID int, or case-insensitive title substring str) appears in the top k results. Multi-entry expect lists are intentional for broad topical queries. Tweak titles after seeing the first eval run.",
   "queries": [
-    {"query": "Undead adventure for 3rd level characters", "expect": ["<fill in a book title you own>"], "k": 10},
-    {"query": "dcc funnel adventure", "expect": ["Sailors on the Starless Sea"], "k": 10},
-    {"query": "city intrigue campaign", "expect": ["<fill in>"], "k": 10}
+    {"query": "undead adventure", "expect": ["Vampires", "Barrow Keep", "Crypt Room"], "k": 10},
+    {"query": "cave adventure", "expect": ["Orc Caves", "Crab Cave", "Ogre's Cave"], "k": 10},
+    {"query": "haunted house horror", "expect": ["Haunted", "The Haunt", "Dreadmire"], "k": 10},
+    {"query": "pirate adventure on the high seas", "expect": ["Pirates!", "Pirate Borg", "Pirates Cove"], "k": 10},
+    {"query": "expedition through a dangerous jungle", "expect": ["Jungle Treks", "Primal Forest"], "k": 10},
+    {"query": "temple of a dark cult", "expect": ["Temple of Zoko", "Cultists' Lair", "Temple Siege"], "k": 10},
+    {"query": "caverns full of giant fungus", "expect": ["Fungus Forest", "Magic Mushrooms"], "k": 10},
+    {"query": "hunting a dragon", "expect": ["Dragon Hunt"], "k": 10},
+    {"query": "a descent into hell aboard a train", "expect": ["Hell Train"], "k": 10},
+    {"query": "desert oasis mirage", "expect": ["Mirage Oasis"], "k": 10},
+    {"query": "frozen winter wilderness survival", "expect": ["Frozen Wind", "Winterland", "Stay Frosty"], "k": 10},
+    {"query": "swamp horror", "expect": ["Deathswamp", "Dreadmire"], "k": 10},
+    {"query": "dungeon crawl classics funnel for level 0 characters", "expect": ["Sailors on the Starless Sea"], "k": 10},
+    {"query": "old-school essentials cave crawl with orcs", "expect": ["Orc Caves", "Ogre's Cave"], "k": 10},
+    {"query": "pathfinder dragon adventure", "expect": ["Dragon Hunt"], "k": 10}
   ]
 }
