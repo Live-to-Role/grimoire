@@ -119,9 +119,10 @@ def detect_image_content(
     """
     Detect if a PDF is image content (maps, stock art, tokens, etc.).
 
-    Two-tier detection:
-    1. If filename/path matches known patterns AND content confirms → classify
-    2. If no filename match, require overwhelming evidence (>90% pages near-zero text)
+    Three-tier detection:
+    1. If filename/path matches a known image-content publisher -> classify (no content analysis)
+    2. If filename/path matches known patterns AND content confirms -> classify
+    3. If no filename match, require overwhelming evidence (>90% pages near-zero text)
 
     Args:
         pdf_path: Path to the PDF file

@@ -108,6 +108,13 @@ def test_classify_heroicmaps_camelcase_now_matches():
     assert classify_by_name("HeroicMaps_FireWyrm_GRID.pdf", "/x/HeroicMaps_FireWyrm_GRID.pdf") == "Map"
 
 
+def test_classify_camelcase_keyword_non_publisher():
+    # Isolates the normalize->keyword-regex path: 'DragonMaps' is NOT a
+    # blacklisted publisher, so it can only classify as Map via _normalize_for_matching
+    # turning 'DragonMaps' into 'Dragon Maps' and matching \bmaps\b.
+    assert classify_by_name("DragonMaps_Ruins.pdf", "/x/DragonMaps_Ruins.pdf") == "Map"
+
+
 def test_classify_tiles_keyword():
     assert classify_by_name("Village_tiles.pdf", "/x/Village_tiles.pdf") == "Map"
 
