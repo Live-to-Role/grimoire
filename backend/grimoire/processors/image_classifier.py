@@ -26,6 +26,7 @@ _CLASSIFICATION_RULES = [
         r"\bmap\b", r"\bmaps\b", r"cartograph", r"battlemap", r"battle\s*map",
         r"dungeon\s*map", r"floorplan", r"floor\s*plan", r"overland\s*map",
         r"world\s*map", r"city\s*map", r"town\s*map", r"hex\s*map",
+        r"\btile\b", r"\btiles\b", r"geomorph", r"\bgrid\b",
     ]),
     ("Token", [r"\btoken\b", r"\btokens\b", r"token\s*pack", r"token\s*set"]),
     ("Portrait", [r"\bportrait\b", r"\bportraits\b"]),
@@ -47,13 +48,48 @@ _BOOK_INDICATORS = [
 ]
 
 
+def _normalize_for_matching(text: str) -> str:
+    """Normalize a filename/path for keyword and publisher matching.
+
+    Inserts a space at camelCase boundaries so 'HeroicMaps' becomes
+    'Heroic Maps' (fixing word-boundary regex misses on concatenated
+    publisher names), and treats '_' and '-' as spaces.
+    """
+    spaced = re.sub(r"(?<=[a-z0-9])(?=[A-Z])", " ", text)
+    spaced = re.sub(r"[_\-]+", " ", spaced)
+    return spaced
+
+
+# Known all-image-content publishers. A path/filename match is DECISIVE:
+# classify as Map with no content analysis. Append as more are found.
+_IMAGE_CONTENT_PUBLISHERS = [
+    "heroic maps",
+    "map alchemists",
+    "black scrolls games",
+    "0one games",
+    "animated dungeon maps",
+]
+
+
+def matches_image_publisher(filename: str, file_path: str) -> bool:
+    """True if the file lives under (or is named after) a known all-image
+    publisher. Matches lowercase blacklist substrings against the normalized
+    path+filename so one entry catches both 'Heroic Maps' folders and
+    'HeroicMaps' filenames."""
+    normalized = _normalize_for_matching(f"{filename} {file_path}").lower()
+    return any(pub in normalized for pub in _IMAGE_CONTENT_PUBLISHERS)
+
+
 def classify_by_name(filename: str, file_path: str) -> str | None:
     """
     Check filename/path for image content keywords.
 
     Returns classification label if matched, None if no match.
     """
-    search_text = f"{filename} {file_path}"
+    if matches_image_publisher(filename, file_path):
+        return "Map"
+
+    search_text = _normalize_for_matching(f"{filename} {file_path}")
 
     for label, patterns in _CLASSIFICATION_RULES:
         for pattern in patterns:
@@ -83,9 +119,10 @@ def detect_image_content(
     """
     Detect if a PDF is image content (maps, stock art, tokens, etc.).
 
-    Two-tier detection:
-    1. If filename/path matches known patterns AND content confirms → classify
-    2. If no filename match, require overwhelming evidence (>90% pages near-zero text)
+    Three-tier detection:
+    1. If filename/path matches a known image-content publisher -> classify (no content analysis)
+    2. If filename/path matches known patterns AND content confirms -> classify
+    3. If no filename match, require overwhelming evidence (>90% pages near-zero text)
 
     Args:
         pdf_path: Path to the PDF file
@@ -102,6 +139,16 @@ def detect_image_content(
         - reason: str
         - stats: dict with analysis details
     """
+    # Known image-content publishers are decisive: classify as Map with no
+    # content analysis and no file open. Accepts a small false-positive risk.
+    if matches_image_publisher(filename, file_path):
+        return {
+            "is_image_content": True,
+            "classification": "Map",
+            "reason": "Matched known image-content publisher",
+            "stats": {},
+        }
+
     name_classification = classify_by_name(filename, file_path)
     is_book = _has_book_indicators(filename, file_path)
 
