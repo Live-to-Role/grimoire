@@ -83,9 +83,5 @@ echo All services started.
 pause
 
 echo.
-echo Stopping Grimoire...
-taskkill /FI "WINDOWTITLE eq Grimoire Backend*" /F >nul 2>&1
-taskkill /FI "WINDOWTITLE eq Grimoire Queue Worker*" /F >nul 2>&1
-taskkill /FI "WINDOWTITLE eq Grimoire Scan Worker*" /F >nul 2>&1
-taskkill /FI "WINDOWTITLE eq Grimoire Frontend*" /F >nul 2>&1
+call "%~dp0stop.bat"
 echo Goodbye!
