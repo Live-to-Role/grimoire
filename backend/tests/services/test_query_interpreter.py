@@ -36,7 +36,7 @@ def test_level_phrase_stripped_from_semantic_query():
 def test_game_system_alias_dcc():
     r = interpret_heuristic("dcc funnel adventure", SYSTEMS, TYPES)
     assert r.game_system == "Dungeon Crawl Classics"
-    assert "dcc" not in r.semantic_query.lower()
+    assert "dcc" in r.semantic_query.lower()  # system word kept for content matching
 
 
 def test_game_system_full_name_match():

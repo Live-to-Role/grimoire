@@ -198,27 +198,6 @@ from grimoire.services.hybrid_search import reciprocal_rank_fusion  # noqa: E402
 from grimoire.services.query_interpreter import Interpretation, interpret_query  # noqa: E402
 
 
-def build_interpreted_conditions(interp: Interpretation) -> list:
-    """Lenient conditions for interpreter-derived filters: (== value) OR NULL.
-    A misparse or unlabeled product must not vanish silently. Explicit
-    FilterDrawer filters stay strict (build_semantic_filter_conditions)."""
-    conditions = []
-    if interp.game_system:
-        conditions.append(
-            (Product.game_system == interp.game_system) | (Product.game_system.is_(None))
-        )
-    if interp.product_type:
-        conditions.append(
-            (Product.product_type == interp.product_type) | (Product.product_type.is_(None))
-        )
-    # Level is intentionally NOT auto-applied. Only ~16% of products carry level
-    # data, so filtering on an interpreted level (even leniently — keeping NULLs)
-    # mostly excludes good topical matches for little ranking benefit. The level
-    # is still detected for the UI chip and applied only when the user opts in
-    # (via the chip / FilterDrawer, which go through build_semantic_filter_conditions).
-    return conditions
-
-
 async def _allowed_ids(db, conditions: list, request) -> set[int] | None:
     """Evaluate filters SQL-side once; None means unfiltered."""
     from grimoire.models import ProductTag
@@ -263,10 +242,11 @@ async def search(db, request) -> dict:
             interp.level_max = None
         semantic_query = interp.semantic_query or request.query
 
-    # 2. Pre-filter: strict explicit conditions + lenient interpreted ones
+    # 2. Pre-filter on EXPLICIT drawer filters only. Interpreted level/system/type
+    # are NOT auto-applied — noisy/mislabeled categorical metadata (a system spelled
+    # several ways, or an adventure tagged with the wrong system) would silently
+    # exclude good matches. They're offered as one-click filter chips in the UI.
     conditions = build_semantic_filter_conditions(request)
-    if interp is not None:
-        conditions += build_interpreted_conditions(interp)
     allowed = await _allowed_ids(db, conditions, request)
 
     # 3. Embed the (refined) query

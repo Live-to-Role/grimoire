@@ -111,13 +111,15 @@ def interpret_heuristic(
 
     # Game system — known value verbatim first, then curated aliases. Longest
     # phrases first so "dungeon crawl classics" beats "dcc"-style prefixes.
+    # Detect the game system but KEEP the word in the query — system names often
+    # appear in book text and help rank/disambiguate (e.g. "xcrawl magical mishap"
+    # should still match the Xcrawl adventure by content). The system is offered as
+    # an opt-in filter chip, never auto-applied, so there is no filter to strip for.
     lowered = working.lower()
-    matched_system_phrase: str | None = None
     for system in sorted(known_systems, key=len, reverse=True):
         s = (system or "").strip()
         if s and re.search(rf"\b{re.escape(s.lower())}\b", lowered):
             result.game_system = system
-            matched_system_phrase = s.lower()
             break
     if result.game_system is None:
         for alias in sorted(_SYSTEM_ALIASES, key=len, reverse=True):
@@ -128,12 +130,7 @@ def interpret_heuristic(
                 )
                 if hit:
                     result.game_system = hit
-                    matched_system_phrase = alias
                     break
-    if matched_system_phrase:
-        working = re.sub(
-            rf"\b{re.escape(matched_system_phrase)}\b", " ", working, flags=re.I
-        ).strip()
 
     # Product type — sets the filter but the keyword STAYS in the query
     # ("adventure" is topical as well as categorical).

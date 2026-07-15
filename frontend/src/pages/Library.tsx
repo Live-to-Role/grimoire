@@ -53,10 +53,6 @@ export function Library({
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [showBulkEdit, setShowBulkEdit] = useState(false);
   const [queuePaused, setQueuePaused] = useState(false);
-  // When the user removes an interpretation chip, we re-issue the search with
-  // interpret=false plus the remaining interpreted filters made explicit.
-  const [interpretDisabled, setInterpretDisabled] = useState(false);
-  const [chipFilters, setChipFilters] = useState<Partial<ProductFilters>>({});
 
   const debouncedSearch = useDebounce(searchInput, 300);
 
@@ -98,9 +94,9 @@ export function Library({
     isFetching: semanticFetching,
     error: semanticError,
   } = useQuery({
-    queryKey: ['semantic-search', activeSearch, effectiveFilters, chipFilters, interpretDisabled, resultLimit],
+    queryKey: ['semantic-search', activeSearch, effectiveFilters, resultLimit],
     queryFn: () =>
-      semanticSearch(activeSearch, resultLimit, { ...effectiveFilters, ...chipFilters }, { interpret: !interpretDisabled }),
+      semanticSearch(activeSearch, resultLimit, effectiveFilters, { interpret: true }),
     enabled: activeSearch.length > 0 && searchSemantic,
     staleTime: 60000,
   });
@@ -139,8 +135,6 @@ export function Library({
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
-    setInterpretDisabled(false);
-    setChipFilters({});
     setResultLimit(50);
     if (searchContent || searchSemantic) {
       setActiveSearch(searchInput);
@@ -154,8 +148,6 @@ export function Library({
     setSearchInput('');
     setActiveSearch('');
     setFilters((prev) => ({ ...prev, search: undefined }));
-    setInterpretDisabled(false);
-    setChipFilters({});
     setResultLimit(50);
   };
 
@@ -473,74 +465,67 @@ export function Library({
                   </div>
                 )}
               </div>
-              {searchSemantic && semanticData?.interpretation && !interpretDisabled && (() => {
+              {searchSemantic && semanticData?.interpretation && (() => {
                 const interp = semanticData.interpretation;
-                // System/type are auto-applied as lenient filters and removable.
-                const chips: { key: string; label: string; asFilters: Partial<ProductFilters> }[] = [];
-                if (interp.game_system) {
-                  chips.push({ key: 'system', label: `System: ${interp.game_system}`, asFilters: { game_system: interp.game_system } });
+                // The interpreter SUGGESTS filters as one-click chips; it never
+                // auto-applies them. Categorical metadata is noisy/mislabeled (a
+                // game system spelled several ways, or an adventure tagged with the
+                // wrong system), so a hard filter would silently exclude good
+                // matches. Explicit FilterDrawer filters remain strict.
+                type Sugg = { key: string; label: string; apply: () => void };
+                const suggestions: Sugg[] = [];
+                if (interp.game_system && !effectiveFilters.game_system) {
+                  suggestions.push({
+                    key: 'system',
+                    label: `System: ${interp.game_system}`,
+                    apply: () => setFilters((p) => ({ ...p, game_system: interp.game_system! })),
+                  });
                 }
-                if (interp.product_type) {
-                  chips.push({ key: 'type', label: `Type: ${interp.product_type}`, asFilters: { product_type: interp.product_type } });
+                if (interp.product_type && !effectiveFilters.product_type) {
+                  suggestions.push({
+                    key: 'type',
+                    label: `Type: ${interp.product_type}`,
+                    apply: () => setFilters((p) => ({ ...p, product_type: interp.product_type! })),
+                  });
                 }
-                // Level is detected but NOT auto-applied (only ~16% of the library
-                // has level data, so filtering on it wrongly drops good matches).
-                // Offer it as a one-click opt-in filter instead.
                 const hasLevel = interp.level_min !== null || interp.level_max !== null;
-                const levelAlreadyApplied = Boolean(effectiveFilters.level_min || effectiveFilters.level_max);
-                const showLevel = hasLevel && !levelAlreadyApplied;
-                const levelLabel = interp.level_min === interp.level_max
-                  ? `Level ${interp.level_min}`
-                  : `Levels ${interp.level_min ?? '?'}–${interp.level_max ?? '?'}`;
-                if (chips.length === 0 && !showLevel) return null;
-                const removeChip = (removedKey: string) => {
-                  const remaining = chips.filter((c) => c.key !== removedKey);
-                  setChipFilters(Object.assign({}, ...remaining.map((c) => c.asFilters)));
-                  setInterpretDisabled(true);
-                };
-                const applyLevel = () => {
-                  setFilters((prev) => ({
-                    ...prev,
-                    level_min: interp.level_min != null ? String(interp.level_min) : undefined,
-                    level_max: interp.level_max != null ? String(interp.level_max) : undefined,
-                  }));
-                };
+                const levelApplied = Boolean(effectiveFilters.level_min || effectiveFilters.level_max);
+                if (hasLevel && !levelApplied) {
+                  const levelLabel = interp.level_min === interp.level_max
+                    ? `Level ${interp.level_min}`
+                    : `Levels ${interp.level_min ?? '?'}–${interp.level_max ?? '?'}`;
+                  suggestions.push({
+                    key: 'level',
+                    label: levelLabel,
+                    apply: () => setFilters((p) => ({
+                      ...p,
+                      level_min: interp.level_min != null ? String(interp.level_min) : undefined,
+                      level_max: interp.level_max != null ? String(interp.level_max) : undefined,
+                    })),
+                  });
+                }
+                if (suggestions.length === 0) return null;
                 return (
                   <div className="mb-3 flex flex-wrap items-center gap-2">
                     <span className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>
-                      Interpreted:
+                      Add filter:
                     </span>
-                    {chips.map((chip) => (
+                    {suggestions.map((s) => (
                       <button
-                        key={chip.key}
-                        onClick={() => removeChip(chip.key)}
-                        className="flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs"
-                        style={{
-                          backgroundColor: 'var(--color-surface-raised)',
-                          color: 'var(--color-text-primary)',
-                          border: '1px solid var(--color-border)',
-                        }}
-                        title="Remove this filter and search again"
-                      >
-                        {chip.label}
-                        <span aria-hidden>×</span>
-                      </button>
-                    ))}
-                    {showLevel && (
-                      <button
-                        onClick={applyLevel}
+                        key={s.key}
+                        onClick={s.apply}
                         className="flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs"
                         style={{
                           backgroundColor: 'transparent',
                           color: 'var(--color-accent)',
                           border: '1px dashed var(--color-accent)',
                         }}
-                        title="Detected in your query — click to add it as a level filter"
+                        title="Detected in your query — click to apply as a filter"
                       >
                         <span aria-hidden>+</span>
-                        {levelLabel}
+                        {s.label}
                       </button>
-                    )}
+                    ))}
                   </div>
                 );
               })()}
