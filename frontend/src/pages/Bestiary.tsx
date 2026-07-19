@@ -45,7 +45,10 @@ export function Bestiary() {
   const patchMutation = useMutation({
     mutationFn: ({ id, patch }: { id: number; patch: Partial<MonsterEntry> }) =>
       patchMonster(id, patch),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['monsters'] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['monsters'] });
+      queryClient.invalidateQueries({ queryKey: ['monster-metrics'] });
+    },
   });
   const extractMutation = useMutation({
     mutationFn: ({ productId, profile }: { productId: number; profile: string }) =>
@@ -55,8 +58,19 @@ export function Bestiary() {
       setExtractMessage(err?.response?.data?.detail ?? 'Failed to queue extraction'),
   });
 
-  const setFilter = (patch: Partial<MonsterFilters>) =>
+  const setFilter = (patch: Partial<MonsterFilters>) => {
     setFilters((prev) => ({ ...prev, ...patch }));
+    // Filters that feed roll()/generate-table results — a stale rolled table would
+    // show citations that no longer match the active filters.
+    if (
+      'environment' in patch ||
+      'system_profile' in patch ||
+      'hd_min' in patch ||
+      'hd_max' in patch
+    ) {
+      setRolled([]);
+    }
+  };
 
   const roll = async (count: number) => {
     setRolled(await rollRandom({
@@ -221,12 +235,26 @@ export function Bestiary() {
                       patchMutation.mutate({ id: entry.id, patch: { name: e.target.value } })} /></label>
                   <label>AC <input type="number" className="w-16 px-1 border rounded bg-transparent"
                     style={{ borderColor: 'var(--color-border)' }} defaultValue={entry.ac ?? ''}
-                    onBlur={(e) => e.target.value !== String(entry.ac ?? '') &&
-                      patchMutation.mutate({ id: entry.id, patch: { ac: Number(e.target.value) } })} /></label>
+                    onBlur={(e) => {
+                      const raw = e.target.value;
+                      if (raw === String(entry.ac ?? '')) return;
+                      // Blank means "unset" — the backend ignores explicit nulls on PATCH
+                      // (scalar fields only apply when `is not None`), so skip the mutation
+                      // entirely rather than writing AC 0.
+                      if (raw.trim() === '') return;
+                      const parsed = Number(raw);
+                      if (Number.isNaN(parsed)) return;
+                      patchMutation.mutate({ id: entry.id, patch: { ac: parsed } });
+                    }} /></label>
                   <label>HD <input className="w-20 px-1 border rounded bg-transparent"
                     style={{ borderColor: 'var(--color-border)' }} defaultValue={entry.hd_dice ?? ''}
-                    onBlur={(e) => e.target.value !== (entry.hd_dice ?? '') &&
-                      patchMutation.mutate({ id: entry.id, patch: { hd_dice: e.target.value } })} /></label>
+                    onBlur={(e) => {
+                      const raw = e.target.value;
+                      if (raw === (entry.hd_dice ?? '')) return;
+                      // Same reasoning as AC — skip rather than persist an empty string.
+                      if (raw.trim() === '') return;
+                      patchMutation.mutate({ id: entry.id, patch: { hd_dice: raw } });
+                    }} /></label>
                   <button className="px-2 py-0.5 rounded border ml-auto"
                     style={{ borderColor: 'var(--color-border)' }}
                     onClick={() => patchMutation.mutate({ id: entry.id, patch: { review_status: 'confirmed' } })}>
