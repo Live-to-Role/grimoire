@@ -3,10 +3,11 @@
 
 import json
 
+import pytest
 from sqlalchemy import select
 
 from grimoire.models import MonsterEntry, Product
-from grimoire.services.queue_processor import handle_monster_extract_task
+from grimoire.services.queue_processor import TaskError, handle_monster_extract_task
 
 DCC_PAGES = [{"page": 12, "markdown": (
     "## Orc\n\nRaiders of the wastes.\n\n"
@@ -36,6 +37,8 @@ async def make_product(db, path):
 
 async def test_handler_persists_pending_entries(db, monkeypatch):
     product = await make_product(db, "/t/handler-basic.pdf")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     monkeypatch.setattr("grimoire.services.processor.get_extracted_pages", lambda p: DCC_PAGES)
 
     async def fake_normalize(candidate, profile, provider=None, model=None):
@@ -54,8 +57,52 @@ async def test_handler_persists_pending_entries(db, monkeypatch):
 async def test_handler_fails_without_pages(db, monkeypatch):
     product = await make_product(db, "/t/handler-nopages.pdf")
     monkeypatch.setattr("grimoire.services.processor.get_extracted_pages", lambda p: None)
-    ok = await handle_monster_extract_task(db, product, config={"system_profile": "dcc"})
-    assert ok is False
+    # Permanent condition (retrying this task alone can't fix it) — must
+    # raise TaskError so the dispatcher fails it outright instead of
+    # retrying until max_attempts.
+    with pytest.raises(TaskError):
+        await handle_monster_extract_task(db, product, config={"system_profile": "dcc"})
+
+
+async def test_handler_fails_with_unknown_profile(db, monkeypatch):
+    product = await make_product(db, "/t/handler-badprofile.pdf")
+    # No system_profile can ever make "gurps" a known id — permanent failure.
+    with pytest.raises(TaskError):
+        await handle_monster_extract_task(db, product, config={"system_profile": "gurps"})
+
+
+async def test_handler_fails_when_no_provider_configured(db, monkeypatch):
+    """No API key configured must fail loudly, not silently save zero rows as 'completed'."""
+    product = await make_product(db, "/t/handler-noprovider.pdf")
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.setattr("grimoire.services.processor.get_extracted_pages", lambda p: DCC_PAGES)
+
+    with pytest.raises(TaskError):
+        await handle_monster_extract_task(db, product, config={"system_profile": "dcc"})
+
+    result = await db.execute(select(MonsterEntry).where(MonsterEntry.product_id == product.id))
+    assert result.scalars().all() == []
+
+
+async def test_handler_fails_when_every_candidate_errors(db, monkeypatch):
+    """If every candidate raises (provider/transport trouble), fail rather than
+    reporting success with nothing saved."""
+    product = await make_product(db, "/t/handler-allfail.pdf")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.setattr("grimoire.services.processor.get_extracted_pages", lambda p: DCC_PAGES)
+
+    async def failing_normalize(candidate, profile, provider=None, model=None):
+        raise ValueError("transport error")
+
+    monkeypatch.setattr("grimoire.processors.monster_normalizer.normalize_candidate", failing_normalize)
+
+    with pytest.raises(TaskError):
+        await handle_monster_extract_task(db, product, config={"system_profile": "dcc"})
+
+    result = await db.execute(select(MonsterEntry).where(MonsterEntry.product_id == product.id))
+    assert result.scalars().all() == []
 
 
 async def test_rerun_replaces_pending_but_keeps_confirmed(db, monkeypatch):
@@ -67,6 +114,8 @@ async def test_rerun_replaces_pending_but_keeps_confirmed(db, monkeypatch):
     db.add_all([confirmed, stale])
     await db.flush()
 
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     monkeypatch.setattr("grimoire.services.processor.get_extracted_pages", lambda p: DCC_PAGES)
 
     async def fake_normalize(candidate, profile, provider=None, model=None):

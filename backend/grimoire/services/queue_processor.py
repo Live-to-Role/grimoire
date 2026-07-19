@@ -731,22 +731,73 @@ async def handle_monster_extract_task(
     config = config or {}
     profile_id = config.get("system_profile")
     if profile_id not in PROFILES:
-        logger.error(f"monster_extract: unknown system profile '{profile_id}'")
-        return False
+        # Permanent — no retry can ever fix an unrecognized profile id.
+        raise TaskError(
+            f"monster_extract: unknown system profile '{profile_id}' for '{product.file_name}'"
+        )
     profile = PROFILES[profile_id]
 
     pages = _processor.get_extracted_pages(product)
     if not pages:
-        logger.warning(
+        # Permanent until a human re-runs extraction — retrying this task
+        # alone can't produce page-anchored text.
+        raise TaskError(
             f"monster_extract: no page-anchored text for '{product.file_name}' "
             "(re-run text extraction first)"
         )
-        return False
 
     candidates = segment_pages(pages, profile)
     logger.info(f"monster_extract: {len(candidates)} candidates in '{product.file_name}'")
 
-    # Replace stale machine output; never touch human-reviewed rows.
+    # Fail fast, before the (slow, sequential) LLM loop, if no provider can
+    # possibly work — otherwise every candidate silently no-ops and the task
+    # reports "completed" with zero rows saved and no signal to the owner.
+    if monster_normalizer.resolve_provider(config.get("provider")) is None:
+        raise TaskError(
+            f"monster_extract: no AI provider configured for '{product.file_name}' "
+            "(set an OpenAI or Anthropic API key)"
+        )
+
+    # LLM loop runs FIRST, accumulating normalized entries in a local list —
+    # no DB writes here. A 200-page bestiary is hundreds of sequential LLM
+    # calls (tens of minutes); if the delete+commit happened up front (as it
+    # did before this fix) the write transaction would sit open for that
+    # entire duration, and every other write in the app (confirming an
+    # entry, toggling "I'm working", queueing anything) would hit SQLite's
+    # 30s busy_timeout and fail. Keeping the loop DB-free also means a
+    # worker restart mid-run no longer discards every LLM call already paid
+    # for — nothing is written until the short transaction below.
+    entries: list[dict] = []
+    failed = 0
+    for candidate in candidates:
+        try:
+            entry = await monster_normalizer.normalize_candidate(
+                candidate, profile,
+                provider=config.get("provider"), model=config.get("model"),
+            )
+        except Exception as exc:
+            failed += 1
+            logger.warning(f"monster_extract: candidate '{candidate.name_guess}' failed: {exc}")
+            continue
+        if entry is None:
+            continue
+        entries.append(entry)
+
+    # Every candidate errored (as opposed to some being legitimately
+    # rejected as "not a monster") — that's provider/transport trouble, not
+    # a normal empty result. Fail loudly rather than reporting success with
+    # nothing saved.
+    if candidates and failed == len(candidates):
+        raise TaskError(
+            f"monster_extract: all {failed} candidates failed to normalize "
+            f"for '{product.file_name}'"
+        )
+
+    # Short write window: delete stale pending/rejected rows, re-read the
+    # confirmed keys (this reflects any review the owner did WHILE the run
+    # was in flight, since it's read here rather than before the loop),
+    # filter the accumulated entries against those keys, insert survivors,
+    # commit once. Never touch confirmed rows.
     await db.execute(
         delete(MonsterEntry).where(
             MonsterEntry.product_id == product.id,
@@ -761,19 +812,8 @@ async def handle_monster_extract_task(
     )
     confirmed_keys = {(row.name, row.page_number) for row in result}
 
-    saved = failed = 0
-    for candidate in candidates:
-        try:
-            entry = await monster_normalizer.normalize_candidate(
-                candidate, profile,
-                provider=config.get("provider"), model=config.get("model"),
-            )
-        except Exception as exc:
-            failed += 1
-            logger.warning(f"monster_extract: candidate '{candidate.name_guess}' failed: {exc}")
-            continue
-        if entry is None:
-            continue
+    saved = 0
+    for entry in entries:
         if (entry["name"], entry["page_number"]) in confirmed_keys:
             continue
         db.add(MonsterEntry(product_id=product.id, **entry))

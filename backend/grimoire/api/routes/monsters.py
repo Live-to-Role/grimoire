@@ -123,7 +123,10 @@ async def enqueue_extract(db: DbSession, product_id: int, request: ExtractReques
     db.add(ProcessingQueue(
         product_id=product_id,
         task_type="monster_extract",
-        priority=5,
+        # Interactive, one-off, owner-triggered action — preempt bulk work
+        # (text re-extraction etc. queues at priority=5) rather than sorting
+        # to the back of that band behind thousands of backlog items.
+        priority=9,
         status="pending",
         config=json.dumps(config),
     ))

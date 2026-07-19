@@ -45,6 +45,30 @@ Return ONLY valid JSON."""
 _DEFAULT_MODELS = {"openai": "gpt-4o-mini", "anthropic": "claude-haiku-4-5-20251001"}
 
 
+def resolve_provider(provider: str | None = None) -> str | None:
+    """Resolve which LLM provider is actually usable, given an optional explicit choice.
+
+    Precedence: an explicit `provider` is only honored if its key is set (no
+    silent fallback to a different provider); `provider=None` picks anthropic
+    if its key is set, else openai if its key is set, else None. Returns None
+    when nothing is usable (no key configured, or an unrecognized provider
+    name), signaling "no provider available" to callers.
+
+    This is the single source of truth for provider precedence — both
+    `normalize_candidate` and the queue handler's pre-flight check call this
+    so the two paths cannot drift.
+    """
+    openai_key = os.getenv("OPENAI_API_KEY", "")
+    anthropic_key = os.getenv("ANTHROPIC_API_KEY", "")
+    if provider is None:
+        return "anthropic" if anthropic_key else "openai" if openai_key else None
+    if provider == "anthropic":
+        return "anthropic" if anthropic_key else None
+    if provider == "openai":
+        return "openai" if openai_key else None
+    return None
+
+
 def build_entry_from_llm(llm: dict, candidate: Candidate, profile: SystemProfile) -> dict:
     """Pure normalization + validation of LLM output into MonsterEntry fields."""
     flags: list[str] = []
@@ -113,16 +137,15 @@ async def normalize_candidate(
     """
     openai_key = os.getenv("OPENAI_API_KEY", "")
     anthropic_key = os.getenv("ANTHROPIC_API_KEY", "")
-    if provider is None:
-        provider = "anthropic" if anthropic_key else "openai" if openai_key else None
+    resolved = resolve_provider(provider)
 
     prompt_template = NORMALIZE_PROMPT.replace("{profile_hint}", profile.prompt_hint)
 
-    if provider == "anthropic" and anthropic_key:
+    if resolved == "anthropic":
         llm = await extract_with_anthropic(
             candidate.raw_text, prompt_template, anthropic_key, model or _DEFAULT_MODELS["anthropic"]
         )
-    elif provider == "openai" and openai_key:
+    elif resolved == "openai":
         llm = await extract_with_openai(
             candidate.raw_text, prompt_template, openai_key, model or _DEFAULT_MODELS["openai"]
         )
