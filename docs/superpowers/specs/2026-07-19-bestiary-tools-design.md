@@ -66,6 +66,8 @@ A small Python registry per system, each defining:
 
 Normalization happens **at extraction time**; THAC0 vs. ascending never leaks past this layer. Downstream math and the future simulator consume only the normalized model.
 
+The canonical concept is **hit probability as a function of target defense** — not THAC0 or any edition's mechanic. For d20-family systems that function is a line, so a single normalized attack bonus encodes it losslessly (and stays human-checkable in the review UI). THAC0, attack matrices, and descending AC are merely input dialects the profiles translate. The metrics layer consumes *probabilities*, so a hypothetical non-d20 profile (2d6-over-target, dice pools) could supply a different curve without touching downstream code — noted for the future, not built now.
+
 ### Extraction pipeline (hybrid)
 
 Runs as a queue job through the existing out-of-process worker — no LLM or CPU-heavy work inline in the API.
