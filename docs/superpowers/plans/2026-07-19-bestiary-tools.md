@@ -16,7 +16,7 @@
 - Backend tests run from `backend/` with miniconda: `python -m pytest` (NOT `.venv` — it lacks pytest). 7 pre-existing failures are baseline; only new failures matter.
 - Frontend gate is `npx tsc -b` from `frontend/` (no frontend test harness).
 - Route handlers commit explicitly — `get_db()` does NOT auto-commit.
-- The tools' outputs only ever include name/page/book pointers and computed math — never reproduce stat-block text, flavor text, or art in tool output (review UI showing `raw_text` to the owner is fine).
+- The tools' outputs only ever include name/page/book pointers, short derived tags, and computed math — never reproduce stat-block prose, flavor text, or art. Two deliberate exceptions: the review UI shows `raw_text` to the owner, and the browse view lists `special_abilities` as short derived tags under "Special (not in the math)", because damage-per-round alone is actively misleading for save-or-die, level-drain, or similar abilities the math omits.
 - Only `review_status == "confirmed"` entries feed browse/random/metrics endpoints.
 - LLM calls happen only inside the queue handler (worker process), never inline in API routes.
 - New table is created by `Base.metadata.create_all` in `init_db()`/test fixtures automatically — no `_ensure_columns()` entry needed (that's for new columns on existing tables).

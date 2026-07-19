@@ -12,7 +12,7 @@ Grimoire already owns the machinery to fix this: a library of the user's own PDF
 
 ## Product principles
 
-- **Complement, never substitute.** The tools output pointers back into the owned book (`Name — Book, p. X`), never reproduced stat blocks, flavor text, or art. Names, page numbers, tags, and computed math are facts; the protected expression stays in the PDF. A tool that is useless without the book is both legally clean and publisher-friendly.
+- **Complement, never substitute.** The tools output pointers back into the owned book (`Name — Book, p. X`), never reproduced stat blocks, flavor text, or art. Names, page numbers, tags, and computed math are facts; the protected expression stays in the PDF. A tool that is useless without the book is both legally clean and publisher-friendly. Short derived tags (environments, and `special_abilities` shown as a "not in the math" caveat next to the combat figures) count as facts on the same footing as names and page numbers — the prose they were derived from stays in the book. The owner's own review UI additionally shows `raw_text` for the entry being reviewed.
 - **Progression:** v1 personal-use in Grimoire → later, human-confirmed entries become contributable to Codex → possibly publisher-blessed companion tools. Only v1 is in scope here, but the review gate and normalized data model exist partly to serve that path.
 
 ## v1 scope
