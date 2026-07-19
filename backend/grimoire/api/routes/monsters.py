@@ -131,7 +131,7 @@ async def enqueue_extract(db: DbSession, product_id: int, request: ExtractReques
     return {"queued": True, "message": f"Monster extraction queued ({request.system_profile})"}
 
 
-@router.get("/")
+@router.get("")
 async def list_monsters(
     db: DbSession,
     environment: str | None = None,
@@ -145,7 +145,8 @@ async def list_monsters(
     per_page: int = 50,
 ) -> dict:
     """List monster entries with filters. Defaults to confirmed entries only."""
-    per_page = min(per_page, 200)
+    per_page = max(1, min(per_page, 200))
+    page = max(1, page)
     conditions = _base_conditions(environment, system_profile, product_id, review_status, hd_min, hd_max, q)
 
     count_query = select(func.count(MonsterEntry.id)).where(*conditions)

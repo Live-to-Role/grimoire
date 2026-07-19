@@ -127,3 +127,47 @@ async def test_environments_listing(db):
     await seed(db, "/t/api-envs.pdf", "Env Crab", "coastal")
     envs = await list_environments(db=db)
     assert "coastal" in envs["environments"]
+
+
+async def test_patch_entry_unknown_id_returns_404(db):
+    with pytest.raises(HTTPException) as exc:
+        await patch_entry(db=db, entry_id=999999, request=PatchEntryRequest(name="Nobody"))
+    assert exc.value.status_code == 404
+
+
+async def test_get_entry_metrics_unknown_id_returns_404(db):
+    with pytest.raises(HTTPException) as exc:
+        await get_entry_metrics(db=db, entry_id=999999)
+    assert exc.value.status_code == 404
+
+
+async def test_enqueue_extract_unknown_product_returns_404(db):
+    with pytest.raises(HTTPException) as exc:
+        await enqueue_extract(
+            db=db, product_id=999999, request=ExtractRequest(system_profile="dcc")
+        )
+    assert exc.value.status_code == 404
+
+
+async def test_enqueue_extract_unextracted_product_returns_400(db):
+    product = Product(
+        file_path="/t/api-404-unextracted.pdf", file_name="api-404-unextracted.pdf",
+        file_size=1, file_hash="/t/api-404-unextracted.pdf", title="Unextracted Bestiary",
+        text_extracted=False, extracted_text_path=None,
+    )
+    db.add(product)
+    await db.flush()
+
+    with pytest.raises(HTTPException) as exc:
+        await enqueue_extract(
+            db=db, product_id=product.id, request=ExtractRequest(system_profile="dcc")
+        )
+    assert exc.value.status_code == 400
+
+
+async def test_list_monsters_negative_per_page_is_bounded(db):
+    await seed(db, "/t/api-neg-perpage-1.pdf", "Bounded Bat", "chasm")
+    await seed(db, "/t/api-neg-perpage-2.pdf", "Bounded Rat", "chasm")
+
+    result = await list_monsters(db=db, environment="chasm", per_page=-1)
+    assert len(result["items"]) <= 1
