@@ -720,8 +720,6 @@ async def handle_monster_extract_task(
     db: AsyncSession, product: Product, config: dict | None = None
 ) -> bool:
     """Extract monster entries from a bestiary product (segment -> LLM -> pending rows)."""
-    import json as _json
-
     from sqlalchemy import delete, select as _select
 
     from grimoire.models.monster_entry import MonsterEntry
