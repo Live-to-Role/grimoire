@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { Fragment, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   listMonsters, listEnvironments, getMetrics, patchMonster, rollRandom, queueExtraction,
@@ -59,7 +59,9 @@ export function Bestiary() {
   });
 
   const setFilter = (patch: Partial<MonsterFilters>) => {
-    setFilters((prev) => ({ ...prev, ...patch }));
+    // Any filter change invalidates the current page — reset to page 1 so we
+    // don't end up requesting a page past the end of the new result set.
+    setFilters((prev) => ({ ...prev, ...patch, page: 1 }));
     // Filters that feed roll()/generate-table results — a stale rolled table would
     // show citations that no longer match the active filters.
     if (
@@ -71,6 +73,8 @@ export function Bestiary() {
       setRolled([]);
     }
   };
+
+  const setPage = (page: number) => setFilters((prev) => ({ ...prev, page }));
 
   const roll = async (count: number) => {
     setRolled(await rollRandom({
@@ -84,6 +88,12 @@ export function Bestiary() {
 
   const reviewMode = filters.review_status === 'pending';
   const items = data?.items ?? [];
+  const page = filters.page ?? 1;
+  const perPage = filters.per_page ?? 50;
+  const total = data?.total ?? 0;
+  const totalPages = Math.max(1, Math.ceil(total / perPage));
+  const rangeStart = total === 0 ? 0 : (page - 1) * perPage + 1;
+  const rangeEnd = Math.min(page * perPage, total);
 
   return (
     <div className="h-full overflow-y-auto p-4" style={{ color: 'var(--color-text-primary)' }}>
@@ -192,6 +202,11 @@ export function Bestiary() {
             : 'No confirmed monsters yet. Extract a bestiary, then confirm entries in Review pending.'}
         </p>
       )}
+      {!isLoading && items.length > 0 && (
+        <p className="text-sm opacity-70 mb-2">
+          Showing {rangeStart}-{rangeEnd} of {total}
+        </p>
+      )}
 
       <div className="space-y-2">
         {items.map((entry) => (
@@ -276,20 +291,34 @@ export function Bestiary() {
                   <thead>
                     <tr className="text-left opacity-70">
                       <th className="pr-3">vs.</th><th className="pr-3">AC</th>
-                      <th className="pr-3">Hit %</th><th>Dmg/round</th>
+                      <th className="pr-3">Hit %</th><th>Dmg</th>
                     </tr>
                   </thead>
                   <tbody>
                     {metrics.tiers.map((tier) => (
-                      <tr key={tier.tier}>
-                        <td className="pr-3">{tier.tier}</td>
-                        <td className="pr-3">{tier.ac}</td>
-                        <td className="pr-3">
-                          {tier.attacks.length > 0 && tier.attacks[0].hit_chance !== null
-                            ? `${Math.round(tier.attacks[0].hit_chance * 100)}%` : '—'}
-                        </td>
-                        <td>{tier.total_dpr}</td>
-                      </tr>
+                      <Fragment key={tier.tier}>
+                        <tr className="border-t" style={{ borderColor: 'var(--color-border)' }}>
+                          <td className="pr-3 font-medium">{tier.tier}</td>
+                          <td className="pr-3">{tier.ac}</td>
+                          <td className="pr-3" colSpan={2}></td>
+                        </tr>
+                        {/* One row per attack — hit_chance and dpr are independently
+                            nullable (e.g. a gaze attack can have a known hit chance
+                            but no damage), so each is rendered defensively on its own. */}
+                        {tier.attacks.map((atk, i) => (
+                          <tr key={i}>
+                            <td className="pr-3 pl-3 opacity-80" colSpan={2}>{atk.name || 'attack'}</td>
+                            <td className="pr-3">
+                              {atk.hit_chance !== null ? `${Math.round(atk.hit_chance * 100)}%` : '—'}
+                            </td>
+                            <td>{atk.dpr !== null ? atk.dpr : '—'}</td>
+                          </tr>
+                        ))}
+                        <tr className="font-medium">
+                          <td className="pr-3" colSpan={3}>Total dmg/round</td>
+                          <td>{tier.total_dpr}</td>
+                        </tr>
+                      </Fragment>
                     ))}
                   </tbody>
                 </table>
@@ -303,6 +332,26 @@ export function Bestiary() {
           </div>
         ))}
       </div>
+
+      {!isLoading && items.length > 0 && (
+        <div className="flex items-center gap-2 mt-3">
+          <button className="px-3 py-1 rounded border disabled:opacity-40"
+            style={{ borderColor: 'var(--color-border)', color: 'var(--color-text-primary)' }}
+            disabled={page <= 1}
+            onClick={() => setPage(page - 1)}>
+            Previous
+          </button>
+          <span className="text-sm" style={{ color: 'var(--color-text-secondary)' }}>
+            Page {page} of {totalPages}
+          </span>
+          <button className="px-3 py-1 rounded border disabled:opacity-40"
+            style={{ borderColor: 'var(--color-border)', color: 'var(--color-text-primary)' }}
+            disabled={page >= totalPages}
+            onClick={() => setPage(page + 1)}>
+            Next
+          </button>
+        </div>
+      )}
     </div>
   );
 }
