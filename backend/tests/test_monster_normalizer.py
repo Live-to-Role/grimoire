@@ -96,3 +96,52 @@ async def test_normalize_candidate_skips_non_monster(monkeypatch):
     monkeypatch.setattr("grimoire.processors.monster_normalizer.extract_with_anthropic", fake_llm)
 
     assert await normalize_candidate(make_candidate(), get_profile("dcc")) is None
+
+
+def test_build_entry_from_llm_damage_unparseable():
+    """Verify damage_unparseable flag when attack has unparseable damage_dice."""
+    llm = {
+        "is_monster": True, "name": "Test Beast", "ac": 15, "ac_style": "ascending",
+        "thac0": None, "hd_dice": "2d8+2",
+        "attacks": [
+            {"name": "bite", "bonus": 2, "damage_dice": "1d6+1"},
+            {"name": "special attack", "bonus": None, "damage_dice": "special"},
+        ],
+        "move": "40'", "special_abilities": [], "environments": ["mountains"],
+        "confidence": 0.8,
+    }
+    entry = build_entry_from_llm(llm, make_candidate(), get_profile("dcc"))
+    flags = json.loads(entry["flags"])
+
+    # Verify damage_unparseable is present
+    assert "damage_unparseable" in flags
+    # Verify no_attacks is NOT present (we have attacks)
+    assert "no_attacks" not in flags
+    # Verify review_status is still pending
+    assert entry["review_status"] == "pending"
+    # Verify the second attack has None for damage_avg
+    attacks = json.loads(entry["attacks"])
+    assert attacks[1]["damage_avg"] is None
+    assert attacks[0]["damage_avg"] == 4.5  # 1d6+1 should parse
+
+
+async def test_normalize_candidate_no_provider_configured(monkeypatch):
+    """Verify normalize_candidate returns None when no API keys are configured."""
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+
+    result = await normalize_candidate(make_candidate(), get_profile("dcc"))
+    assert result is None
+
+
+async def test_normalize_candidate_propagates_llm_error(monkeypatch):
+    """Verify exceptions from the LLM helper propagate out of normalize_candidate."""
+    async def failing_llm(text, prompt_template, api_key, model):
+        raise ValueError("LLM transport error")
+
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.setattr("grimoire.processors.monster_normalizer.extract_with_anthropic", failing_llm)
+
+    with pytest.raises(ValueError, match="LLM transport error"):
+        await normalize_candidate(make_candidate(), get_profile("dcc"))
