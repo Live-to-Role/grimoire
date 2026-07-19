@@ -87,7 +87,7 @@ Pure functions over confirmed statlines — nothing stored:
 
 ### API (under `/api/v1`)
 
-- `POST /products/{id}/extract-monsters` — enqueue extraction (body: system profile).
+- `POST /monsters/extract/{product_id}` — enqueue extraction (body: system profile).
 - `GET /monsters` — filterable list (environment, HD range, system, product, review_status).
 - `PATCH /monsters/{id}` — edit fields / set review status.
 - `GET /monsters/{id}/metrics` — computed metrics.
