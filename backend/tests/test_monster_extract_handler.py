@@ -76,6 +76,13 @@ async def test_handler_fails_when_no_provider_configured(db, monkeypatch):
     product = await make_product(db, "/t/handler-noprovider.pdf")
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+
+    async def _no_db_key(key_name):
+        return ""
+
+    monkeypatch.setattr(
+        "grimoire.processors.monster_normalizer.get_setting_from_db", _no_db_key
+    )
     monkeypatch.setattr("grimoire.services.processor.get_extracted_pages", lambda p: DCC_PAGES)
 
     with pytest.raises(TaskError):

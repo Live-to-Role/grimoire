@@ -38,7 +38,9 @@ export function Bestiary() {
   });
   const { data: productResults } = useQuery({
     queryKey: ['bestiary-product-search', productSearch],
-    queryFn: () => getProducts({ search: productSearch, per_page: 10 }),
+    // search_mode 'name': the user is naming a book to extract, so match
+    // titles rather than book contents.
+    queryFn: () => getProducts({ search: productSearch, search_mode: 'name', per_page: 10 }),
     enabled: showExtract && productSearch.length >= 2,
   });
 

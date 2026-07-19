@@ -5,6 +5,7 @@ import json
 import logging
 import os
 
+from grimoire.processors.ai_identifier import get_setting_from_db
 from grimoire.processors.monster_segmenter import Candidate
 from grimoire.processors.structured_extractor import (
     extract_with_anthropic,
@@ -45,7 +46,20 @@ Return ONLY valid JSON."""
 _DEFAULT_MODELS = {"openai": "gpt-4o-mini", "anthropic": "claude-haiku-4-5-20251001"}
 
 
-def resolve_provider(provider: str | None = None) -> str | None:
+async def get_api_keys() -> tuple[str, str]:
+    """Return (openai_key, anthropic_key), preferring env vars over the DB.
+
+    The Settings UI writes keys to the `settings` table, not to .env, so an
+    env-only lookup reports "no provider configured" for a user who has a key
+    saved in the app. `ai_identifier.get_ai_provider_and_key` reads env-or-DB
+    for exactly this reason; this mirrors it.
+    """
+    openai_key = os.getenv("OPENAI_API_KEY", "") or await get_setting_from_db("openai_api_key")
+    anthropic_key = os.getenv("ANTHROPIC_API_KEY", "") or await get_setting_from_db("anthropic_api_key")
+    return openai_key, anthropic_key
+
+
+async def resolve_provider(provider: str | None = None) -> str | None:
     """Resolve which LLM provider is actually usable, given an optional explicit choice.
 
     Precedence: an explicit `provider` is only honored if its key is set (no
@@ -54,12 +68,11 @@ def resolve_provider(provider: str | None = None) -> str | None:
     when nothing is usable (no key configured, or an unrecognized provider
     name), signaling "no provider available" to callers.
 
-    This is the single source of truth for provider precedence — both
+    This is the single source of truth for provider precedence - both
     `normalize_candidate` and the queue handler's pre-flight check call this
     so the two paths cannot drift.
     """
-    openai_key = os.getenv("OPENAI_API_KEY", "")
-    anthropic_key = os.getenv("ANTHROPIC_API_KEY", "")
+    openai_key, anthropic_key = await get_api_keys()
     if provider is None:
         return "anthropic" if anthropic_key else "openai" if openai_key else None
     if provider == "anthropic":
@@ -135,9 +148,8 @@ async def normalize_candidate(
     Returns None when no provider is configured or the LLM rejects the
     candidate as not-a-monster. Raises on transport errors (caller flags).
     """
-    openai_key = os.getenv("OPENAI_API_KEY", "")
-    anthropic_key = os.getenv("ANTHROPIC_API_KEY", "")
-    resolved = resolve_provider(provider)
+    openai_key, anthropic_key = await get_api_keys()
+    resolved = await resolve_provider(provider)
 
     prompt_template = NORMALIZE_PROMPT.replace("{profile_hint}", profile.prompt_hint)
 

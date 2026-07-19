@@ -752,7 +752,7 @@ async def handle_monster_extract_task(
     # Fail fast, before the (slow, sequential) LLM loop, if no provider can
     # possibly work — otherwise every candidate silently no-ops and the task
     # reports "completed" with zero rows saved and no signal to the owner.
-    if monster_normalizer.resolve_provider(config.get("provider")) is None:
+    if await monster_normalizer.resolve_provider(config.get("provider")) is None:
         raise TaskError(
             f"monster_extract: no AI provider configured for '{product.file_name}' "
             "(set an OpenAI or Anthropic API key)"

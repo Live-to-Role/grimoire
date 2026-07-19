@@ -5,7 +5,11 @@ import json
 
 import pytest
 
-from grimoire.processors.monster_normalizer import build_entry_from_llm, normalize_candidate
+from grimoire.processors.monster_normalizer import (
+    build_entry_from_llm,
+    normalize_candidate,
+    resolve_provider,
+)
 from grimoire.processors.monster_segmenter import Candidate
 from grimoire.processors.system_profiles import get_profile
 
@@ -126,9 +130,21 @@ def test_build_entry_from_llm_damage_unparseable():
 
 
 async def test_normalize_candidate_no_provider_configured(monkeypatch):
-    """Verify normalize_candidate returns None when no API keys are configured."""
+    """Verify normalize_candidate returns None when no API keys are configured.
+
+    "Not configured" means neither the environment NOR the settings table has a
+    key - the DB is a real fallback source, so clearing only the env is not
+    enough to simulate it.
+    """
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+
+    async def _no_db_key(key_name):
+        return ""
+
+    monkeypatch.setattr(
+        "grimoire.processors.monster_normalizer.get_setting_from_db", _no_db_key
+    )
 
     result = await normalize_candidate(make_candidate(), get_profile("dcc"))
     assert result is None
@@ -145,3 +161,70 @@ async def test_normalize_candidate_propagates_llm_error(monkeypatch):
 
     with pytest.raises(ValueError, match="LLM transport error"):
         await normalize_candidate(make_candidate(), get_profile("dcc"))
+
+
+# --- Regression: API keys stored in the DB, not the environment -------------
+#
+# The Settings UI writes the user's key to the `settings` table, NOT to .env
+# (ai_identifier.py:333 already reads "env or DB" for exactly this reason).
+# resolve_provider originally consulted only os.getenv, so a user whose key
+# lived in the DB got "no AI provider configured" and extraction never ran.
+
+
+async def test_resolve_provider_reads_key_from_db_when_env_is_empty(monkeypatch):
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+
+    async def fake_db_setting(key_name):
+        return "sk-ant-from-database" if key_name == "anthropic_api_key" else ""
+
+    monkeypatch.setattr(
+        "grimoire.processors.monster_normalizer.get_setting_from_db", fake_db_setting
+    )
+
+    assert await resolve_provider() == "anthropic"
+
+
+async def test_resolve_provider_none_when_neither_env_nor_db_has_a_key(monkeypatch):
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+
+    async def fake_db_setting(key_name):
+        return ""
+
+    monkeypatch.setattr(
+        "grimoire.processors.monster_normalizer.get_setting_from_db", fake_db_setting
+    )
+
+    assert await resolve_provider() is None
+
+
+async def test_normalize_candidate_uses_db_key(monkeypatch):
+    """The DB-sourced key must reach the LLM call, not just satisfy the check."""
+    captured = {}
+
+    async def fake_db_setting(key_name):
+        return "sk-ant-from-database" if key_name == "anthropic_api_key" else ""
+
+    async def fake_llm(text, prompt_template, api_key, model):
+        captured["api_key"] = api_key
+        return {
+            "is_monster": True, "name": "Orc", "ac": 13, "ac_style": "ascending",
+            "thac0": None, "hd_dice": "1d8+1",
+            "attacks": [{"name": "claw", "bonus": 1, "damage_dice": "1d4"}],
+            "move": "30'", "special_abilities": [], "environments": [],
+            "confidence": 0.9,
+        }
+
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.setattr(
+        "grimoire.processors.monster_normalizer.get_setting_from_db", fake_db_setting
+    )
+    monkeypatch.setattr(
+        "grimoire.processors.monster_normalizer.extract_with_anthropic", fake_llm
+    )
+
+    entry = await normalize_candidate(make_candidate(), get_profile("dcc"))
+    assert entry is not None, "extraction must run when the key is only in the DB"
+    assert captured["api_key"] == "sk-ant-from-database"
