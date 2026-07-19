@@ -956,7 +956,7 @@ git commit -m "feat(bestiary): LLM candidate normalization with validation flags
             "total_dpr": 1.5}, ...]}
 ```
 
-Hit chance: `p = (21 + bonus - tier_ac) / 20`, clamped to `[0.05, 0.95]` (nat 1 always misses, nat 20 always hits). Attacks missing `bonus` or `damage_avg` contribute `hit_chance: None, dpr: None` and are excluded from `total_dpr`.
+Hit chance: `p = (21 + bonus - tier_ac) / 20`, clamped to `[0.05, 0.95]` (nat 1 always misses, nat 20 always hits). Attacks missing `bonus` contribute `hit_chance: None, dpr: None` and are excluded from `total_dpr`. Attacks with a bonus but missing `damage_avg` report their computed `hit_chance` with `dpr: None`, and are also excluded from `total_dpr`.
 
 - [ ] **Step 1: Write the failing tests**
 

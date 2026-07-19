@@ -53,3 +53,34 @@ def test_missing_bonus_yields_none_and_excluded_from_total():
 def test_no_attacks():
     metrics = compute_metrics(make_entry(attacks=json.dumps([])))
     assert metrics["tiers"][0]["total_dpr"] == 0.0
+
+
+def test_bonus_present_damage_missing_yields_hit_chance_not_dpr():
+    """Attack with real bonus but no damage_avg: hit_chance computed, dpr=None, excluded from total.
+
+    This is the deliberate, owner-decided semantics: a known-to-hit with unknown damage
+    (e.g. gaze, poison, save-or-die) still has meaningful hit probability to report,
+    so we compute and surface it rather than suppressing a computable number.
+    """
+    entry = make_entry(attacks=json.dumps([
+        {"name": "claw", "bonus": 1, "damage_dice": "1d4", "damage_avg": 2.5},
+        {"name": "gaze", "bonus": 2, "damage_dice": None, "damage_avg": None},
+    ]))
+    tiers = compute_metrics(entry)["tiers"]
+    unarmored = tiers[0]
+    # Gaze attack should have computed hit_chance, no dpr
+    assert unarmored["attacks"][1]["hit_chance"] == pytest.approx(0.65)  # (21+2-10)/20
+    assert unarmored["attacks"][1]["dpr"] is None
+    # Gaze attack's missing dpr should not contribute to total
+    assert unarmored["total_dpr"] == pytest.approx(1.5)  # only claw's 0.6 * 2.5
+
+
+def test_tier_order_unarmored_first():
+    """Armor tier order is load-bearing: downstream code and UI rely on unarmored being first."""
+    metrics = compute_metrics(make_entry())
+    tiers = metrics["tiers"]
+    assert tiers[0]["tier"] == "unarmored"
+    # DCC has 4 tiers in order
+    expected_order = ["unarmored", "leather", "chain", "plate & shield"]
+    actual_order = [t["tier"] for t in tiers]
+    assert actual_order == expected_order
