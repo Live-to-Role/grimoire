@@ -82,3 +82,11 @@ def test_tightly_packed_anchors_do_not_drop_earlier_candidate():
     pages = [{"page": 5, "markdown": TIGHTLY_PACKED_PAGE}]
     candidates = segment_pages(pages, get_profile("dcc"))
     assert len(candidates) == 2
+    # A non-empty rescue isn't enough: the rescued first candidate must also
+    # carry its own anchor's statline, not just the header it was rescued
+    # back to. A name-only candidate ("## Orc" with no stats) is invisible to
+    # the downstream LLM normalizer -- it will be rejected as not-a-monster,
+    # so the monster is still effectively lost even though the slice is
+    # "non-empty".
+    assert "AC 13" in candidates[0].raw_text
+    assert "HD 1d8+1" in candidates[0].raw_text
