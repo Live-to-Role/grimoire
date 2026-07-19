@@ -715,6 +715,80 @@ async def handle_ai_identify_task(db: AsyncSession, product: Product, config: di
     return True
 
 
+@register_handler("monster_extract")
+async def handle_monster_extract_task(
+    db: AsyncSession, product: Product, config: dict | None = None
+) -> bool:
+    """Extract monster entries from a bestiary product (segment -> LLM -> pending rows)."""
+    import json as _json
+
+    from sqlalchemy import delete, select as _select
+
+    from grimoire.models.monster_entry import MonsterEntry
+    from grimoire.processors import monster_normalizer
+    from grimoire.processors.monster_segmenter import segment_pages
+    from grimoire.processors.system_profiles import PROFILES
+    from grimoire.services import processor as _processor
+
+    config = config or {}
+    profile_id = config.get("system_profile")
+    if profile_id not in PROFILES:
+        logger.error(f"monster_extract: unknown system profile '{profile_id}'")
+        return False
+    profile = PROFILES[profile_id]
+
+    pages = _processor.get_extracted_pages(product)
+    if not pages:
+        logger.warning(
+            f"monster_extract: no page-anchored text for '{product.file_name}' "
+            "(re-run text extraction first)"
+        )
+        return False
+
+    candidates = segment_pages(pages, profile)
+    logger.info(f"monster_extract: {len(candidates)} candidates in '{product.file_name}'")
+
+    # Replace stale machine output; never touch human-reviewed rows.
+    await db.execute(
+        delete(MonsterEntry).where(
+            MonsterEntry.product_id == product.id,
+            MonsterEntry.review_status.in_(["pending", "rejected"]),
+        )
+    )
+    result = await db.execute(
+        _select(MonsterEntry.name, MonsterEntry.page_number).where(
+            MonsterEntry.product_id == product.id,
+            MonsterEntry.review_status == "confirmed",
+        )
+    )
+    confirmed_keys = {(row.name, row.page_number) for row in result}
+
+    saved = failed = 0
+    for candidate in candidates:
+        try:
+            entry = await monster_normalizer.normalize_candidate(
+                candidate, profile,
+                provider=config.get("provider"), model=config.get("model"),
+            )
+        except Exception as exc:
+            failed += 1
+            logger.warning(f"monster_extract: candidate '{candidate.name_guess}' failed: {exc}")
+            continue
+        if entry is None:
+            continue
+        if (entry["name"], entry["page_number"]) in confirmed_keys:
+            continue
+        db.add(MonsterEntry(product_id=product.id, **entry))
+        saved += 1
+
+    await db.commit()
+    logger.info(
+        f"monster_extract: saved {saved} pending entries for '{product.file_name}' "
+        f"({failed} candidates failed)"
+    )
+    return True
+
+
 async def _process_item_with_session(db: AsyncSession, item: ProcessingQueue) -> bool:
     """Process a queue item using an existing session.
 
