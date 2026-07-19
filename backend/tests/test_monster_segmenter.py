@@ -66,3 +66,19 @@ def test_anchor_without_header_still_emits_candidate():
     candidates = segment_pages(pages, get_profile("dcc"))
     assert len(candidates) == 1
     assert candidates[0].name_guess  # non-empty fallback
+
+
+TIGHTLY_PACKED_PAGE = """## Orc
+Orc: Init +1; Atk claw +1 melee (1d4); AC 13; HD 1d8+1; MV 30'; Act 1d20; SV Fort +1, Ref +0, Will -1; AL C.
+Rat: Init +2; Atk bite +1 melee (1d3); AC 12; HD 1d6; MV 30'; Act 1d20; SV Fort +2, Ref +2, Will -1; AL N."""
+
+
+def test_tightly_packed_anchors_do_not_drop_earlier_candidate():
+    # Regression: when a later anchor's header lookback lands on or before an
+    # earlier candidate's start, the earlier block's slice could be clipped to
+    # empty and silently dropped. High recall is load-bearing here (see module
+    # docstring) -- missing a real monster is far more costly than a junk
+    # candidate, so both entries must be emitted even when packed this tight.
+    pages = [{"page": 5, "markdown": TIGHTLY_PACKED_PAGE}]
+    candidates = segment_pages(pages, get_profile("dcc"))
+    assert len(candidates) == 2

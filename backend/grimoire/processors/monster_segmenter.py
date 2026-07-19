@@ -73,6 +73,11 @@ def segment_pages(pages: list[dict], profile: SystemProfile) -> list[Candidate]:
             end = min(len(lines), anchor_idx + _MAX_LINES_BELOW)
             if pos + 1 < len(starts):
                 end = min(end, starts[pos + 1])
+            # Never let the next-candidate clip collapse this slice to empty:
+            # high recall is load-bearing here (see module docstring), so a
+            # candidate must never be silently discarded just because a later
+            # anchor's header lookback lands on or before this one's start.
+            end = max(start + 1, end)
             block = "\n".join(lines[start:end]).strip()
             if block:
                 candidates.append(Candidate(name_guess=names[pos], page=page_num, raw_text=block))
