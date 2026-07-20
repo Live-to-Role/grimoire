@@ -41,8 +41,11 @@
 | `backend/tests/test_monsters_favorites.py` (create) | Favorites CRUD |
 | `backend/tests/test_monsters_guard.py` (create) | Extraction guard + handler zero-candidate failure |
 | `frontend/src/api/monsters.ts` (modify) | Client for all new/changed endpoints |
+| `frontend/src/components/MultiCombobox.tsx` (create) | Searchable multi-select over `{id, label, count}` options |
 | `frontend/src/pages/Bestiary.tsx` (modify) | Bulk selection, book filter, favorites UI |
 | `frontend/src/components/ProductDetail.tsx` (modify) | "Extract as bestiary" action |
+
+`MultiCombobox` is a **sibling** of the existing `ComboboxWithAdd.tsx`, not a generalisation of it. Multi-select changes the value type, the trigger rendering, whether the popup closes on pick, and removes the add-new path — that is most of the component. `ComboboxWithAdd` is already used by `ProductDetail`, so threading a `multi` flag through it risks a regression there for little gain.
 
 New tests go in their own files rather than growing `test_monsters_api.py` (already 14 tests), keeping each file to one concern.
 
@@ -1265,7 +1268,258 @@ git commit -m "feat(bestiary): bulk confirm and reject in review mode"
 
 ---
 
-### Task 7: Book filter and favorites UI
+### Task 7: MultiCombobox component
+
+**Files:**
+- Create: `frontend/src/components/MultiCombobox.tsx`
+
+**Interfaces:**
+- Consumes: nothing (a leaf component; `lucide-react` is already a dependency)
+- Produces:
+
+```typescript
+export interface MultiComboboxOption {
+  id: number;
+  label: string;
+  count?: number;
+}
+
+export function MultiCombobox(props: {
+  options: MultiComboboxOption[];
+  selectedIds: number[];
+  onChange: (ids: number[]) => void;
+  placeholder?: string;
+  emptyLabel?: string;
+  className?: string;
+}): JSX.Element
+```
+
+Mirrors the interaction model of the existing `ComboboxWithAdd.tsx`: filter-as-you-type, arrow-key highlight, Enter to pick, Escape to close, and a `mousedown` listener that closes on click-outside. Differences: the value is `number[]`, picking an option toggles it and keeps the popup open, selections render as removable chips in the trigger, and there is no add-new option (you cannot invent a book).
+
+- [ ] **Step 1: Write the component**
+
+```tsx
+// frontend/src/components/MultiCombobox.tsx
+import { useState, useRef, useEffect } from 'react';
+import { ChevronDown, Check, X } from 'lucide-react';
+
+export interface MultiComboboxOption {
+  id: number;
+  label: string;
+  count?: number;
+}
+
+interface MultiComboboxProps {
+  options: MultiComboboxOption[];
+  selectedIds: number[];
+  onChange: (ids: number[]) => void;
+  placeholder?: string;
+  emptyLabel?: string;
+  className?: string;
+}
+
+/**
+ * Searchable multi-select. Sibling of ComboboxWithAdd rather than a mode of
+ * it: the value type, trigger rendering, close-on-pick behaviour and add-new
+ * path all differ, and ComboboxWithAdd is load-bearing in ProductDetail.
+ */
+export function MultiCombobox({
+  options,
+  selectedIds,
+  onChange,
+  placeholder = 'Search...',
+  emptyLabel = 'All',
+  className = '',
+}: MultiComboboxProps) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [search, setSearch] = useState('');
+  const [highlightedIndex, setHighlightedIndex] = useState(-1);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const filtered = options.filter((o) =>
+    o.label.toLowerCase().includes(search.toLowerCase())
+  );
+  const selected = options.filter((o) => selectedIds.includes(o.id));
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setIsOpen(false);
+        setSearch('');
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  useEffect(() => {
+    setHighlightedIndex(-1);
+  }, [search, isOpen]);
+
+  const toggle = (id: number) => {
+    // Stays open: picking several books in a row is the normal case.
+    onChange(selectedIds.includes(id) ? selectedIds.filter((x) => x !== id) : [...selectedIds, id]);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (!isOpen) {
+      if (e.key === 'ArrowDown' || e.key === 'Enter') {
+        setIsOpen(true);
+        e.preventDefault();
+      }
+      return;
+    }
+    switch (e.key) {
+      case 'ArrowDown':
+        e.preventDefault();
+        setHighlightedIndex((prev) => (prev < filtered.length - 1 ? prev + 1 : prev));
+        break;
+      case 'ArrowUp':
+        e.preventDefault();
+        setHighlightedIndex((prev) => (prev > 0 ? prev - 1 : prev));
+        break;
+      case 'Enter':
+        e.preventDefault();
+        if (highlightedIndex >= 0 && filtered[highlightedIndex]) {
+          toggle(filtered[highlightedIndex].id);
+        }
+        break;
+      case 'Backspace':
+        // Only when the box is empty, so it never eats a character mid-search.
+        if (search === '' && selectedIds.length > 0) {
+          onChange(selectedIds.slice(0, -1));
+        }
+        break;
+      case 'Escape':
+        setIsOpen(false);
+        setSearch('');
+        break;
+    }
+  };
+
+  return (
+    <div ref={containerRef} className={`relative ${className}`}>
+      <div
+        className="flex items-center gap-1 flex-wrap rounded-md px-2 py-1 text-sm cursor-text"
+        style={{
+          backgroundColor: 'var(--color-surface)',
+          border: '1px solid var(--color-border)',
+          minHeight: '34px',
+        }}
+        onClick={() => {
+          setIsOpen(true);
+          inputRef.current?.focus();
+        }}
+      >
+        {selected.map((option) => (
+          <span
+            key={option.id}
+            className="inline-flex items-center gap-1 px-1.5 rounded text-xs"
+            style={{ border: '1px solid var(--color-border)', color: 'var(--color-text-primary)' }}
+          >
+            {option.label}
+            <button
+              type="button"
+              aria-label={`Remove ${option.label}`}
+              onClick={(e) => {
+                e.stopPropagation();
+                onChange(selectedIds.filter((x) => x !== option.id));
+              }}
+            >
+              <X size={12} />
+            </button>
+          </span>
+        ))}
+        <input
+          ref={inputRef}
+          type="text"
+          value={search}
+          onChange={(e) => {
+            setSearch(e.target.value);
+            if (!isOpen) setIsOpen(true);
+          }}
+          onFocus={() => setIsOpen(true)}
+          onKeyDown={handleKeyDown}
+          placeholder={selected.length === 0 ? emptyLabel : placeholder}
+          className="flex-1 outline-none bg-transparent min-w-[80px]"
+          style={{ color: 'var(--color-text-primary)' }}
+        />
+        <ChevronDown
+          className={`shrink-0 transition-transform ${isOpen ? 'rotate-180' : ''}`}
+          size={14}
+          style={{ color: 'var(--color-text-secondary)' }}
+        />
+      </div>
+
+      {isOpen && (
+        <div
+          className="absolute z-50 mt-1 w-full rounded-md shadow-lg max-h-60 overflow-auto"
+          style={{
+            backgroundColor: 'var(--color-surface)',
+            border: '1px solid var(--color-border)',
+          }}
+        >
+          {filtered.length === 0 ? (
+            <div className="px-3 py-2 text-sm" style={{ color: 'var(--color-text-secondary)' }}>
+              No matches
+            </div>
+          ) : (
+            <ul role="listbox" aria-multiselectable="true">
+              {filtered.map((option, index) => {
+                const isSelected = selectedIds.includes(option.id);
+                return (
+                  <li
+                    key={option.id}
+                    role="option"
+                    aria-selected={isSelected}
+                    className="flex items-center gap-2 px-3 py-1.5 text-sm cursor-pointer"
+                    style={{
+                      backgroundColor:
+                        highlightedIndex === index ? 'var(--color-accent-light)' : 'transparent',
+                      color: 'var(--color-text-primary)',
+                    }}
+                    onClick={() => toggle(option.id)}
+                    onMouseEnter={() => setHighlightedIndex(index)}
+                  >
+                    {isSelected ? (
+                      <Check size={14} style={{ color: 'var(--color-accent)' }} />
+                    ) : (
+                      <span className="w-[14px]" />
+                    )}
+                    <span className="flex-1">{option.label}</span>
+                    {option.count !== undefined && (
+                      <span className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>
+                        {option.count}
+                      </span>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+```
+
+- [ ] **Step 2: Type-check**
+
+From `frontend/`: `npx tsc -b --force`
+Expected: only the pre-existing `Settings.tsx` 'Shield' error. The component is not yet imported anywhere, so this only proves it compiles.
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add frontend/src/components/MultiCombobox.tsx
+git commit -m "feat(ui): searchable multi-select combobox"
+```
+
+---
+
+### Task 8: Book filter and favorites UI
 
 **Files:**
 - Modify: `frontend/src/pages/Bestiary.tsx`
@@ -1307,46 +1561,30 @@ Add these mutations:
 
 - [ ] **Step 2: Add the book multi-select**
 
-Add this to the filter bar, before the environment `<select>`:
+Import the component from Task 7:
 
 ```tsx
-        <select multiple size={3} className="px-2 py-1 rounded border bg-transparent min-w-[180px]"
-          style={{ borderColor: 'var(--color-border)' }}
-          value={(filters.product_ids ?? []).map(String)}
-          onChange={(e) =>
-            setFilter({
-              product_ids: Array.from(e.target.selectedOptions, (o) => Number(o.value)),
-            })
-          }>
-          {books.map((b) => (
-            <option key={b.product_id} value={b.product_id}>
-              {b.title ?? `Book ${b.product_id}`} ({b.count})
-            </option>
-          ))}
-        </select>
+import { MultiCombobox } from '../components/MultiCombobox';
 ```
 
-Add selected-book chips immediately after that `<select>`, so the current scope is readable without scrolling the list:
+Add this to the filter bar, before the environment `<select>`. The component renders its own removable chips, so no separate chip row is needed:
 
 ```tsx
-        {(filters.product_ids ?? []).length > 0 && (
-          <div className="flex gap-1 flex-wrap items-center">
-            {(filters.product_ids ?? []).map((id) => {
-              const book = books.find((b) => b.product_id === id);
-              return (
-                <span key={id} className="text-xs px-1.5 py-0.5 rounded border"
-                  style={{ borderColor: 'var(--color-border)' }}>
-                  {book?.title ?? `Book ${id}`}
-                  <button className="ml-1 opacity-70"
-                    onClick={() =>
-                      setFilter({ product_ids: (filters.product_ids ?? []).filter((x) => x !== id) })
-                    }>×</button>
-                </span>
-              );
-            })}
-          </div>
-        )}
+        <MultiCombobox
+          className="min-w-[220px]"
+          options={books.map((b) => ({
+            id: b.product_id,
+            label: b.title ?? `Book ${b.product_id}`,
+            count: b.count,
+          }))}
+          selectedIds={filters.product_ids ?? []}
+          onChange={(ids) => setFilter({ product_ids: ids.length > 0 ? ids : undefined })}
+          emptyLabel="All books"
+          placeholder="Search books..."
+        />
 ```
+
+`ids.length > 0 ? ids : undefined` matters: an empty array would serialise as no parameter anyway, but sending `undefined` keeps the filter object clean and keeps the React Query key stable between "never set" and "cleared".
 
 - [ ] **Step 3: Add the favorites strip**
 
@@ -1424,7 +1662,7 @@ git commit -m "feat(bestiary): book filter and saved query favorites"
 
 ---
 
-### Task 8: Extract as bestiary from the product modal
+### Task 9: Extract as bestiary from the product modal
 
 **Files:**
 - Modify: `frontend/src/components/ProductDetail.tsx`
@@ -1542,7 +1780,7 @@ git commit -m "feat(bestiary): queue extraction from the product detail modal"
 
 ---
 
-### Task 9: Full verification
+### Task 10: Full verification
 
 **Files:** none new.
 
