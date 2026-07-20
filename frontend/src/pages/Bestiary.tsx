@@ -2,12 +2,13 @@ import { Fragment, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   listMonsters, listEnvironments, getMetrics, patchMonster, rollRandom, queueExtraction,
-  bulkSetStatus, listBooks, listFavorites, createFavorite, deleteFavorite,
-  type MonsterEntry, type MonsterFilters,
+  bulkSetStatus, listBooks, listFavorites, createFavorite, deleteFavorite, deleteMonster,
+  type MonsterEntry, type MonsterFilters, type MonsterEntryInput,
   type BestiaryFavorite, type FavoriteConfig,
 } from '../api/monsters';
 import { getProducts } from '../api/products';
 import { MultiCombobox } from '../components/MultiCombobox';
+import { MonsterEntryModal, type EntryModalMode } from '../components/MonsterEntryModal';
 
 const TABLE_SIZES = [4, 6, 8, 10, 12, 20];
 
@@ -25,6 +26,10 @@ export function Bestiary() {
   const [extractProfile, setExtractProfile] = useState<'dcc' | 'osr'>('dcc');
   const [extractMessage, setExtractMessage] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [entryModal, setEntryModal] = useState<
+    { mode: EntryModalMode; entry: MonsterEntry | null } | null
+  >(null);
+  const [createdNotice, setCreatedNotice] = useState<MonsterEntry | null>(null);
   const queryClient = useQueryClient();
 
   const { data: environments = [] } = useQuery({
@@ -57,11 +62,20 @@ export function Bestiary() {
   });
 
   const patchMutation = useMutation({
-    mutationFn: ({ id, patch }: { id: number; patch: Partial<MonsterEntry> }) =>
-      patchMonster(id, patch),
+    mutationFn: ({ id, patch }: {
+      id: number;
+      patch: Partial<MonsterEntryInput> & { review_status?: string };
+    }) => patchMonster(id, patch),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['monsters'] });
       queryClient.invalidateQueries({ queryKey: ['monster-metrics'] });
+    },
+  });
+  const deleteMutation = useMutation({
+    mutationFn: (id: number) => deleteMonster(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['monsters'] });
+      queryClient.invalidateQueries({ queryKey: ['monster-books'] });
     },
   });
   const bulkMutation = useMutation({
@@ -181,11 +195,40 @@ export function Bestiary() {
     <div className="h-full overflow-y-auto p-4" style={{ color: 'var(--color-text-primary)' }}>
       <div className="flex items-center justify-between mb-4">
         <h1 className="text-xl font-semibold">Bestiary</h1>
-        <button className="px-3 py-1.5 rounded border" style={{ borderColor: 'var(--color-border)' }}
-          onClick={() => { setShowExtract(!showExtract); setExtractMessage(null); }}>
-          Extract from book…
-        </button>
+        <div className="flex gap-2">
+          <button className="px-3 py-1.5 rounded border" style={{ borderColor: 'var(--color-border)' }}
+            onClick={() => setEntryModal({ mode: 'create', entry: null })}>
+            Add entry
+          </button>
+          <button className="px-3 py-1.5 rounded border" style={{ borderColor: 'var(--color-border)' }}
+            onClick={() => { setShowExtract(!showExtract); setExtractMessage(null); }}>
+            Extract from book…
+          </button>
+        </div>
       </div>
+
+      {createdNotice && (
+        <div className="mb-4 p-3 rounded border flex items-center gap-3 text-sm"
+          style={{ borderColor: 'var(--color-border)' }}>
+          {/* A created entry is confirmed, so it is invisible while the list is
+              filtered to pending — say so and offer the switch rather than
+              letting the user conclude the save failed. */}
+          <span>
+            Created “{createdNotice.name}” as <strong>confirmed</strong>.
+            {reviewMode && ' It is not shown in the pending list.'}
+          </span>
+          {reviewMode && (
+            <button className="px-2 py-0.5 rounded border" style={{ borderColor: 'var(--color-border)' }}
+              onClick={() => {
+                setFilter({ review_status: 'confirmed', q: createdNotice.name });
+                setCreatedNotice(null);
+              }}>
+              Show it
+            </button>
+          )}
+          <button className="ml-auto opacity-60" onClick={() => setCreatedNotice(null)}>×</button>
+        </div>
+      )}
 
       {showExtract && (
         <div className="mb-4 p-3 rounded border" style={{ borderColor: 'var(--color-border)' }}>
@@ -366,6 +409,20 @@ export function Bestiary() {
                     style={{ borderColor: 'var(--color-border)' }}>{env}</span>
                 ))}
               </div>
+              <div className="flex gap-1 ml-3 text-xs">
+                <button className="px-2 py-0.5 rounded border" style={{ borderColor: 'var(--color-border)' }}
+                  onClick={() => setEntryModal({ mode: 'edit', entry })}>Edit</button>
+                <button className="px-2 py-0.5 rounded border" style={{ borderColor: 'var(--color-border)' }}
+                  onClick={() => setEntryModal({ mode: 'duplicate', entry })}>Duplicate</button>
+                <button className="px-2 py-0.5 rounded border opacity-70"
+                  style={{ borderColor: 'var(--color-border)' }}
+                  disabled={deleteMutation.isPending}
+                  onClick={() => {
+                    if (window.confirm(`Delete “${entry.name}”? This cannot be undone.`)) {
+                      deleteMutation.mutate(entry.id);
+                    }
+                  }}>Delete</button>
+              </div>
             </div>
 
             {reviewMode && (
@@ -507,6 +564,19 @@ export function Bestiary() {
             Next
           </button>
         </div>
+      )}
+
+      {entryModal && (
+        <MonsterEntryModal
+          // Remount per target so the form re-initialises from the new entry
+          // rather than keeping the previous one's state.
+          key={`${entryModal.mode}-${entryModal.entry?.id ?? 'new'}`}
+          mode={entryModal.mode}
+          entry={entryModal.entry}
+          onClose={() => setEntryModal(null)}
+          onSaved={() => setEntryModal(null)}
+          onCreated={(created) => { setEntryModal(null); setCreatedNotice(created); }}
+        />
       )}
     </div>
   );
