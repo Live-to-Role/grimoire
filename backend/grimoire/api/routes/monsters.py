@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, select, update
 
 from grimoire.api.deps import DbSession
-from grimoire.models import MonsterEntry, ProcessingQueue, Product
+from grimoire.models import BestiaryFavorite, MonsterEntry, ProcessingQueue, Product
 from grimoire.processors.system_profiles import PROFILES
 from grimoire.services.monster_metrics import compute_metrics
 from grimoire.utils.dice import dice_average, parse_dice
@@ -48,6 +48,11 @@ class RandomRequest(BaseModel):
 class BulkStatusRequest(BaseModel):
     ids: list[int]
     review_status: str
+
+
+class FavoriteRequest(BaseModel):
+    name: str | None = None
+    config: dict | None = None
 
 
 def _entry_to_dict(entry: MonsterEntry, product_title: str | None = None) -> dict:
@@ -210,6 +215,72 @@ async def list_books(db: DbSession, review_status: str = "confirmed") -> dict:
             for product_id, title, count in rows
         ]
     }
+
+
+def _favorite_to_dict(favorite: BestiaryFavorite) -> dict:
+    return {
+        "id": favorite.id,
+        "name": favorite.name,
+        "config": json.loads(favorite.config) if favorite.config else {},
+    }
+
+
+@router.get("/favorites")
+async def list_favorites(db: DbSession) -> dict:
+    """Saved bestiary queries, newest first."""
+    result = await db.execute(
+        select(BestiaryFavorite).order_by(BestiaryFavorite.created_at.desc(), BestiaryFavorite.id.desc())
+    )
+    return {"favorites": [_favorite_to_dict(f) for f in result.scalars().all()]}
+
+
+@router.post("/favorites")
+async def create_favorite(db: DbSession, request: FavoriteRequest) -> dict:
+    """Save the current query under a name."""
+    if not request.name or not request.name.strip():
+        raise HTTPException(status_code=422, detail="name is required")
+
+    favorite = BestiaryFavorite(
+        name=request.name.strip(),
+        config=json.dumps(request.config or {}),
+    )
+    db.add(favorite)
+    await db.commit()
+    await db.refresh(favorite)
+    return _favorite_to_dict(favorite)
+
+
+@router.patch("/favorites/{favorite_id}")
+async def update_favorite(db: DbSession, favorite_id: int, request: FavoriteRequest) -> dict:
+    """Rename a favorite, overwrite its query, or both."""
+    result = await db.execute(select(BestiaryFavorite).where(BestiaryFavorite.id == favorite_id))
+    favorite = result.scalar_one_or_none()
+    if not favorite:
+        raise HTTPException(status_code=404, detail="Favorite not found")
+
+    if request.name is not None:
+        if not request.name.strip():
+            raise HTTPException(status_code=422, detail="name cannot be blank")
+        favorite.name = request.name.strip()
+    if request.config is not None:
+        favorite.config = json.dumps(request.config)
+
+    await db.commit()
+    await db.refresh(favorite)
+    return _favorite_to_dict(favorite)
+
+
+@router.delete("/favorites/{favorite_id}")
+async def delete_favorite(db: DbSession, favorite_id: int) -> dict:
+    """Remove a saved query."""
+    result = await db.execute(select(BestiaryFavorite).where(BestiaryFavorite.id == favorite_id))
+    favorite = result.scalar_one_or_none()
+    if not favorite:
+        raise HTTPException(status_code=404, detail="Favorite not found")
+
+    await db.delete(favorite)
+    await db.commit()
+    return {"deleted": True}
 
 
 @router.post("/bulk-status")
