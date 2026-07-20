@@ -4,7 +4,7 @@ import json
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 
 from grimoire.api.deps import DbSession
 from grimoire.models import MonsterEntry, ProcessingQueue, Product
@@ -42,6 +42,11 @@ class RandomRequest(BaseModel):
     hd_min: float | None = None
     hd_max: float | None = None
     product_id: int | None = None
+
+
+class BulkStatusRequest(BaseModel):
+    ids: list[int]
+    review_status: str
 
 
 def _entry_to_dict(entry: MonsterEntry, product_title: str | None = None) -> dict:
@@ -178,6 +183,32 @@ async def list_environments(db: DbSession) -> dict:
         if raw:
             tags.update(json.loads(raw))
     return {"environments": sorted(tags)}
+
+
+@router.post("/bulk-status")
+async def bulk_status(db: DbSession, request: BulkStatusRequest) -> dict:
+    """Set review_status on many entries in one transaction.
+
+    One UPDATE and one commit, rather than one request per entry: confirming
+    175 entries via PATCH took over five minutes because each request forced
+    its own fsync against a large database.
+    """
+    if request.review_status not in VALID_STATUSES:
+        raise HTTPException(
+            status_code=422, detail=f"review_status must be one of {sorted(VALID_STATUSES)}"
+        )
+    if not request.ids:
+        return {"updated": 0}
+
+    result = await db.execute(
+        update(MonsterEntry)
+        .where(MonsterEntry.id.in_(request.ids))
+        .values(review_status=request.review_status)
+    )
+    await db.commit()
+    # rowcount reflects rows that actually existed, so unknown ids are skipped
+    # silently but visibly — the caller can compare against len(ids).
+    return {"updated": result.rowcount or 0}
 
 
 @router.patch("/{entry_id}")
