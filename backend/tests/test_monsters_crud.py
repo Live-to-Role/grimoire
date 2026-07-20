@@ -6,7 +6,9 @@ from sqlalchemy import select
 
 from grimoire.api.routes.monsters import (
     CreateEntryRequest,
+    PatchEntryRequest,
     create_entry,
+    patch_entry,
 )
 from grimoire.models import MonsterEntry, Product
 
@@ -105,3 +107,85 @@ async def test_create_defaults_raw_text_to_empty_string(db):
     ))
     # raw_text is NOT NULL in the model; an omitted excerpt stores "".
     assert result["raw_text"] == ""
+
+
+async def test_patch_clears_field_when_null_sent_explicitly(db):
+    product = await make_product(db, "/t/crud-patch-1.pdf")
+    created = await create_entry(db=db, request=CreateEntryRequest(
+        product_id=product.id, name="Clearable", system_profile="dcc",
+        ac=13, hd_dice="1d8", move="30'",
+    ))
+    assert created["ac"] == 13
+
+    result = await patch_entry(
+        db=db, entry_id=created["id"],
+        # model_validate on an explicit dict is what marks `ac` as "set"
+        request=PatchEntryRequest.model_validate({"ac": None}),
+    )
+    assert result["ac"] is None
+    # Untouched fields survive
+    assert result["hd_dice"] == "1d8"
+    assert result["move"] == "30'"
+
+
+async def test_patch_leaves_absent_fields_alone(db):
+    product = await make_product(db, "/t/crud-patch-2.pdf")
+    created = await create_entry(db=db, request=CreateEntryRequest(
+        product_id=product.id, name="Untouched", system_profile="dcc",
+        ac=13, hd_dice="1d8", move="30'", environments=["forest"],
+    ))
+    result = await patch_entry(
+        db=db, entry_id=created["id"],
+        request=PatchEntryRequest.model_validate({"name": "Renamed"}),
+    )
+    assert result["name"] == "Renamed"
+    assert result["ac"] == 13
+    assert result["hd_dice"] == "1d8"
+    assert result["move"] == "30'"
+    assert result["environments"] == ["forest"]
+
+
+async def test_patch_clearing_hd_clears_derived_fields(db):
+    product = await make_product(db, "/t/crud-patch-3.pdf")
+    created = await create_entry(db=db, request=CreateEntryRequest(
+        product_id=product.id, name="Dice Gone", system_profile="dcc", hd_dice="3d6",
+    ))
+    assert created["hp_avg"] == 10.5
+
+    result = await patch_entry(
+        db=db, entry_id=created["id"],
+        request=PatchEntryRequest.model_validate({"hd_dice": None}),
+    )
+    assert result["hd_dice"] is None
+    assert result["hp_avg"] is None
+    assert result["hd_value"] is None
+
+
+async def test_patch_recomputes_flags(db):
+    product = await make_product(db, "/t/crud-patch-4.pdf")
+    created = await create_entry(db=db, request=CreateEntryRequest(
+        product_id=product.id, name="Flagged", system_profile="dcc", hd_dice="1d8",
+    ))
+    assert created["flags"] == ["no_attacks"]
+
+    result = await patch_entry(
+        db=db, entry_id=created["id"],
+        request=PatchEntryRequest.model_validate({
+            "attacks": [{"name": "bite", "bonus": 1, "damage_dice": "1d6"}],
+        }),
+    )
+    assert result["flags"] == []
+    assert result["attacks"][0]["damage_avg"] == 3.5
+
+
+async def test_patch_rejects_explicit_null_review_status(db):
+    product = await make_product(db, "/t/crud-patch-5.pdf")
+    created = await create_entry(db=db, request=CreateEntryRequest(
+        product_id=product.id, name="Status Guard", system_profile="dcc",
+    ))
+    with pytest.raises(HTTPException) as exc:
+        await patch_entry(
+            db=db, entry_id=created["id"],
+            request=PatchEntryRequest.model_validate({"review_status": None}),
+        )
+    assert exc.value.status_code == 422

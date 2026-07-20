@@ -12,7 +12,6 @@ from grimoire.models import BestiaryFavorite, MonsterEntry, ProcessingQueue, Pro
 from grimoire.processors.system_profiles import PROFILES
 from grimoire.services.monster_fields import derive_stats
 from grimoire.services.monster_metrics import compute_metrics
-from grimoire.utils.dice import dice_average, parse_dice
 
 router = APIRouter()
 
@@ -430,40 +429,57 @@ async def create_entry(db: DbSession, request: CreateEntryRequest) -> dict:
 
 @router.patch("/{entry_id}")
 async def patch_entry(db: DbSession, entry_id: int, request: PatchEntryRequest) -> dict:
-    """Edit an entry; recompute derived fields when dice change."""
+    """Edit an entry; recompute derived fields when their sources change.
+
+    Uses model_fields_set rather than `is not None` so an explicitly-sent null
+    clears a field. Without it there is no way to express "this monster has no
+    AC" - absent and null were indistinguishable. Callers that omit a key still
+    leave it alone, which is what the inline single-key editors rely on.
+    """
     result = await db.execute(select(MonsterEntry).where(MonsterEntry.id == entry_id))
     entry = result.scalar_one_or_none()
     if not entry:
         raise HTTPException(status_code=404, detail="Entry not found")
 
-    if request.review_status is not None:
+    sent = request.model_fields_set
+
+    if "review_status" in sent:
         if request.review_status not in VALID_STATUSES:
             raise HTTPException(status_code=422, detail=f"review_status must be one of {sorted(VALID_STATUSES)}")
         entry.review_status = request.review_status
 
-    for field in ("name", "page_number", "ac", "move"):
-        value = getattr(request, field)
-        if value is not None:
-            setattr(entry, field, value)
+    if "name" in sent:
+        if not request.name or not request.name.strip():
+            raise HTTPException(status_code=422, detail="name cannot be blank")
+        entry.name = request.name.strip()
 
-    if request.hd_dice is not None:
-        entry.hd_dice = request.hd_dice
-        entry.hp_avg = dice_average(request.hd_dice)
-        parsed = parse_dice(request.hd_dice)
-        entry.hd_value = float(parsed[0]) if parsed else None
+    for field in ("page_number", "move"):
+        if field in sent:
+            setattr(entry, field, getattr(request, field))
 
-    if request.attacks is not None:
-        attacks = []
-        for atk in request.attacks:
-            atk = dict(atk)
-            atk["damage_avg"] = dice_average(atk.get("damage_dice"))
-            attacks.append(atk)
-        entry.attacks = json.dumps(attacks)
+    if "special_abilities" in sent:
+        entry.special_abilities = json.dumps(request.special_abilities or [])
+    if "environments" in sent:
+        entry.environments = json.dumps(request.environments or [])
 
-    if request.special_abilities is not None:
-        entry.special_abilities = json.dumps(request.special_abilities)
-    if request.environments is not None:
-        entry.environments = json.dumps(request.environments)
+    # ac / hd_dice / attacks all feed derive_stats, and flags are a function of
+    # all three together - so recompute from the merged post-patch values
+    # whenever any one of them was sent, never from the patch alone.
+    if sent & {"ac", "hd_dice", "attacks"}:
+        stats, flags = derive_stats(
+            ac=request.ac if "ac" in sent else entry.ac,
+            hd_dice=request.hd_dice if "hd_dice" in sent else entry.hd_dice,
+            attacks=(
+                request.attacks if "attacks" in sent
+                else (json.loads(entry.attacks) if entry.attacks else [])
+            ),
+        )
+        entry.ac = stats["ac"]
+        entry.hd_dice = stats["hd_dice"]
+        entry.hd_value = stats["hd_value"]
+        entry.hp_avg = stats["hp_avg"]
+        entry.attacks = json.dumps(stats["attacks"])
+        entry.flags = json.dumps(flags)
 
     await db.commit()
     await db.refresh(entry)
