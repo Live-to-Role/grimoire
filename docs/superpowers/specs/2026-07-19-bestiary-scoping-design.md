@@ -12,14 +12,21 @@ Extracting one 252-page bestiary produced 184 entries. Two problems surfaced imm
 
 2. **Results are unscoped.** Every browse, roll, and generated table draws from every confirmed monster in the library. With one book that is merely lopsided; with several bestiaries it makes encounter tables useless, because a table meant for a woodland hex draws from every book at once.
 
+3. **Extracting with the wrong system profile fails silently.** *5E HÂRN Bestiary* (product 3031) was queued with the DCC profile. Both existing profiles find zero candidates in it — 5e stat blocks read `Armor Class 11` / `Hit Points 51 (6d10 + 18)` / `Challenge 2`, with no `Init +N` or `HD NdN` for the anchors to match. The handler found nothing, saved nothing, and returned success, so the queue reported "completed" with no indication anything was wrong. Nothing was spent (no candidates means no LLM calls) and no rows were written, but the user had no way to learn that the extraction was impossible.
+
+4. **Extraction is unreachable from where books live.** Queueing a book means copying its title out of the Library, switching to the Bestiary page, searching for it again, and picking it from a list. The book detail modal — where the user already is — offers no way to do it.
+
 ## Goals
 
 - Confirm or reject many entries in one request.
 - Scope browsing, rolls, and tables to a chosen set of books.
 - Save a whole query — books, filters, and die size — as a named favorite that regenerates a table in one click.
+- Refuse an extraction that cannot work, and warn when the chosen profile looks wrong.
+- Queue an extraction directly from the book detail modal.
 
 ## Non-Goals
 
+- **A D&D 5e system profile.** The user owns 5e bestiaries, but supporting them is real work — a new anchor, Challenge ratings, proficiency-derived attack bonuses, and `Hit Points 51 (6d10 + 18)` parsing that the current `hd_dice` / `hp_avg` fields do not model. Its own spec. This spec only makes the failure legible.
 - **Exclude-mode book filtering.** Include-only (whitelist) covers the current library size. Revisit when there are enough bestiaries that ticking the ones you want is worse than ticking the ones you don't.
 - **Fixing `total_dpr` over-counting.** DCC statlines list attacks as alternatives (`bite +3 melee (1d6) or claw +5 melee (1d4)`), but the metrics service sums every attack, overstating damage for those monsters. Real defect, but it needs a schema change to record whether attacks are alternatives or simultaneous. Separate spec.
 - **Snapshotting rolled results.** A favorite stores the query, not the monsters it produced. Re-running re-rolls.
@@ -88,6 +95,36 @@ Stored in the database rather than `localStorage`: favorites are curated campaig
 
 **UI:** a "★ Save current query" control, and a favorites strip. Clicking a favorite applies its filters and die size; a **Run** button applies and rolls in one action.
 
+### 4. Extraction guard
+
+`POST /monsters/extract/{product_id}` runs a dry-run segmentation across every registered profile before queueing. This is free: segmentation is pure regex over already-extracted text, with no LLM involved.
+
+Content, not metadata, is the signal. `game_system` is unreliable — product 255 is labelled Old-School Essentials but is byte-identical to product 13, a DCC book. Metadata is used only to phrase the error message, never to decide.
+
+| Condition | Behaviour |
+|---|---|
+| Chosen profile finds 0 candidates | `400`, nothing queued. Message names the supported systems, and identifies the likely system from `game_system` when it maps to something known. |
+| Chosen profile finds < half the best-scoring profile, **and** the best finds ≥ 20 | Queue it, return `{"queued": true, "warning": "..."}` naming both counts. |
+| Otherwise | Queue normally. |
+
+The response carries per-profile counts in all cases, so a caller can show "found 210 stat blocks" before committing.
+
+The mismatch threshold is deliberately loose. It exists to catch DCC-versus-5e-scale errors, not to adjudicate DCC versus OSR: the OSR anchor also matches DCC stat lines (a known, accepted property from the bestiary spec), so those two counts do not separate cleanly and a strict rule would refuse legitimate work.
+
+**Handler change, independent of the guard:** `handle_monster_extract_task` returns success when segmentation yields zero candidates. It must raise `TaskError` instead. The guard makes this rare, but a book whose text is re-extracted after queueing can still reach the worker with nothing to segment, and "completed, 0 results" is the exact silent failure this spec exists to remove.
+
+### 5. Extract from the Library
+
+An **"Extract as bestiary"** action in the product detail modal, beside the existing processing controls.
+
+Deliberately **not** on the modal's `extract` tab. That tab belongs to the older structured-extraction prototype (`/structured/all/{id}`), which is unrelated to the bestiary and is what the user mistook for this feature.
+
+Flow: the button calls the dry-run preview, then shows an inline confirmation with the candidate count and a profile picker, pre-selected from the book's `game_system` when it maps to a known profile. Confirming queues the extraction; on success the panel links through to the Bestiary review view.
+
+Shown only when `text_extracted` is true, reusing the "extract text first" hint pattern of the neighbouring controls.
+
+Because this makes the extract endpoint serve two callers, the dry-run belongs in the route, not duplicated in either UI.
+
 ## Constraints
 
 Inherited from the bestiary spec and the project:
@@ -101,7 +138,8 @@ Inherited from the bestiary spec and the project:
 
 ## Testing
 
-- **Backend:** pytest, following the existing direct-call pattern in `tests/test_monsters_api.py`. Cover: bulk status happy path, invalid status → 422, empty ids, unknown ids; `product_ids` filtering across two books on both list and random; `/books` counting only confirmed entries; favorites CRUD round-trip including JSON config fidelity.
+- **Backend:** pytest, following the existing direct-call pattern in `tests/test_monsters_api.py`. Cover: bulk status happy path, invalid status → 422, empty ids, unknown ids; `product_ids` filtering across two books on both list and random; `/books` counts respecting `review_status`; favorites CRUD round-trip including JSON config fidelity; guard refusing a zero-candidate profile with 400, guard warning on a lopsided count, guard staying silent on a clean match; handler raising `TaskError` on zero candidates.
+- **Guard fixtures:** use inline markdown fixtures shaped like real stat blocks (a DCC inline stat line, and a 5e block using `Armor Class` / `Hit Points` / `Challenge`) rather than reading real PDFs, so the tests stay fast and independent of the user's library.
 - **Frontend:** no test harness exists; `npx tsc -b` is the gate. Known pre-existing error: `Settings.tsx` unused `Shield` import.
 - **Baseline:** backend is 323 passed / 6 pre-existing failures. Only new failures matter.
 
@@ -109,3 +147,5 @@ Inherited from the bestiary spec and the project:
 
 - **Replacing `product_id` with `product_ids`** breaks any caller I have not accounted for. Mitigated by the endpoint being one day old with a single known consumer; a grep for `product_id` against the bestiary API confirms the surface before the change.
 - **Selecting hundreds of checkboxes** could itself become the bottleneck that bulk-status was meant to remove. "Select all unflagged" is the mitigation; a filter-based bulk variant is the escape hatch if it is not enough.
+- **The dry-run makes enqueue non-instant.** Segmenting a 252-page book took roughly 1.5s in measurement, across every registered profile. Acceptable for a button press, but the endpoint no longer returns immediately and a double-click would repeat the work. Mitigation is to disable the button while the request is in flight; caching the result is not worth the invalidation problem, since a book's text can change under it.
+- **The mismatch threshold is a guess.** `< half the best, best ≥ 20` is calibrated against exactly two data points (210 candidates on a DCC book, 0 on a 5e one). It may warn on legitimate extractions or stay quiet on bad ones. It only ever warns, never blocks, so the cost of being wrong is a dismissable message.
