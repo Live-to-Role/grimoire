@@ -31,7 +31,7 @@ export interface MonsterEntry {
 export interface MonsterFilters {
   environment?: string;
   system_profile?: string;
-  product_id?: number;
+  product_ids?: number[];
   review_status?: string;
   q?: string;
   hd_min?: number;
@@ -55,6 +55,9 @@ export interface MonsterMetrics {
 export async function listMonsters(filters: MonsterFilters) {
   const { data } = await api.get<{ items: MonsterEntry[]; total: number }>('/monsters', {
     params: filters,
+    // FastAPI's list[int] expects repeated bare keys (product_ids=1&product_ids=2);
+    // axios would otherwise emit product_ids[]=1 and the param would be dropped.
+    paramsSerializer: { indexes: null },
   });
   return data;
 }
@@ -80,14 +83,80 @@ export async function rollRandom(params: {
   system_profile?: string;
   hd_min?: number;
   hd_max?: number;
-  product_id?: number;
+  product_ids?: number[];
 }) {
   const { data } = await api.post<{ items: MonsterEntry[] }>('/monsters/random', params);
   return data.items;
 }
 
+export interface BestiaryBook {
+  product_id: number;
+  title: string | null;
+  count: number;
+}
+
+export interface FavoriteConfig {
+  product_ids?: number[];
+  environment?: string;
+  system_profile?: string;
+  hd_min?: number;
+  hd_max?: number;
+  q?: string;
+  table_size?: number;
+}
+
+export interface BestiaryFavorite {
+  id: number;
+  name: string;
+  config: FavoriteConfig;
+}
+
+export interface ExtractResult {
+  queued: boolean;
+  message: string;
+  counts?: Record<string, number>;
+  warning?: string;
+}
+
+export async function bulkSetStatus(ids: number[], reviewStatus: string) {
+  const { data } = await api.post<{ updated: number }>('/monsters/bulk-status', {
+    ids,
+    review_status: reviewStatus,
+  });
+  return data.updated;
+}
+
+export async function listBooks(reviewStatus = 'confirmed') {
+  const { data } = await api.get<{ books: BestiaryBook[] }>('/monsters/books', {
+    params: { review_status: reviewStatus },
+  });
+  return data.books;
+}
+
+export async function listFavorites() {
+  const { data } = await api.get<{ favorites: BestiaryFavorite[] }>('/monsters/favorites');
+  return data.favorites;
+}
+
+export async function createFavorite(name: string, config: FavoriteConfig) {
+  const { data } = await api.post<BestiaryFavorite>('/monsters/favorites', { name, config });
+  return data;
+}
+
+export async function updateFavorite(
+  id: number,
+  patch: { name?: string; config?: FavoriteConfig },
+) {
+  const { data } = await api.patch<BestiaryFavorite>(`/monsters/favorites/${id}`, patch);
+  return data;
+}
+
+export async function deleteFavorite(id: number) {
+  await api.delete(`/monsters/favorites/${id}`);
+}
+
 export async function queueExtraction(productId: number, systemProfile: string) {
-  const { data } = await api.post<{ queued: boolean; message: string }>(
+  const { data } = await api.post<ExtractResult>(
     `/monsters/extract/${productId}`,
     { system_profile: systemProfile },
   );
