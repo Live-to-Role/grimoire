@@ -10,6 +10,7 @@
 
 /* Light theme (default) */
 :root {
+  color-scheme: light;
   --color-bg: #f8f9fa;
   --color-surface: #ffffff;
   --color-surface-raised: #f1f3f5;
@@ -25,6 +26,7 @@
 
 /* Dark theme */
 .dark {
+  color-scheme: dark;
   --color-bg: #1a1b1e;
   --color-surface: #25262b;
   --color-surface-raised: #2c2e33;
