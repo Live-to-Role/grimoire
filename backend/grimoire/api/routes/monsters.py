@@ -486,6 +486,24 @@ async def patch_entry(db: DbSession, entry_id: int, request: PatchEntryRequest) 
     return _entry_to_dict(entry)
 
 
+@router.delete("/{entry_id}")
+async def delete_entry(db: DbSession, entry_id: int) -> dict:
+    """Remove an entry outright.
+
+    Distinct from rejecting: reject records a judgement about the source
+    ("this is not a monster") and is reversible; delete removes a row that
+    should never have existed, such as a mistyped duplicate.
+    """
+    result = await db.execute(select(MonsterEntry).where(MonsterEntry.id == entry_id))
+    entry = result.scalar_one_or_none()
+    if not entry:
+        raise HTTPException(status_code=404, detail="Entry not found")
+
+    await db.delete(entry)
+    await db.commit()
+    return {"deleted": True}
+
+
 @router.get("/{entry_id}/metrics")
 async def get_entry_metrics(db: DbSession, entry_id: int) -> dict:
     """Closed-form combat metrics for one entry."""

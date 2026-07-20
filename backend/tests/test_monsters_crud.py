@@ -8,6 +8,7 @@ from grimoire.api.routes.monsters import (
     CreateEntryRequest,
     PatchEntryRequest,
     create_entry,
+    delete_entry,
     patch_entry,
 )
 from grimoire.models import MonsterEntry, Product
@@ -189,3 +190,23 @@ async def test_patch_rejects_explicit_null_review_status(db):
             request=PatchEntryRequest.model_validate({"review_status": None}),
         )
     assert exc.value.status_code == 422
+
+
+async def test_delete_removes_the_row(db):
+    product = await make_product(db, "/t/crud-delete-1.pdf")
+    created = await create_entry(db=db, request=CreateEntryRequest(
+        product_id=product.id, name="Mistake", system_profile="dcc",
+    ))
+    result = await delete_entry(db=db, entry_id=created["id"])
+    assert result == {"deleted": True}
+
+    gone = (await db.execute(
+        select(MonsterEntry).where(MonsterEntry.id == created["id"])
+    )).scalar_one_or_none()
+    assert gone is None
+
+
+async def test_delete_unknown_id_is_404(db):
+    with pytest.raises(HTTPException) as exc:
+        await delete_entry(db=db, entry_id=999999)
+    assert exc.value.status_code == 404
