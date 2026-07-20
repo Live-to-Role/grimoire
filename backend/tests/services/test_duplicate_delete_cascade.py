@@ -12,6 +12,9 @@ from sqlalchemy import func, select
 from grimoire.models import Product
 from grimoire.models.contribution import ContributionQueue
 from grimoire.models.embedding import ProductEmbedding
+from grimoire.models.monster_entry import MonsterEntry
+from grimoire.models.product_search_vector import ProductSearchVector
+from grimoire.models.queue import ProcessingQueue
 from grimoire.services.duplicate_service import bulk_delete_duplicates
 
 
@@ -79,3 +82,61 @@ async def test_bulk_delete_duplicate_with_embeddings(db):
     # Canonical is untouched
     kept = await db.execute(select(Product.id).where(Product.id == canonical.id))
     assert kept.scalar_one_or_none() == canonical.id
+
+
+async def test_delete_leaves_no_orphans_in_any_child_table(db):
+    """Deleting a product cleans up every table holding a FK to products.id.
+
+    SQLite FK enforcement is off, so ondelete="CASCADE" is inert and each of
+    these needs an ORM-level delete-orphan cascade to avoid orphan rows.
+    """
+    canonical = await _make_product(db, "orphanhash", is_duplicate=False)
+    duplicate = await _make_product(db, "orphanhash", is_duplicate=True)
+    duplicate.duplicate_of_id = canonical.id
+
+    db.add(ProcessingQueue(product_id=duplicate.id, task_type="text_extraction"))
+    db.add(
+        ProductSearchVector(
+            product_id=duplicate.id,
+            vector=b"\x00\x00\x00\x00",
+            embedding_model="test",
+            embedding_dim=1,
+        )
+    )
+    db.add(
+        MonsterEntry(
+            product_id=duplicate.id,
+            name="Goblin",
+            system_profile="osr",
+            raw_text="a goblin",
+        )
+    )
+    db.add(
+        ProductEmbedding(
+            product_id=duplicate.id,
+            chunk_index=0,
+            chunk_text="hello",
+            embedding=b"\x00\x00\x00\x00",
+            embedding_model="test",
+            embedding_dim=1,
+        )
+    )
+    db.add(ContributionQueue(product_id=duplicate.id, contribution_data="{}"))
+    await db.flush()
+
+    dup_id = duplicate.id
+    result = await bulk_delete_duplicates(db, [dup_id], delete_files=False)
+    assert result["success"] is True
+    assert result["deleted_records"] == 1
+
+    for model in (
+        ProcessingQueue,
+        ProductSearchVector,
+        MonsterEntry,
+        ProductEmbedding,
+        ContributionQueue,
+    ):
+        count = await db.execute(
+            select(func.count()).select_from(model).where(model.product_id == dup_id)
+        )
+        assert count.scalar() == 0, f"{model.__tablename__} left orphan rows"

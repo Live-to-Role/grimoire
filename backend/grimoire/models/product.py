@@ -11,6 +11,9 @@ from grimoire.database import Base
 if TYPE_CHECKING:
     from grimoire.models.collection import CollectionProduct
     from grimoire.models.folder import WatchedFolder
+    from grimoire.models.monster_entry import MonsterEntry
+    from grimoire.models.product_search_vector import ProductSearchVector
+    from grimoire.models.queue import ProcessingQueue
     from grimoire.models.tag import ProductTag
     from grimoire.models.run_note import RunNote
 
@@ -171,6 +174,20 @@ class Product(Base):
     # Run notes
     run_notes: Mapped[list["RunNote"]] = relationship(
         "RunNote", back_populates="product", cascade="all, delete-orphan"
+    )
+
+    # Write-only child collections. These exist purely so deleting a Product
+    # also deletes its rows here: SQLite FK enforcement is off (no
+    # PRAGMA foreign_keys=ON), so the ondelete="CASCADE" on these tables never
+    # fires and the rows would be orphaned. Not intended for reading.
+    processing_queue_items: Mapped[list["ProcessingQueue"]] = relationship(
+        "ProcessingQueue", cascade="all, delete-orphan"
+    )
+    search_vector: Mapped["ProductSearchVector | None"] = relationship(
+        "ProductSearchVector", cascade="all, delete-orphan", uselist=False
+    )
+    monster_entries: Mapped[list["MonsterEntry"]] = relationship(
+        "MonsterEntry", cascade="all, delete-orphan"
     )
 
     def __repr__(self) -> str:
