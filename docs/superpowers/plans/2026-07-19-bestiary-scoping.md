@@ -15,8 +15,8 @@
 ## Global Constraints
 
 - Work on branch `feat/bestiary-scoping` off `main`.
-- Backend tests run from `backend/` with miniconda: `python -m pytest` (NOT `.venv` — it lacks pytest). Baseline is **323 passed, 6 failed**; those 6 are pre-existing (`test_diagnostics` ×2, `test_products_list` ×1, `test_scanner_batch` ×1, `test_backup_routes` ×2). Only new failures matter.
-- Frontend gate is `npx tsc -b` from `frontend/` (no frontend test harness). One known pre-existing error: `src/pages/Settings.tsx(3,137): error TS6133: 'Shield' is declared but its value is never read.` Use `npx tsc -b --force` for a clean re-check; `tsc -b` is incremental and may report nothing on a repeat run.
+- Backend tests run from `backend/` with miniconda: `python -m pytest` (NOT `.venv` — it lacks pytest). Baseline is **324 passed, 6 failed** (re-verified 2026-07-19 after unrelated parallel edits landed a new test); those 6 are pre-existing (`test_diagnostics` ×2, `test_products_list` ×1, `test_scanner_batch` ×1, `test_backup_routes` ×2). Only new failures matter.
+- Frontend gate is `npx tsc -b` from `frontend/` (no frontend test harness). The frontend baseline is **clean** — `npx tsc -b --force` exits 0 with no output. (An earlier `Settings.tsx` 'Shield' unused-import error has since been fixed, so any error you see is yours.) Use `npx tsc -b --force` for a clean re-check; `tsc -b` is incremental and may report nothing on a repeat run.
 - A `UserWarning: Using auto-generated SECRET_KEY` appears on every test file. Pre-existing, accepted for this local-only app. Not a finding.
 - Route handlers commit explicitly — `get_db()` does NOT auto-commit.
 - JSON-in-Text columns follow the `ProcessingQueue.config` convention: `json.dumps` to store, `json.loads` to read.
@@ -957,7 +957,7 @@ Expected: 4 PASS in the guard file, all PASS in the API file.
 - [ ] **Step 7: Run the full backend suite**
 
 From `backend/`: `python -m pytest -q`
-Expected: baseline 323 + the 21 tests added in Tasks 1-4 = **344 passed, 6 failed** (the 6 pre-existing). Record the counts. If any test outside these files fails, stop and report.
+Expected: baseline 324 + the 21 tests added in Tasks 1-4 = **345 passed, 6 failed** (the 6 pre-existing). Record the counts. If any test outside these files fails, stop and report.
 
 - [ ] **Step 7: Commit**
 
@@ -1110,7 +1110,7 @@ export async function queueExtraction(productId: number, systemProfile: string) 
 - [ ] **Step 2: Type-check**
 
 From `frontend/`: `npx tsc -b --force`
-Expected: only the pre-existing `Settings.tsx` 'Shield' error.
+Expected: no output (clean).
 
 - [ ] **Step 3: Commit**
 
@@ -1257,7 +1257,7 @@ In the existing `setFilter` helper, add `setSelectedIds(new Set());` alongside t
 - [ ] **Step 6: Type-check**
 
 From `frontend/`: `npx tsc -b --force`
-Expected: only the pre-existing `Settings.tsx` 'Shield' error.
+Expected: no output (clean).
 
 - [ ] **Step 7: Commit**
 
@@ -1508,7 +1508,7 @@ export function MultiCombobox({
 - [ ] **Step 2: Type-check**
 
 From `frontend/`: `npx tsc -b --force`
-Expected: only the pre-existing `Settings.tsx` 'Shield' error. The component is not yet imported anywhere, so this only proves it compiles.
+Expected: no output (clean). The component is not yet imported anywhere, so this only proves it compiles.
 
 - [ ] **Step 3: Commit**
 
@@ -1651,7 +1651,7 @@ In the `roll` function, add `product_ids: filters.product_ids,` to the object pa
 - [ ] **Step 6: Type-check**
 
 From `frontend/`: `npx tsc -b --force`
-Expected: only the pre-existing `Settings.tsx` 'Shield' error.
+Expected: no output (clean).
 
 - [ ] **Step 7: Commit**
 
@@ -1769,7 +1769,7 @@ Immediately after the Processing Status Bar's closing `</div>`, add:
 - [ ] **Step 5: Type-check**
 
 From `frontend/`: `npx tsc -b --force`
-Expected: only the pre-existing `Settings.tsx` 'Shield' error. If `useEffect` or `useMutation` is not already imported in this file, add it to the existing React / React Query import.
+Expected: no output (clean). If `useEffect` or `useMutation` is not already imported in this file, add it to the existing React / React Query import.
 
 - [ ] **Step 6: Commit**
 
@@ -1787,12 +1787,12 @@ git commit -m "feat(bestiary): queue extraction from the product detail modal"
 - [ ] **Step 1: Full backend suite**
 
 From `backend/`: `python -m pytest -q`
-Expected: **344 passed, 6 failed** — the 6 pre-existing baseline failures and no others. Record the counts.
+Expected: **345 passed, 6 failed** — the 6 pre-existing baseline failures and no others. Record the counts.
 
 - [ ] **Step 2: Frontend type-check**
 
 From `frontend/`: `npx tsc -b --force`
-Expected: only `src/pages/Settings.tsx(3,137): error TS6133: 'Shield' is declared but its value is never read.`
+Expected: no output (clean).
 
 - [ ] **Step 3: Confirm the working tree is clean**
 
@@ -1800,7 +1800,7 @@ Expected: only `src/pages/Settings.tsx(3,137): error TS6133: 'Shield' is declare
 git status --short
 ```
 
-Expected: no stragglers beyond the owner's own pre-existing uncommitted changes (`backend/grimoire/processors/ai_identifier.py`, `docs/superpowers/specs/2026-03-13-folio-design.md`, and untracked scratch directories).
+Expected: no stragglers beyond the owner's own pre-existing uncommitted changes. NOTE: this repo has unrelated work in progress in the working tree (models/contribution.py, models/embedding.py, frontend/src/index.css, frontend/src/pages/Settings.tsx, an untracked tests/services/test_duplicate_delete_cascade.py and backend/package-lock.json). Do not commit or revert those — they are not part of this plan. Re-check `git status` at execution time, since that set may have changed again.
 
 - [ ] **Step 4: Stop**
 
