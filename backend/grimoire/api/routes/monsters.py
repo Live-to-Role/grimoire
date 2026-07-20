@@ -1,8 +1,9 @@
 """Bestiary API - extracted monster entries, encounter rolls, metrics."""
 
 import json
+from typing import Annotated
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select, update
 
@@ -41,7 +42,7 @@ class RandomRequest(BaseModel):
     system_profile: str | None = None
     hd_min: float | None = None
     hd_max: float | None = None
-    product_id: int | None = None
+    product_ids: list[int] | None = None
 
 
 class BulkStatusRequest(BaseModel):
@@ -75,7 +76,7 @@ def _entry_to_dict(entry: MonsterEntry, product_title: str | None = None) -> dic
 def _base_conditions(
     environment: str | None = None,
     system_profile: str | None = None,
-    product_id: int | None = None,
+    product_ids: list[int] | None = None,
     review_status: str | None = "confirmed",
     hd_min: float | None = None,
     hd_max: float | None = None,
@@ -88,8 +89,8 @@ def _base_conditions(
         conditions.append(MonsterEntry.environments.like(f'%"{environment}"%'))
     if system_profile:
         conditions.append(MonsterEntry.system_profile == system_profile)
-    if product_id:
-        conditions.append(MonsterEntry.product_id == product_id)
+    if product_ids:
+        conditions.append(MonsterEntry.product_id.in_(product_ids))
     if hd_min is not None:
         conditions.append(MonsterEntry.hd_value >= hd_min)
     if hd_max is not None:
@@ -144,7 +145,9 @@ async def list_monsters(
     db: DbSession,
     environment: str | None = None,
     system_profile: str | None = None,
-    product_id: int | None = None,
+    # Annotated form, not `= Query(None)`: the latter makes the Python default a
+    # Query object, which breaks calling this function directly (as the tests do).
+    product_ids: Annotated[list[int] | None, Query()] = None,
     review_status: str = "confirmed",
     q: str | None = None,
     hd_min: float | None = None,
@@ -155,7 +158,7 @@ async def list_monsters(
     """List monster entries with filters. Defaults to confirmed entries only."""
     per_page = max(1, min(per_page, 200))
     page = max(1, page)
-    conditions = _base_conditions(environment, system_profile, product_id, review_status, hd_min, hd_max, q)
+    conditions = _base_conditions(environment, system_profile, product_ids, review_status, hd_min, hd_max, q)
 
     count_query = select(func.count(MonsterEntry.id)).where(*conditions)
     total = (await db.execute(count_query)).scalar() or 0
@@ -183,6 +186,30 @@ async def list_environments(db: DbSession) -> dict:
         if raw:
             tags.update(json.loads(raw))
     return {"environments": sorted(tags)}
+
+
+@router.get("/books")
+async def list_books(db: DbSession, review_status: str = "confirmed") -> dict:
+    """Books that have entries at the given review status, for the book filter.
+
+    Takes review_status because a freshly extracted book has only pending
+    entries: a confirmed-only listing would offer no books to filter by at
+    exactly the moment you are reviewing that book.
+    """
+    query = (
+        select(MonsterEntry.product_id, Product.title, func.count(MonsterEntry.id))
+        .join(Product, Product.id == MonsterEntry.product_id)
+        .where(MonsterEntry.review_status == review_status)
+        .group_by(MonsterEntry.product_id, Product.title)
+        .order_by(Product.title)
+    )
+    rows = (await db.execute(query)).all()
+    return {
+        "books": [
+            {"product_id": product_id, "title": title, "count": count}
+            for product_id, title, count in rows
+        ]
+    }
 
 
 @router.post("/bulk-status")
@@ -269,7 +296,7 @@ async def random_monsters(db: DbSession, request: RandomRequest) -> dict:
     conditions = _base_conditions(
         environment=request.environment,
         system_profile=request.system_profile,
-        product_id=request.product_id,
+        product_ids=request.product_ids,
         review_status="confirmed",
         hd_min=request.hd_min,
         hd_max=request.hd_max,
