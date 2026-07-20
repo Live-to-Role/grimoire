@@ -72,7 +72,42 @@ export async function getMetrics(entryId: number) {
   return data;
 }
 
-export async function patchMonster(entryId: number, patch: Partial<MonsterEntry>) {
+export interface MonsterAttackInput {
+  name: string;
+  bonus: number | null;
+  damage_dice: string | null;
+}
+
+export interface MonsterEntryInput {
+  product_id: number;
+  name: string;
+  system_profile: string;
+  page_number?: number | null;
+  raw_text?: string | null;
+  ac?: number | null;
+  hd_dice?: string | null;
+  attacks?: MonsterAttackInput[];
+  move?: string | null;
+  special_abilities?: string[];
+  environments?: string[];
+}
+
+export async function createMonster(input: MonsterEntryInput) {
+  const { data } = await api.post<MonsterEntry>('/monsters', input);
+  return data;
+}
+
+export async function deleteMonster(entryId: number) {
+  await api.delete(`/monsters/${entryId}`);
+}
+
+// Partial<MonsterEntryInput> rather than Partial<MonsterEntry>: derived fields
+// (hd_value, hp_avg, damage_avg, flags) are server-computed and must never be
+// sent. A key present with value null now clears that field server-side.
+export async function patchMonster(
+  entryId: number,
+  patch: Partial<MonsterEntryInput> & { review_status?: string },
+) {
   const { data } = await api.patch<MonsterEntry>(`/monsters/${entryId}`, patch);
   return data;
 }
