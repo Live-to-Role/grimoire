@@ -2,6 +2,7 @@ import { Fragment, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   listMonsters, listEnvironments, getMetrics, patchMonster, rollRandom, queueExtraction,
+  bulkSetStatus,
   type MonsterEntry, type MonsterFilters,
 } from '../api/monsters';
 import { getProducts } from '../api/products';
@@ -21,6 +22,7 @@ export function Bestiary() {
   const [productSearch, setProductSearch] = useState('');
   const [extractProfile, setExtractProfile] = useState<'dcc' | 'osr'>('dcc');
   const [extractMessage, setExtractMessage] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const queryClient = useQueryClient();
 
   const { data: environments = [] } = useQuery({
@@ -52,6 +54,15 @@ export function Bestiary() {
       queryClient.invalidateQueries({ queryKey: ['monster-metrics'] });
     },
   });
+  const bulkMutation = useMutation({
+    mutationFn: ({ ids, status }: { ids: number[]; status: string }) =>
+      bulkSetStatus(ids, status),
+    onSuccess: () => {
+      setSelectedIds(new Set());
+      queryClient.invalidateQueries({ queryKey: ['monsters'] });
+      queryClient.invalidateQueries({ queryKey: ['monster-books'] });
+    },
+  });
   const extractMutation = useMutation({
     mutationFn: ({ productId, profile }: { productId: number; profile: string }) =>
       queueExtraction(productId, profile),
@@ -64,6 +75,8 @@ export function Bestiary() {
     // Any filter change invalidates the current page — reset to page 1 so we
     // don't end up requesting a page past the end of the new result set.
     setFilters((prev) => ({ ...prev, ...patch, page: 1 }));
+    // A selection must never survive into a different result set.
+    setSelectedIds(new Set());
     // Filters that feed roll()/generate-table results — a stale rolled table would
     // show citations that no longer match the active filters.
     if (
@@ -96,6 +109,26 @@ export function Bestiary() {
   const totalPages = Math.max(1, Math.ceil(total / perPage));
   const rangeStart = total === 0 ? 0 : (page - 1) * perPage + 1;
   const rangeEnd = Math.min(page * perPage, total);
+
+  // Both conditions are required: the single genuinely bad entry in a 184-entry
+  // batch had no flags and was identifiable only by its 0.65 confidence.
+  const UNFLAGGED_MIN_CONFIDENCE = 0.8;
+
+  const isUnflagged = (entry: MonsterEntry) =>
+    entry.flags.length === 0 && (entry.extraction_confidence ?? 0) >= UNFLAGGED_MIN_CONFIDENCE;
+
+  const toggleSelected = (id: number) =>
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+
+  const selectAll = () => setSelectedIds(new Set(items.map((e) => e.id)));
+  const selectUnflagged = () =>
+    setSelectedIds(new Set(items.filter(isUnflagged).map((e) => e.id)));
+  const clearSelection = () => setSelectedIds(new Set());
 
   return (
     <div className="h-full overflow-y-auto p-4" style={{ color: 'var(--color-text-primary)' }}>
@@ -210,16 +243,40 @@ export function Bestiary() {
         </p>
       )}
 
+      {reviewMode && items.length > 0 && (
+        <div className="flex items-center gap-3 mb-2 text-sm">
+          <button className="px-2 py-1 rounded border" style={{ borderColor: 'var(--color-border)' }}
+            onClick={selectAll}>Select all ({items.length})</button>
+          <button className="px-2 py-1 rounded border" style={{ borderColor: 'var(--color-border)' }}
+            onClick={selectUnflagged}>
+            Select all unflagged ({items.filter(isUnflagged).length})
+          </button>
+          {selectedIds.size > 0 && (
+            <button className="px-2 py-1 opacity-70" onClick={clearSelection}>Clear</button>
+          )}
+        </div>
+      )}
+
       <div className="space-y-2">
         {items.map((entry) => (
           <div key={entry.id} className="rounded border p-3" style={{ borderColor: 'var(--color-border)' }}>
-            <div className="flex items-center justify-between cursor-pointer"
-              onClick={() => setExpandedId(expandedId === entry.id ? null : entry.id)}>
-              <div>
-                <span className="font-medium">{entry.name}</span>
-                <span className="opacity-70 text-sm ml-2">
-                  {entry.product_title ?? 'Unknown book'}, p. {entry.page_number ?? '?'}
-                </span>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 flex-1 cursor-pointer"
+                onClick={() => setExpandedId(expandedId === entry.id ? null : entry.id)}>
+                {reviewMode && (
+                  <input
+                    type="checkbox"
+                    checked={selectedIds.has(entry.id)}
+                    onClick={(e) => e.stopPropagation()}
+                    onChange={() => toggleSelected(entry.id)}
+                  />
+                )}
+                <div>
+                  <span className="font-medium">{entry.name}</span>
+                  <span className="opacity-70 text-sm ml-2">
+                    {entry.product_title ?? 'Unknown book'}, p. {entry.page_number ?? '?'}
+                  </span>
+                </div>
               </div>
               <div className="text-sm opacity-80 flex gap-3">
                 <span>AC {entry.ac ?? '?'}</span>
@@ -334,6 +391,23 @@ export function Bestiary() {
           </div>
         ))}
       </div>
+
+      {reviewMode && selectedIds.size > 0 && (
+        <div className="sticky bottom-0 mt-3 flex items-center gap-3 p-3 rounded border"
+          style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-surface-raised)' }}>
+          <span className="text-sm">{selectedIds.size} selected</span>
+          <button className="px-3 py-1 rounded border" style={{ borderColor: 'var(--color-border)' }}
+            disabled={bulkMutation.isPending}
+            onClick={() => bulkMutation.mutate({ ids: [...selectedIds], status: 'confirmed' })}>
+            Confirm {selectedIds.size}
+          </button>
+          <button className="px-3 py-1 rounded border opacity-80" style={{ borderColor: 'var(--color-border)' }}
+            disabled={bulkMutation.isPending}
+            onClick={() => bulkMutation.mutate({ ids: [...selectedIds], status: 'rejected' })}>
+            Reject {selectedIds.size}
+          </button>
+        </div>
+      )}
 
       {!isLoading && items.length > 0 && (
         <div className="flex items-center gap-2 mt-3">
