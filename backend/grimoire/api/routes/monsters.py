@@ -10,6 +10,7 @@ from sqlalchemy import func, select, update
 from grimoire.api.deps import DbSession
 from grimoire.models import BestiaryFavorite, MonsterEntry, ProcessingQueue, Product
 from grimoire.processors.system_profiles import PROFILES
+from grimoire.services.monster_fields import derive_stats
 from grimoire.services.monster_metrics import compute_metrics
 from grimoire.utils.dice import dice_average, parse_dice
 
@@ -34,6 +35,20 @@ class PatchEntryRequest(BaseModel):
     special_abilities: list[str] | None = None
     environments: list[str] | None = None
     review_status: str | None = None
+
+
+class CreateEntryRequest(BaseModel):
+    product_id: int
+    name: str
+    system_profile: str
+    page_number: int | None = None
+    raw_text: str | None = None
+    ac: int | None = None
+    hd_dice: str | None = None
+    attacks: list[dict] | None = None
+    move: str | None = None
+    special_abilities: list[str] | None = None
+    environments: list[str] | None = None
 
 
 class RandomRequest(BaseModel):
@@ -358,6 +373,59 @@ async def bulk_status(db: DbSession, request: BulkStatusRequest) -> dict:
     # rowcount reflects rows that actually existed, so unknown ids are skipped
     # silently but visibly — the caller can compare against len(ids).
     return {"updated": result.rowcount or 0}
+
+
+@router.post("")
+async def create_entry(db: DbSession, request: CreateEntryRequest) -> dict:
+    """Create a bestiary entry by hand.
+
+    Deriving hd_value/hp_avg/damage_avg server-side (rather than trusting the
+    client) is what keeps a typed-in entry indistinguishable from an extracted
+    one in the metrics layer.
+
+    extraction_confidence stays null - these are transcribed, not model output,
+    and a fabricated score would misrepresent them. Consequence: the "select all
+    unflagged" control requires confidence >= 0.8, so hand-created entries are
+    never swept up by it. review_status is "confirmed" because a human authored
+    the row, which is the scrutiny the review gate exists to apply.
+    """
+    if request.system_profile not in PROFILES:
+        raise HTTPException(status_code=400, detail=f"Unknown system profile: {request.system_profile}")
+    if not request.name or not request.name.strip():
+        raise HTTPException(status_code=422, detail="name is required")
+
+    result = await db.execute(select(Product).where(Product.id == request.product_id))
+    product = result.scalar_one_or_none()
+    if not product:
+        raise HTTPException(status_code=404, detail="Product not found")
+
+    stats, flags = derive_stats(
+        ac=request.ac, hd_dice=request.hd_dice, attacks=request.attacks
+    )
+
+    entry = MonsterEntry(
+        product_id=request.product_id,
+        name=request.name.strip(),
+        page_number=request.page_number,
+        system_profile=request.system_profile,
+        # raw_text is NOT NULL; an entry typed from scratch has no source excerpt.
+        raw_text=request.raw_text or "",
+        ac=stats["ac"],
+        hd_dice=stats["hd_dice"],
+        hd_value=stats["hd_value"],
+        hp_avg=stats["hp_avg"],
+        attacks=json.dumps(stats["attacks"]),
+        move=request.move,
+        special_abilities=json.dumps(request.special_abilities or []),
+        environments=json.dumps(request.environments or []),
+        extraction_confidence=None,
+        flags=json.dumps(flags),
+        review_status="confirmed",
+    )
+    db.add(entry)
+    await db.commit()
+    await db.refresh(entry)
+    return _entry_to_dict(entry, product.title)
 
 
 @router.patch("/{entry_id}")
