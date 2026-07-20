@@ -749,6 +749,15 @@ async def handle_monster_extract_task(
     candidates = segment_pages(pages, profile)
     logger.info(f"monster_extract: {len(candidates)} candidates in '{product.file_name}'")
 
+    if not candidates:
+        # Reporting success here is the silent failure this guard exists to
+        # remove: a wrong-profile run saves nothing and the queue says
+        # "completed" with no signal to the owner.
+        raise TaskError(
+            f"monster_extract: no stat blocks found in '{product.file_name}' "
+            f"using the '{profile_id}' profile"
+        )
+
     # Fail fast, before the (slow, sequential) LLM loop, if no provider can
     # possibly work — otherwise every candidate silently no-ops and the task
     # reports "completed" with zero rows saved and no signal to the owner.

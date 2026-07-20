@@ -19,6 +19,12 @@ from grimoire.api.routes.monsters import (
 )
 from grimoire.models import MonsterEntry, ProcessingQueue, Product
 
+DCC_GUARD_MARKDOWN = (
+    "## Orc\n\nRaiders of the wastes.\n\n"
+    "Orc: Init +1; Atk claw +1 melee (1d4); AC 13; HD 1d8+1; MV 30'; Act 1d20; "
+    "SV Fort +1, Ref +0, Will -1; AL C.\n"
+)
+
 
 async def seed(db, path, name, env, status="confirmed", hd_value=1.0):
     product = Product(file_path=path, file_name=path.rsplit("/", 1)[-1],
@@ -96,8 +102,12 @@ async def test_random_returns_only_confirmed_with_product_title(db):
     assert all(i["product_title"] for i in result["items"])
 
 
-async def test_enqueue_extract(db):
+async def test_enqueue_extract(db, monkeypatch):
     product, _ = await seed(db, "/t/api-enq.pdf", "Enq Orc", "forest")
+    monkeypatch.setattr(
+        "grimoire.services.processor.get_extracted_pages",
+        lambda p: [{"page": n, "markdown": DCC_GUARD_MARKDOWN} for n in range(1, 4)],
+    )
     response = await enqueue_extract(
         db=db, product_id=product.id, request=ExtractRequest(system_profile="dcc")
     )
@@ -116,8 +126,12 @@ async def test_enqueue_extract(db):
     assert again["queued"] is False
 
 
-async def test_enqueue_rejects_unknown_profile(db):
+async def test_enqueue_rejects_unknown_profile(db, monkeypatch):
     product, _ = await seed(db, "/t/api-enq-bad.pdf", "Bad Prof", "forest")
+    monkeypatch.setattr(
+        "grimoire.services.processor.get_extracted_pages",
+        lambda p: [{"page": n, "markdown": DCC_GUARD_MARKDOWN} for n in range(1, 4)],
+    )
     with pytest.raises(HTTPException) as exc:
         await enqueue_extract(db=db, product_id=product.id, request=ExtractRequest(system_profile="gurps"))
     assert exc.value.status_code == 400

@@ -105,9 +105,23 @@ def _base_conditions(
     return conditions
 
 
+def _profile_candidate_counts(pages: list[dict]) -> dict[str, int]:
+    """Candidate count per registered profile. Pure regex, no LLM - free to run."""
+    from grimoire.processors.monster_segmenter import segment_pages
+
+    return {pid: len(segment_pages(pages, profile)) for pid, profile in PROFILES.items()}
+
+
 @router.post("/extract/{product_id}")
 async def enqueue_extract(db: DbSession, product_id: int, request: ExtractRequest) -> dict:
-    """Queue monster extraction for a bestiary product."""
+    """Queue monster extraction, refusing profiles that cannot possibly work.
+
+    Keys off content, not game_system metadata: metadata is unreliable (one
+    known product is labelled Old-School Essentials while being byte-identical
+    to a DCC book). Metadata only phrases the error message.
+    """
+    from grimoire.services import processor as _processor
+
     if request.system_profile not in PROFILES:
         raise HTTPException(status_code=400, detail=f"Unknown system profile: {request.system_profile}")
 
@@ -118,13 +132,32 @@ async def enqueue_extract(db: DbSession, product_id: int, request: ExtractReques
     if not product.text_extracted:
         raise HTTPException(status_code=400, detail="Product has no extracted text")
 
+    pages = _processor.get_extracted_pages(product)
+    if not pages:
+        raise HTTPException(
+            status_code=400,
+            detail="Product has no page-anchored text. Re-run text extraction first.",
+        )
+
+    counts = _profile_candidate_counts(pages)
+    chosen = counts.get(request.system_profile, 0)
+    if chosen == 0:
+        supported = ", ".join(p.label for p in PROFILES.values())
+        detail = (
+            f"No stat blocks found in '{product.title or product.file_name}' using the "
+            f"{PROFILES[request.system_profile].label} profile. Supported systems: {supported}."
+        )
+        if product.game_system:
+            detail += f" This book is labelled '{product.game_system}'."
+        raise HTTPException(status_code=400, detail=detail)
+
     existing = await db.execute(select(ProcessingQueue).where(
         ProcessingQueue.product_id == product_id,
         ProcessingQueue.task_type == "monster_extract",
         ProcessingQueue.status.in_(["pending", "processing"]),
     ))
     if existing.scalars().first():
-        return {"queued": False, "message": "Extraction already queued for this product"}
+        return {"queued": False, "message": "Extraction already queued for this product", "counts": counts}
 
     config = {"system_profile": request.system_profile}
     if request.provider:
@@ -142,7 +175,25 @@ async def enqueue_extract(db: DbSession, product_id: int, request: ExtractReques
         config=json.dumps(config),
     ))
     await db.commit()
-    return {"queued": True, "message": f"Monster extraction queued ({request.system_profile})"}
+
+    response = {
+        "queued": True,
+        "message": f"Monster extraction queued ({request.system_profile})",
+        "counts": counts,
+    }
+
+    # Loose on purpose: the OSR anchor also matches DCC stat lines, so those
+    # two counts do not separate cleanly. This catches DCC-vs-5e-scale
+    # mistakes, and only ever warns.
+    best_profile = max(counts, key=lambda k: counts[k])
+    best = counts[best_profile]
+    if best >= 20 and chosen * 2 < best:
+        response["warning"] = (
+            f"Queued with the {PROFILES[request.system_profile].label} profile "
+            f"({chosen} stat blocks), but {PROFILES[best_profile].label} found {best}. "
+            "Wrong profile?"
+        )
+    return response
 
 
 @router.get("")
