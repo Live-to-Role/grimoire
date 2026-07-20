@@ -2,10 +2,12 @@ import { Fragment, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   listMonsters, listEnvironments, getMetrics, patchMonster, rollRandom, queueExtraction,
-  bulkSetStatus,
+  bulkSetStatus, listBooks, listFavorites, createFavorite, deleteFavorite,
   type MonsterEntry, type MonsterFilters,
+  type BestiaryFavorite, type FavoriteConfig,
 } from '../api/monsters';
 import { getProducts } from '../api/products';
+import { MultiCombobox } from '../components/MultiCombobox';
 
 const TABLE_SIZES = [4, 6, 8, 10, 12, 20];
 
@@ -32,6 +34,14 @@ export function Bestiary() {
   const { data, isLoading } = useQuery({
     queryKey: ['monsters', filters],
     queryFn: () => listMonsters(filters),
+  });
+  const { data: books = [] } = useQuery({
+    queryKey: ['monster-books', filters.review_status ?? 'confirmed'],
+    queryFn: () => listBooks(filters.review_status ?? 'confirmed'),
+  });
+  const { data: favorites = [] } = useQuery({
+    queryKey: ['monster-favorites'],
+    queryFn: listFavorites,
   });
   const { data: metrics } = useQuery({
     queryKey: ['monster-metrics', expandedId],
@@ -62,6 +72,15 @@ export function Bestiary() {
       queryClient.invalidateQueries({ queryKey: ['monsters'] });
       queryClient.invalidateQueries({ queryKey: ['monster-books'] });
     },
+  });
+  const saveFavoriteMutation = useMutation({
+    mutationFn: ({ name, config }: { name: string; config: FavoriteConfig }) =>
+      createFavorite(name, config),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['monster-favorites'] }),
+  });
+  const deleteFavoriteMutation = useMutation({
+    mutationFn: (id: number) => deleteFavorite(id),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['monster-favorites'] }),
   });
   const extractMutation = useMutation({
     mutationFn: ({ productId, profile }: { productId: number; profile: string }) =>
@@ -98,7 +117,35 @@ export function Bestiary() {
       system_profile: filters.system_profile,
       hd_min: filters.hd_min,
       hd_max: filters.hd_max,
+      product_ids: filters.product_ids,
     }));
+  };
+
+  const applyFavorite = (fav: BestiaryFavorite) => {
+    const { table_size, ...queryFilters } = fav.config;
+    // Set filters directly rather than through setFilter: applying a favorite
+    // must also clear filter keys the favorite does not set.
+    setFilters((prev) => ({ ...prev, ...queryFilters, page: 1 }));
+    setRolled([]);
+    setSelectedIds(new Set());
+    if (table_size) setTableSize(table_size);
+  };
+
+  const saveCurrentQuery = () => {
+    const name = window.prompt('Name this query');
+    if (!name?.trim()) return;
+    saveFavoriteMutation.mutate({
+      name: name.trim(),
+      config: {
+        product_ids: filters.product_ids,
+        environment: filters.environment,
+        system_profile: filters.system_profile,
+        hd_min: filters.hd_min,
+        hd_max: filters.hd_max,
+        q: filters.q,
+        table_size: tableSize,
+      },
+    });
   };
 
   const reviewMode = filters.review_status === 'pending';
@@ -168,7 +215,40 @@ export function Bestiary() {
         </div>
       )}
 
+      <div className="flex gap-2 items-center flex-wrap mb-3">
+        {favorites.map((fav: BestiaryFavorite) => (
+          <span key={fav.id} className="inline-flex items-center gap-1 text-sm px-2 py-1 rounded border"
+            style={{ borderColor: 'var(--color-border)' }}>
+            <button onClick={() => applyFavorite(fav)}>★ {fav.name}</button>
+            <button className="opacity-70" title="Apply and roll"
+              onClick={() => { applyFavorite(fav); roll(fav.config.table_size ?? tableSize); }}>
+              Run
+            </button>
+            <button className="opacity-50" title="Delete"
+              onClick={() => deleteFavoriteMutation.mutate(fav.id)}>×</button>
+          </span>
+        ))}
+        <button className="text-sm px-2 py-1 rounded border" style={{ borderColor: 'var(--color-border)' }}
+          onClick={saveCurrentQuery}>
+          ★ Save current query
+        </button>
+      </div>
+
       <div className="flex gap-2 items-end flex-wrap mb-4">
+        <MultiCombobox
+          className="min-w-[220px]"
+          options={books.map((b) => ({
+            id: b.product_id,
+            label: b.title ?? `Book ${b.product_id}`,
+            count: b.count,
+          }))}
+          selectedIds={filters.product_ids ?? []}
+          // undefined rather than []: keeps the filter object clean and the
+          // React Query key stable between "never set" and "cleared".
+          onChange={(ids) => setFilter({ product_ids: ids.length > 0 ? ids : undefined })}
+          emptyLabel="All books"
+          placeholder="Search books..."
+        />
         <select className="px-2 py-1 rounded border bg-transparent" style={{ borderColor: 'var(--color-border)' }}
           value={filters.environment ?? ''}
           onChange={(e) => setFilter({ environment: e.target.value || undefined })}>
