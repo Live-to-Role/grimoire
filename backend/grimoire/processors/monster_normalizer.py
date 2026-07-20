@@ -16,7 +16,7 @@ from grimoire.processors.system_profiles import (
     normalize_descending_ac,
     normalize_thac0,
 )
-from grimoire.utils.dice import dice_average, parse_dice
+from grimoire.services.monster_fields import derive_stats
 
 logger = logging.getLogger(__name__)
 
@@ -84,55 +84,41 @@ async def resolve_provider(provider: str | None = None) -> str | None:
 
 def build_entry_from_llm(llm: dict, candidate: Candidate, profile: SystemProfile) -> dict:
     """Pure normalization + validation of LLM output into MonsterEntry fields."""
-    flags: list[str] = []
-
     ac = llm.get("ac")
     if ac is not None and llm.get("ac_style") == "descending":
         ac = normalize_descending_ac(int(ac))
-    if ac is not None and not (0 <= int(ac) <= 30):
-        flags.append("ac_out_of_range")
 
+    # THAC0 -> attack bonus is LLM-input-shaped, so it happens before the shared
+    # derivation, which takes attacks with bonuses already resolved.
     thac0 = llm.get("thac0")
-    attacks = []
+    raw_attacks = []
     for atk in llm.get("attacks") or []:
         bonus = atk.get("bonus")
         if bonus is None and thac0 is not None:
             bonus = normalize_thac0(int(thac0))
-        damage_dice = atk.get("damage_dice")
-        damage_avg = dice_average(damage_dice)
-        if damage_dice and damage_avg is None:
-            flags.append("damage_unparseable")
-        attacks.append({
-            "name": atk.get("name") or "attack",
+        raw_attacks.append({
+            "name": atk.get("name"),
             "bonus": bonus,
-            "damage_dice": damage_dice,
-            "damage_avg": damage_avg,
+            "damage_dice": atk.get("damage_dice"),
         })
-    if not attacks:
-        flags.append("no_attacks")
 
-    hd_dice = llm.get("hd_dice")
-    hp_avg = dice_average(hd_dice)
-    parsed_hd = parse_dice(hd_dice)
-    hd_value = float(parsed_hd[0]) if parsed_hd else None
-    if hd_dice and parsed_hd is None:
-        flags.append("hd_unparseable")
+    stats, flags = derive_stats(ac=ac, hd_dice=llm.get("hd_dice"), attacks=raw_attacks)
 
     return {
         "name": llm.get("name") or candidate.name_guess,
         "page_number": candidate.page,
         "system_profile": profile.id,
         "raw_text": candidate.raw_text,
-        "ac": int(ac) if ac is not None else None,
-        "hd_dice": hd_dice,
-        "hd_value": hd_value,
-        "hp_avg": hp_avg,
-        "attacks": json.dumps(attacks),
+        "ac": stats["ac"],
+        "hd_dice": stats["hd_dice"],
+        "hd_value": stats["hd_value"],
+        "hp_avg": stats["hp_avg"],
+        "attacks": json.dumps(stats["attacks"]),
         "move": llm.get("move"),
         "special_abilities": json.dumps(llm.get("special_abilities") or []),
         "environments": json.dumps(llm.get("environments") or []),
         "extraction_confidence": llm.get("confidence"),
-        "flags": json.dumps(sorted(set(flags))),
+        "flags": json.dumps(flags),
         "review_status": "pending",
     }
 
