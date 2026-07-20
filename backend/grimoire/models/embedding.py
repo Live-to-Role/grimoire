@@ -3,7 +3,7 @@
 from datetime import datetime, UTC
 
 from sqlalchemy import Column, DateTime, ForeignKey, Index, Integer, String, Text, LargeBinary
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import backref, relationship
 
 from grimoire.database import Base
 
@@ -39,7 +39,13 @@ class ProductEmbedding(Base):
 
     created_at = Column(DateTime, default=lambda: datetime.now(UTC))
 
-    product = relationship("Product", backref="embeddings")
+    # delete-orphan so deleting a Product removes its chunks instead of
+    # nullifying product_id (NOT NULL). SQLite FK enforcement is off, so the
+    # ondelete="CASCADE" above never fires — the ORM has to do the deleting.
+    product = relationship(
+        "Product",
+        backref=backref("embeddings", cascade="all, delete-orphan"),
+    )
 
     def get_embedding_vector(self) -> list[float]:
         """Deserialize embedding from bytes."""

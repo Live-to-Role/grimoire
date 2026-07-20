@@ -4,7 +4,7 @@ from datetime import datetime, UTC
 from enum import Enum
 
 from sqlalchemy import Column, DateTime, Enum as SQLEnum, ForeignKey, Integer, String, Text
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import backref, relationship
 
 from grimoire.database import Base
 
@@ -42,4 +42,9 @@ class ContributionQueue(Base):
     created_at = Column(DateTime, default=lambda: datetime.now(UTC))
     updated_at = Column(DateTime, default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC))
 
-    product = relationship("Product", backref="contributions")
+    # delete-orphan: product_id is NOT NULL, so the default cascade's
+    # nullify-on-parent-delete raises IntegrityError. See embedding.py.
+    product = relationship(
+        "Product",
+        backref=backref("contributions", cascade="all, delete-orphan"),
+    )
