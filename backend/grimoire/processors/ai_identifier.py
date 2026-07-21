@@ -29,6 +29,12 @@ MODEL_PRICING = {
     "gpt-4o": {"input": 2.50, "output": 10.00},
     "gpt-4-turbo": {"input": 10.00, "output": 30.00},
     # Anthropic
+    "claude-haiku-4-5": {"input": 1.00, "output": 5.00},
+    # RETIRED by Anthropic — these all 404 now. Kept only so cost lookups for
+    # historical runs still resolve; never use one as a default or fallback.
+    # claude-3-haiku retired 2026-04-19 and silently broke every ai_identify
+    # task (501 queue failures) because it was the hardcoded `model or ...`
+    # fallback at four call sites. Defaults come from DEFAULT_MODELS below.
     "claude-3-haiku-20240307": {"input": 0.25, "output": 1.25},
     "claude-3-sonnet-20240229": {"input": 3.00, "output": 15.00},
     "claude-3-opus-20240229": {"input": 15.00, "output": 75.00},
@@ -43,7 +49,7 @@ MODEL_PRICING = {
 # Default models per provider
 DEFAULT_MODELS = {
     "openai": "gpt-4o-mini",
-    "anthropic": "claude-3-haiku-20240307",
+    "anthropic": "claude-haiku-4-5",
     "ollama": "gemma3:12b",
 }
 
@@ -229,7 +235,7 @@ async def identify_with_openai(text: str, api_key: str, model: str = "gpt-4o-min
         return json.loads(content)
 
 
-async def identify_with_anthropic(text: str, api_key: str, model: str = "claude-3-haiku-20240307", filename: str | None = None) -> dict[str, Any]:
+async def identify_with_anthropic(text: str, api_key: str, model: str = DEFAULT_MODELS["anthropic"], filename: str | None = None) -> dict[str, Any]:
     """Use Anthropic API for identification."""
     async with httpx.AsyncClient(timeout=60.0) as client:
         response = await client.post(
@@ -362,7 +368,7 @@ async def identify_product(
                 result = await identify_with_anthropic(
                     truncated_text,
                     anthropic_key,
-                    model or "claude-3-haiku-20240307",
+                    model or DEFAULT_MODELS["anthropic"],
                     filename=filename,
                 )
             elif provider == "ollama":
@@ -448,7 +454,7 @@ async def suggest_tags_with_openai(text: str, api_key: str, model: str = "gpt-4o
         return json.loads(content)
 
 
-async def suggest_tags_with_anthropic(text: str, api_key: str, model: str = "claude-3-haiku-20240307") -> dict[str, Any]:
+async def suggest_tags_with_anthropic(text: str, api_key: str, model: str = DEFAULT_MODELS["anthropic"]) -> dict[str, Any]:
     """Use Anthropic API for tag suggestions."""
     async with httpx.AsyncClient(timeout=60.0) as client:
         response = await client.post(
@@ -546,7 +552,7 @@ async def suggest_tags(
             result = await suggest_tags_with_anthropic(
                 truncated_text, 
                 anthropic_key,
-                model or "claude-3-haiku-20240307"
+                model or DEFAULT_MODELS["anthropic"]
             )
         elif provider == "ollama":
             result = await suggest_tags_with_ollama(

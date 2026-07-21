@@ -7,6 +7,12 @@ export interface ProductFilters {
   sort?: 'title' | 'created_at' | 'updated_at' | 'last_opened_at' | 'file_name';
   order?: 'asc' | 'desc';
   search?: string;
+  /**
+   * How `search` is interpreted. 'fulltext' (the API default) searches book
+   * contents via FTS and ORs the terms, so a multi-word phrase matches almost
+   * everything. Use 'name' when the user is naming a specific book.
+   */
+  search_mode?: 'fulltext' | 'name';
   game_system?: string;
   product_type?: string;
   genre?: string;

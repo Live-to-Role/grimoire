@@ -132,7 +132,7 @@ async def extract_with_anthropic(
     text: str,
     prompt_template: str,
     api_key: str,
-    model: str = "claude-3-haiku-20240307",
+    model: str = "claude-haiku-4-5",
 ) -> dict:
     """Extract structured content using Anthropic."""
     prompt = prompt_template.format(text=text[:15000])
@@ -181,7 +181,7 @@ async def extract_monsters(
         )
     elif provider == "anthropic" and anthropic_key:
         result = await extract_with_anthropic(
-            text, MONSTER_EXTRACTION_PROMPT, anthropic_key, model or "claude-3-haiku-20240307"
+            text, MONSTER_EXTRACTION_PROMPT, anthropic_key, model or "claude-haiku-4-5"
         )
     else:
         return []
@@ -207,7 +207,7 @@ async def extract_spells(
         )
     elif provider == "anthropic" and anthropic_key:
         result = await extract_with_anthropic(
-            text, SPELL_EXTRACTION_PROMPT, anthropic_key, model or "claude-3-haiku-20240307"
+            text, SPELL_EXTRACTION_PROMPT, anthropic_key, model or "claude-haiku-4-5"
         )
     else:
         return []
@@ -233,7 +233,7 @@ async def extract_magic_items(
         )
     elif provider == "anthropic" and anthropic_key:
         result = await extract_with_anthropic(
-            text, MAGIC_ITEM_PROMPT, anthropic_key, model or "claude-3-haiku-20240307"
+            text, MAGIC_ITEM_PROMPT, anthropic_key, model or "claude-haiku-4-5"
         )
     else:
         return []
@@ -259,7 +259,7 @@ async def extract_npcs(
         )
     elif provider == "anthropic" and anthropic_key:
         result = await extract_with_anthropic(
-            text, NPC_EXTRACTION_PROMPT, anthropic_key, model or "claude-3-haiku-20240307"
+            text, NPC_EXTRACTION_PROMPT, anthropic_key, model or "claude-haiku-4-5"
         )
     else:
         return []

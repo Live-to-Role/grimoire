@@ -1,12 +1,23 @@
 @echo off
+REM Stop all Grimoire services. Safe to run remotely - needs no keypress and
+REM touches no windows.
+REM
+REM Why this matches on command lines instead of window titles: the
+REM "taskkill /FI WINDOWTITLE eq Grimoire Backend*" filters that start.bat uses
+REM only match when the services were launched by start.bat in an interactive
+REM desktop session. Otherwise they silently match nothing - taskkill prints
+REM "No tasks running" and still exits 0, so the failure is invisible. Matching
+REM the command line works no matter how the services were started.
+
 echo === Grimoire - Stopping ===
+echo.
 
-REM Find services by command line, not window title: under Windows Terminal the
-REM service windows don't carry their launch titles, so the old
-REM `taskkill /FI "WINDOWTITLE eq ..."` matched nothing and services survived.
-REM Kill the payload processes (python/node) with their trees; the cmd /c hosts
-REM then exit normally and their windows close on their own.
-powershell -NoProfile -Command ^
-  "$targets = Get-CimInstance Win32_Process | Where-Object { $_.Name -ne 'cmd.exe' -and ($_.CommandLine -match 'uvicorn grimoire\.main|grimoire\.worker\.run|huey_consumer grimoire\.worker' -or ($_.Name -match '^node' -and $_.CommandLine -match 'grimoire[\\/]frontend')) }; if (-not $targets) { Write-Host 'No running Grimoire services found.' } else { foreach ($t in $targets) { Write-Host ('Stopping ' + $t.Name + ' (pid ' + $t.ProcessId + ')'); taskkill /PID $t.ProcessId /T /F >$null 2>&1 } }"
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\stop-services.ps1"
+set RC=%ERRORLEVEL%
 
-echo Done.
+echo.
+if not "%RC%"=="0" (
+    echo Some processes could not be stopped.
+    exit /b %RC%
+)
+echo Goodbye!

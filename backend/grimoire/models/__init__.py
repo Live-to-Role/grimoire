@@ -14,6 +14,8 @@ from grimoire.models.exclusion import ExclusionRule, ExclusionRuleType, DEFAULT_
 from grimoire.models.scan_job import ScanJob, ScanJobStatus
 from grimoire.models.deleted_duplicate import DeletedDuplicate
 from grimoire.models.product_search_vector import ProductSearchVector
+from grimoire.models.monster_entry import MonsterEntry
+from grimoire.models.bestiary_favorite import BestiaryFavorite
 
 __all__ = [
     "Product",
@@ -37,4 +39,6 @@ __all__ = [
     "ScanJobStatus",
     "DeletedDuplicate",
     "ProductSearchVector",
+    "MonsterEntry",
+    "BestiaryFavorite",
 ]

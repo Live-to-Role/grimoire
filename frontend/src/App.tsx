@@ -5,6 +5,7 @@ import { Library } from './pages/Library';
 import { Settings } from './pages/Settings';
 import { Campaigns } from './pages/Campaigns';
 import { Gallery } from './pages/Gallery';
+import { Bestiary } from './pages/Bestiary';
 import { LibraryManagement } from './pages/LibraryManagement';
 import { NavRail, NavBottomBar } from './components/NavRail';
 import { FilterDrawer } from './components/FilterDrawer';
@@ -67,6 +68,8 @@ function App() {
               <Campaigns />
             ) : activeView === 'gallery' ? (
               <Gallery />
+            ) : activeView === 'bestiary' ? (
+              <Bestiary />
             ) : activeView === 'library-management' ? (
               <LibraryManagement />
             ) : (

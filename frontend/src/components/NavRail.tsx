@@ -8,6 +8,7 @@ import {
   Sun,
   Moon,
   Image,
+  Skull,
 } from 'lucide-react';
 import { useThemeContext } from '../contexts/ThemeContext';
 import { useQueueStatus } from '../hooks/useQueueStatus';
@@ -21,6 +22,7 @@ const navItems = [
   { id: 'library', label: 'Library', icon: Library },
   { id: 'gallery', label: 'Gallery', icon: Image },
   { id: 'campaigns', label: 'Campaigns', icon: BookOpen },
+  { id: 'bestiary', label: 'Bestiary', icon: Skull },
   { id: 'library-management', label: 'Manage', icon: FolderOpen },
   { id: 'queue', label: 'Queue', icon: HardDrive },
   { id: 'tools', label: 'Tools', icon: Wrench },

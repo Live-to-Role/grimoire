@@ -113,7 +113,7 @@ async def generate_session_prep(
         if provider == "openai" and openai_key:
             result = await _call_openai(prompt, openai_key, model or "gpt-4o-mini")
         elif provider == "anthropic" and anthropic_key:
-            result = await _call_anthropic(prompt, anthropic_key, model or "claude-3-haiku-20240307")
+            result = await _call_anthropic(prompt, anthropic_key, model or "claude-haiku-4-5")
         else:
             return _generate_basic_prep(
                 campaign_name, session_number, session_title, session_notes, products

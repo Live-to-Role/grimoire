@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   X,
@@ -27,6 +27,7 @@ import {
   Tag,
   Check,
   FolderOpen,
+  Skull,
 } from 'lucide-react';
 import apiClient from '../api/client';
 import type { Product, RunNote } from '../types/product';
@@ -37,6 +38,7 @@ import { getTags, addTagToProduct, removeTagFromProduct, type Tag as TagType } f
 import { PDFViewer } from './PDFViewer';
 import { ComboboxWithAdd } from './ComboboxWithAdd';
 import { useFocusTrap } from '../hooks/useFocusTrap';
+import { queueExtraction } from '../api/monsters';
 
 interface LibraryStats {
   total_products: number;
@@ -71,6 +73,8 @@ export function ProductDetail({ product, onClose }: ProductDetailProps) {
   const [showTagMenu, setShowTagMenu] = useState(false);
   const [showNoteEditor, setShowNoteEditor] = useState(false);
   const [editingNote, setEditingNote] = useState<RunNote | null>(null);
+  const [bestiaryProfile, setBestiaryProfile] = useState<'dcc' | 'osr'>('dcc');
+  const [bestiaryMessage, setBestiaryMessage] = useState<string | null>(null);
 
   const { data: libraryStats } = useQuery({
     queryKey: ['library-stats'],
@@ -165,6 +169,28 @@ export function ProductDetail({ product, onClose }: ProductDetailProps) {
       }
     },
   });
+
+  const bestiaryMutation = useMutation({
+    mutationFn: () => queueExtraction(product.id, bestiaryProfile),
+    onSuccess: (result) =>
+      setBestiaryMessage(result.warning ? `${result.message} — ${result.warning}` : result.message),
+    onError: (err: any) =>
+      setBestiaryMessage(err?.response?.data?.detail ?? 'Failed to queue bestiary extraction'),
+  });
+
+  // Metadata is a hint for the default only — the backend guard decides what
+  // is actually allowed.
+  useEffect(() => {
+    const system = (localProduct.game_system ?? '').toLowerCase();
+    if (system.includes('dungeon crawl classics') || system.includes('dcc')) {
+      setBestiaryProfile('dcc');
+    } else if (
+      system.includes('old-school') || system.includes('ose') ||
+      system.includes('b/x') || system.includes('advanced dungeons')
+    ) {
+      setBestiaryProfile('osr');
+    }
+  }, [localProduct.game_system]);
 
   const extractMutation = useMutation({
     mutationFn: async (types: { monsters?: boolean; spells?: boolean; items?: boolean; npcs?: boolean }) => {
@@ -1589,7 +1615,38 @@ export function ProductDetail({ product, onClose }: ProductDetailProps) {
                     AI Identify
                   </button>
                 )}
+                {localProduct.processing_status?.text_extracted && (
+                  <div className="flex items-center gap-2">
+                    <select
+                      value={bestiaryProfile}
+                      onChange={(e) => setBestiaryProfile(e.target.value as 'dcc' | 'osr')}
+                      className="rounded border border-neutral-300 px-2 py-1.5 text-sm"
+                    >
+                      <option value="dcc">DCC</option>
+                      <option value="osr">OSR</option>
+                    </select>
+                    <button
+                      onClick={() => { setBestiaryMessage(null); bestiaryMutation.mutate(); }}
+                      disabled={bestiaryMutation.isPending}
+                      className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-50"
+                    >
+                      {bestiaryMutation.isPending ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Skull className="h-4 w-4" />
+                      )}
+                      Extract as Bestiary
+                    </button>
+                  </div>
+                )}
               </div>
+
+              {bestiaryMessage && (
+                <div className="mb-4 rounded-lg border p-3 text-sm"
+                  style={{ borderColor: 'var(--color-border)' }}>
+                  {bestiaryMessage}
+                </div>
+              )}
 
               {failedQueueItems && failedQueueItems.length > 0 && (
                 <div className="mb-4 rounded-lg border border-red-200 bg-red-50 p-3">

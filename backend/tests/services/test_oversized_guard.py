@@ -156,32 +156,21 @@ async def test_pending_batch_orders_smallest_file_first(db):
 
 @pytest.mark.asyncio
 async def test_pending_batch_surfaces_orphaned_queue_rows(db):
-    # SQLite FK enforcement is off and there is no ORM cascade from
-    # Product -> ProcessingQueue, so deleting a product can leave its
-    # pending queue rows orphaned (product_id points nowhere). Before the
-    # smallest-first join was added, get_pending_batch had no join and
-    # returned these rows, letting the worker mark them failed
-    # ("Product not found") and self-clean. An INNER join silently
-    # excludes them, so they'd linger as pending forever. Assert the
-    # orphan still surfaces so it can keep self-cleaning.
-    product = Product(
-        file_path="/x/orphan.pdf",
-        file_name="orphan.pdf",
-        file_size=123_456,
-        file_hash="orphan-queue-row-1",
-    )
-    db.add(product)
-    await db.commit()
-    orphan_product_id = product.id
+    # SQLite FK enforcement is off, so a queue row's product_id can point
+    # nowhere. Product now has an ORM delete-orphan cascade to
+    # ProcessingQueue, which removes the main *source* of these, but not the
+    # possibility: orphans already exist in live DBs and raw SQL/crashes can
+    # still create them. Before the smallest-first join was added,
+    # get_pending_batch had no join and returned these rows, letting the
+    # worker mark them failed ("Product not found") and self-clean. An INNER
+    # join silently excludes them, so they'd linger as pending forever.
+    # Assert the orphan still surfaces so it can keep self-cleaning.
+    orphan_product_id = 999_99942  # deliberately references no Product row
 
     queue_item = ProcessingQueue(
         product_id=orphan_product_id, task_type="text", priority=6, status="pending",
     )
     db.add(queue_item)
-    await db.commit()
-
-    # Delete the product directly, leaving the queue row's product_id dangling.
-    await db.delete(product)
     await db.commit()
 
     batch = await get_pending_batch(db, batch_size=1000)

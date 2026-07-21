@@ -115,6 +115,14 @@ async def list_products(
     sort: Literal["title", "created_at", "updated_at", "last_opened_at", "file_name"] = "title",
     order: Literal["asc", "desc"] = "asc",
     search: str | None = Query(None, description="Search in title and file name"),
+    search_mode: Literal["fulltext", "name"] = Query(
+        "fulltext",
+        description=(
+            "How to interpret `search`. 'fulltext' (default) uses the FTS index "
+            "over book contents. 'name' matches only title/file name/description, "
+            "for pickers where the user is naming a specific book."
+        ),
+    ),
     game_system: str | None = Query(None, description="Filter by game system"),
     genre: str | None = Query(None, description="Filter by genre"),
     product_type: str | None = Query(None, description="Filter by product type"),
@@ -145,7 +153,13 @@ async def list_products(
             | (Product.description.ilike(search_term))
         )
         try:
-            if await check_fts_available(db):
+            if search_mode == "name":
+                # Name lookup: match the title/file name/description only. The
+                # fulltext branch below searches book CONTENTS and ORs its terms,
+                # so "Cyclopedia of Common Animals" matches every book
+                # containing "of" - useless when the user is naming one book.
+                conditions.append(ilike_condition)
+            elif await check_fts_available(db):
                 terms = search.strip().split()
                 if terms:
                     fts_query = " OR ".join(f'"{term}"*' for term in terms)

@@ -45,6 +45,7 @@ const taskTypeLabels: Record<string, string> = {
   extract: 'Text Extraction',
   identify: 'AI Identification',
   suggest_tags: 'Tag Suggestions',
+  monster_extract: 'Monster Extraction',
 };
 
 export function ProcessingQueue({ onClose }: ProcessingQueueProps) {
