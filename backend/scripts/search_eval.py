@@ -1,10 +1,19 @@
 """Golden-query eval for semantic search. Runs against the LIVE DB (read-only)
 and requires Ollama up for query embedding.
 
+Interpretations are PINNED. The LLM interpreter rewrites semantic_query
+differently between calls even at temperature 0 - "cave adventure" came back
+as "cave adventure underground cavern" on some runs and unchanged on others -
+which changes the query embedding and moves results enough to swamp any
+tuning effect (one pair of identical runs disagreed by 40 points of
+precision@10). Pinned interpretations are replayed from a sidecar file so a
+tuning run measures the constant that changed and nothing else.
+
 Usage (from backend/):
     C:/Users/mkemi/miniconda3/python.exe scripts/search_eval.py
     C:/Users/mkemi/miniconda3/python.exe scripts/search_eval.py --save runs/base.json
     C:/Users/mkemi/miniconda3/python.exe scripts/search_eval.py --compare runs/base.json
+    C:/Users/mkemi/miniconda3/python.exe scripts/search_eval.py --repin   # re-record
 """
 
 import argparse
@@ -60,7 +69,37 @@ def score_topical(entry: dict, results: list[dict]) -> dict:
     }
 
 
-async def run(golden_path: str, save: str | None, compare: str | None) -> None:
+async def pin_interpretations(db, queries: list[dict], path: str, repin: bool) -> None:
+    """Record one interpretation per query, then replay it on every later run.
+
+    Seeds the interpreter's own per-query cache, which short-circuits ahead of
+    the LLM call, so no network round trip happens during scoring.
+    """
+    from grimoire.services import query_interpreter as qi
+
+    p = Path(path)
+    if repin or not p.exists():
+        qi._llm_cache.clear()
+        recorded = {}
+        for entry in queries:
+            interp = await qi.interpret_query(db, entry["query"])
+            recorded[entry["query"]] = interp.to_dict()
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(json.dumps(recorded, indent=2), encoding="utf-8")
+        print(f"pinned {len(recorded)} interpretations -> {path}\n")
+
+    data = json.loads(p.read_text(encoding="utf-8"))
+    missing = [e["query"] for e in queries if e["query"] not in data]
+    if missing:
+        raise SystemExit(
+            f"No pinned interpretation for {missing!r}. Re-run with --repin."
+        )
+    for query, d in data.items():
+        qi._llm_cache[query] = qi.Interpretation(**d)
+
+
+async def run(golden_path: str, save: str | None, compare: str | None,
+              pin_path: str, repin: bool) -> None:
     from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
     from grimoire.config import settings
@@ -78,6 +117,7 @@ async def run(golden_path: str, save: str | None, compare: str | None) -> None:
 
     rows = []
     async with session_factory() as db:
+        await pin_interpretations(db, queries, pin_path, repin)
         for entry in queries:
             k = entry.get("k", 10)
             req = SemanticSearchRequest(query=entry["query"], top_k=k, hybrid=True, interpret=True)
@@ -144,5 +184,9 @@ if __name__ == "__main__":
     ap.add_argument("--golden", default="scripts/search_golden.json")
     ap.add_argument("--save", default=None)
     ap.add_argument("--compare", default=None)
+    ap.add_argument("--pin", default="scripts/search_interpretations.json",
+                    help="Pinned interpretations replayed for reproducibility")
+    ap.add_argument("--repin", action="store_true",
+                    help="Re-record interpretations from the LLM before running")
     args = ap.parse_args()
-    asyncio.run(run(args.golden, args.save, args.compare))
+    asyncio.run(run(args.golden, args.save, args.compare, args.pin, args.repin))

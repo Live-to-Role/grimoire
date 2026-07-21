@@ -1,0 +1,122 @@
+{
+  "a descent into hell aboard a train": {
+    "semantic_query": "descent into hell train aboard infernal journey",
+    "level_min": null,
+    "level_max": null,
+    "game_system": null,
+    "product_type": "Adventure",
+    "source": "llm"
+  },
+  "dungeon crawl classics funnel for level 0 characters": {
+    "semantic_query": "funnel level 0 characters dungeon crawl",
+    "level_min": 0,
+    "level_max": 0,
+    "game_system": "Dungeon Crawl Classics",
+    "product_type": "Adventure",
+    "source": "llm"
+  },
+  "desert oasis mirage": {
+    "semantic_query": "desert oasis mirage",
+    "level_min": null,
+    "level_max": null,
+    "game_system": null,
+    "product_type": null,
+    "source": "llm"
+  },
+  "hunting a dragon": {
+    "semantic_query": "hunting dragon combat encounter",
+    "level_min": null,
+    "level_max": null,
+    "game_system": null,
+    "product_type": null,
+    "source": "llm"
+  },
+  "pathfinder dragon adventure": {
+    "semantic_query": "pathfinder dragon adventure",
+    "level_min": null,
+    "level_max": null,
+    "game_system": "Pathfinder",
+    "product_type": "Adventure",
+    "source": "llm"
+  },
+  "old-school essentials cave crawl with orcs": {
+    "semantic_query": "cave crawl orcs dungeon exploration",
+    "level_min": null,
+    "level_max": null,
+    "game_system": "Old-School Essentials",
+    "product_type": "Adventure",
+    "source": "llm"
+  },
+  "expedition through a dangerous jungle": {
+    "semantic_query": "expedition jungle dangerous exploration",
+    "level_min": null,
+    "level_max": null,
+    "game_system": null,
+    "product_type": "Adventure",
+    "source": "llm"
+  },
+  "caverns full of giant fungus": {
+    "semantic_query": "caverns giant fungus underground fungi monsters",
+    "level_min": null,
+    "level_max": null,
+    "game_system": null,
+    "product_type": null,
+    "source": "llm"
+  },
+  "pirate adventure on the high seas": {
+    "semantic_query": "pirate adventure high seas naval ocean",
+    "level_min": null,
+    "level_max": null,
+    "game_system": null,
+    "product_type": "Adventure",
+    "source": "llm"
+  },
+  "frozen winter wilderness survival": {
+    "semantic_query": "frozen winter wilderness survival",
+    "level_min": null,
+    "level_max": null,
+    "game_system": null,
+    "product_type": null,
+    "source": "llm"
+  },
+  "undead adventure": {
+    "semantic_query": "undead adventure",
+    "level_min": null,
+    "level_max": null,
+    "game_system": null,
+    "product_type": "Adventure",
+    "source": "llm"
+  },
+  "cave adventure": {
+    "semantic_query": "cave adventure",
+    "level_min": null,
+    "level_max": null,
+    "game_system": null,
+    "product_type": "Adventure",
+    "source": "llm"
+  },
+  "haunted house horror": {
+    "semantic_query": "haunted house horror",
+    "level_min": null,
+    "level_max": null,
+    "game_system": "Horror",
+    "product_type": null,
+    "source": "llm"
+  },
+  "temple of a dark cult": {
+    "semantic_query": "temple dark cult",
+    "level_min": null,
+    "level_max": null,
+    "game_system": null,
+    "product_type": "Adventure",
+    "source": "llm"
+  },
+  "swamp horror": {
+    "semantic_query": "swamp horror monsters creatures",
+    "level_min": null,
+    "level_max": null,
+    "game_system": "Horror",
+    "product_type": null,
+    "source": "llm"
+  }
+}
