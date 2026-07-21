@@ -231,6 +231,10 @@ async def _call_llm(prompt: str) -> dict | None:
                     json={
                         "model": ANTHROPIC_MODEL,
                         "max_tokens": 300,
+                        # Pinned: at the default temperature the model rewrites
+                        # semantic_query differently on every call, so the same
+                        # search returns different books each time.
+                        "temperature": 0,
                         "messages": [{"role": "user", "content": prompt}],
                     },
                 )
@@ -246,7 +250,7 @@ async def _call_llm(prompt: str) -> dict | None:
                     json={
                         "model": OPENAI_MODEL,
                         "messages": [{"role": "user", "content": prompt}],
-                        "temperature": 0.1,
+                        "temperature": 0,
                         "response_format": {"type": "json_object"},
                     },
                 )

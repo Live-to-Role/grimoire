@@ -79,3 +79,51 @@ def test_validate_llm_result_empty_semantic_query_keeps_heuristic():
     base = Interpretation(semantic_query="orig words")
     out = _validate_llm_result({"semantic_query": "  "}, base, SYSTEMS, TYPES)
     assert out.semantic_query == "orig words"
+
+
+class _FakeResponse:
+    def __init__(self, payload):
+        self._payload = payload
+
+    def raise_for_status(self):
+        pass
+
+    def json(self):
+        return self._payload
+
+
+class _CapturingClient:
+    """Captures the request body of the one call _call_llm makes."""
+
+    captured: dict = {}
+
+    def __init__(self, *args, **kwargs):
+        pass
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *exc):
+        return False
+
+    async def post(self, url, headers=None, json=None):
+        _CapturingClient.captured = json
+        if "anthropic" in url:
+            return _FakeResponse({"content": [{"text": '{"semantic_query": "x"}'}]})
+        return _FakeResponse({"choices": [{"message": {"content": '{"semantic_query": "x"}'}}]})
+
+
+async def test_llm_call_pins_temperature_to_zero(monkeypatch):
+    """A sampled interpreter rewrites semantic_query differently on every call
+    ('cave adventure' -> '...underground cavern exploration' one run, plain the
+    next), which changes the query embedding and makes search results - and any
+    eval built on them - irreproducible.
+    """
+    from grimoire.services import query_interpreter as qi
+
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    monkeypatch.setattr(qi.httpx, "AsyncClient", _CapturingClient)
+
+    await qi._call_llm("prompt")
+
+    assert _CapturingClient.captured.get("temperature") == 0
