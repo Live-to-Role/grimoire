@@ -1,20 +1,21 @@
 {
-  "_readme": "A query is a HIT if ANY expected entry (product ID int, or case-insensitive title substring str) appears in the top k results. Multi-entry expect lists are intentional for broad topical queries. Tweak titles after seeing the first eval run.",
+  "_readme": "Two query modes, scored differently on purpose. mode 'specific': one particular book is the right answer; scored by hit@k and MRR. mode 'topical': the query names a region of the library with hundreds of valid answers (276 titles match 'undead'), so demanding one title is a coin flip while listing them all auto-passes; scored by precision@k, the fraction of the top k whose title matches 'topic'. Topic regexes are written against library titles independently of what search returns - never widen one to cover a result just to make it pass.",
   "queries": [
-    {"query": "undead adventure", "expect": ["Vampires", "Barrow Keep", "Crypt Room"], "k": 10},
-    {"query": "cave adventure", "expect": ["Orc Caves", "Crab Cave", "Ogre's Cave"], "k": 10},
-    {"query": "haunted house horror", "expect": ["Haunted", "The Haunt", "Dreadmire"], "k": 10},
-    {"query": "pirate adventure on the high seas", "expect": ["Pirates!", "Pirate Borg", "Pirates Cove"], "k": 10},
-    {"query": "expedition through a dangerous jungle", "expect": ["Jungle Treks", "Primal Forest"], "k": 10},
-    {"query": "temple of a dark cult", "expect": ["Temple of Zoko", "Cultists' Lair", "Temple Siege"], "k": 10},
-    {"query": "caverns full of giant fungus", "expect": ["Fungus Forest", "Magic Mushrooms"], "k": 10},
-    {"query": "hunting a dragon", "expect": ["Dragon Hunt"], "k": 10},
-    {"query": "a descent into hell aboard a train", "expect": ["Hell Train"], "k": 10},
-    {"query": "desert oasis mirage", "expect": ["Mirage Oasis"], "k": 10},
-    {"query": "frozen winter wilderness survival", "expect": ["Frozen Wind", "Winterland", "Stay Frosty"], "k": 10},
-    {"query": "swamp horror", "expect": ["Deathswamp", "Dreadmire"], "k": 10},
-    {"query": "dungeon crawl classics funnel for level 0 characters", "expect": ["Sailors on the Starless Sea"], "k": 10},
-    {"query": "old-school essentials cave crawl with orcs", "expect": ["Orc Caves", "Ogre's Cave"], "k": 10},
-    {"query": "pathfinder dragon adventure", "expect": ["Dragon Hunt"], "k": 10}
+    {"mode": "specific", "query": "a descent into hell aboard a train", "expect": ["Hell Train"], "k": 10},
+    {"mode": "specific", "query": "dungeon crawl classics funnel for level 0 characters", "expect": ["Sailors on the Starless Sea"], "k": 10},
+    {"mode": "specific", "query": "desert oasis mirage", "expect": ["Mirage Oasis"], "k": 10},
+    {"mode": "specific", "query": "hunting a dragon", "expect": ["Dragon Hunt"], "k": 10},
+    {"mode": "specific", "query": "pathfinder dragon adventure", "expect": ["Dragon Hunt"], "k": 10},
+    {"mode": "specific", "query": "old-school essentials cave crawl with orcs", "expect": ["Orc Caves", "Ogre's Cave"], "k": 10},
+    {"mode": "specific", "query": "expedition through a dangerous jungle", "expect": ["Jungle Treks", "Primal Forest"], "k": 10},
+    {"mode": "specific", "query": "caverns full of giant fungus", "expect": ["Fungus Forest", "Magic Mushrooms"], "k": 10},
+    {"mode": "specific", "query": "pirate adventure on the high seas", "expect": ["Pirates!", "Pirate Borg", "Pirates Cove"], "k": 10},
+    {"mode": "specific", "query": "frozen winter wilderness survival", "expect": ["Frozen Wind", "Winterland", "Stay Frosty"], "k": 10},
+
+    {"mode": "topical", "query": "undead adventure", "topic": "(undead\\b|necromanc\\w*|vampir\\w*|zombie\\w*|skeleton\\w*|\\blich\\b|ghoul\\w*|barrow\\w*|crypt\\w*|\\btombs?\\b|graveyard\\w*|wight\\w*|wraith\\w*|mumm(y|ies)\\b|revenant\\w*|\\bbones?\\b|corpses?\\b|cadaver\\w*|\\bdead\\b|\\bdeath\\w*)", "k": 10},
+    {"mode": "topical", "query": "cave adventure", "topic": "(caves?\\b|caverns?\\b|grottos?\\b|subterranean|underdark|\\bdelves?\\b|tunnels?\\b|\\bkobold)", "k": 10},
+    {"mode": "topical", "query": "haunted house horror", "topic": "(haunt\\w*|ghosts?\\b|ghostly|spectres?\\b|specters?\\b|spectral|poltergeist|manors?\\b|mansions?\\b|\\bdread\\w*|phantom\\w*)", "k": 10},
+    {"mode": "topical", "query": "temple of a dark cult", "topic": "(temples?\\b|shrines?\\b|\\bcults?\\b|cultists?\\b|ziggurat|\\bsect\\b)", "k": 10},
+    {"mode": "topical", "query": "swamp horror", "topic": "(swamps?\\b|swampy|\\bbogs?\\b|marsh\\w*|\\bfens?\\b|\\bmire\\w*|bayou|sunken)", "k": 10}
   ]
 }

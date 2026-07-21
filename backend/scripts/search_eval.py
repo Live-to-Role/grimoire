@@ -10,17 +10,54 @@ Usage (from backend/):
 import argparse
 import asyncio
 import json
+import re
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 
+def _title(result: dict) -> str:
+    return result.get("title") or result.get("file_name") or ""
+
+
 def _is_hit(result: dict, expect) -> bool:
     if isinstance(expect, int):
         return result.get("id") == expect
-    title = (result.get("title") or result.get("file_name") or "").lower()
-    return str(expect).lower() in title
+    return str(expect).lower() in _title(result).lower()
+
+
+def score_specific(entry: dict, results: list[dict]) -> dict:
+    """One book is the right answer: reciprocal rank of the first match."""
+    first_rank = None
+    for rank, r in enumerate(results, start=1):
+        if any(_is_hit(r, e) for e in entry["expect"]):
+            first_rank = rank
+            break
+    return {
+        "mode": "specific",
+        "query": entry["query"],
+        "hit": first_rank is not None,
+        "rank": first_rank,
+        "rr": (1.0 / first_rank) if first_rank else 0.0,
+        "top": [_title(r) for r in results[:3]],
+    }
+
+
+def score_topical(entry: dict, results: list[dict]) -> dict:
+    """Hundreds of books legitimately answer this, so measure how much of the
+    top k is on topic rather than whether one chosen title showed up."""
+    pattern = re.compile(entry["topic"], re.I)
+    on_topic = [bool(pattern.search(_title(r))) for r in results]
+    matched = sum(on_topic)
+    return {
+        "mode": "topical",
+        "query": entry["query"],
+        "precision": matched / len(results) if results else 0.0,
+        "matched": matched,
+        "returned": len(results),
+        "off_topic": [_title(r) for r, ok in zip(results, on_topic) if not ok][:3],
+    }
 
 
 async def run(golden_path: str, save: str | None, compare: str | None) -> None:
@@ -46,39 +83,60 @@ async def run(golden_path: str, save: str | None, compare: str | None) -> None:
             req = SemanticSearchRequest(query=entry["query"], top_k=k, hybrid=True, interpret=True)
             out = await search_service.search(db, req)
             results = out["results"]
-            first_rank = None
-            for rank, r in enumerate(results, start=1):
-                if any(_is_hit(r, e) for e in entry["expect"]):
-                    first_rank = rank
-                    break
-            rows.append({
-                "query": entry["query"],
-                "hit": first_rank is not None,
-                "rank": first_rank,
-                "rr": (1.0 / first_rank) if first_rank else 0.0,
-                "top": [r.get("title") or r.get("file_name") for r in results[:3]],
-            })
+            if entry.get("mode") == "topical":
+                rows.append(score_topical(entry, results))
+            else:
+                rows.append(score_specific(entry, results))
     await engine.dispose()
 
-    hits = sum(1 for r in rows if r["hit"])
-    mrr = sum(r["rr"] for r in rows) / len(rows)
-    for r in rows:
-        mark = f"HIT @{r['rank']}" if r["hit"] else "MISS"
-        print(f"  [{mark:>7}] {r['query']!r}  top3={r['top']}")
-    print(f"\nhit@k: {hits}/{len(rows)} ({hits / len(rows):.0%})   MRR: {mrr:.3f}")
+    specific = [r for r in rows if r["mode"] == "specific"]
+    topical = [r for r in rows if r["mode"] == "topical"]
 
-    summary = {"hit_rate": hits / len(rows), "mrr": mrr, "rows": rows}
+    summary = {"rows": rows}
+
+    if specific:
+        hits = sum(1 for r in specific if r["hit"])
+        mrr = sum(r["rr"] for r in specific) / len(specific)
+        summary["hit_rate"] = hits / len(specific)
+        summary["mrr"] = mrr
+        print("SPECIFIC (one right answer; hit@k + MRR)")
+        for r in specific:
+            mark = f"HIT @{r['rank']}" if r["hit"] else "MISS"
+            print(f"  [{mark:>7}] {r['query']!r}  top3={r['top']}")
+        print(f"\n  hit@k: {hits}/{len(specific)} ({hits / len(specific):.0%})   MRR: {mrr:.3f}")
+
+    if topical:
+        mean_p = sum(r["precision"] for r in topical) / len(topical)
+        summary["mean_precision"] = mean_p
+        print("\nTOPICAL (many right answers; precision@k)")
+        for r in topical:
+            print(f"  [{r['matched']:>2}/{r['returned']:<2} = {r['precision']:.0%}] {r['query']!r}"
+                  f"  off-topic={r['off_topic']}")
+        print(f"\n  mean precision@k: {mean_p:.0%}")
     if save:
         Path(save).parent.mkdir(parents=True, exist_ok=True)
         Path(save).write_text(json.dumps(summary, indent=2), encoding="utf-8")
         print(f"saved -> {save}")
     if compare:
         base = json.loads(Path(compare).read_text(encoding="utf-8"))
-        print(f"\nvs {compare}: hit_rate {base['hit_rate']:.0%} -> {summary['hit_rate']:.0%}, "
-              f"MRR {base['mrr']:.3f} -> {summary['mrr']:.3f}")
-        for b, n in zip(base["rows"], rows):
-            if b["hit"] != n["hit"]:
+        print(f"\nvs {compare}:")
+        for label, key, fmt in (("hit_rate", "hit_rate", "{:.0%}"),
+                                ("MRR", "mrr", "{:.3f}"),
+                                ("mean precision", "mean_precision", "{:.0%}")):
+            if key in base and key in summary:
+                print(f"  {label}: {fmt.format(base[key])} -> {fmt.format(summary[key])}")
+
+        # Match on query text: a reordered or resized golden file must not
+        # silently pair unrelated rows the way zip() would.
+        base_by_query = {r["query"]: r for r in base["rows"]}
+        for n in rows:
+            b = base_by_query.get(n["query"])
+            if not b or b.get("mode") != n["mode"]:
+                continue
+            if n["mode"] == "specific" and b["hit"] != n["hit"]:
                 print(f"  CHANGED: {n['query']!r}: {'MISS->HIT' if n['hit'] else 'HIT->MISS'}")
+            elif n["mode"] == "topical" and abs(b["precision"] - n["precision"]) >= 0.1:
+                print(f"  CHANGED: {n['query']!r}: {b['precision']:.0%} -> {n['precision']:.0%}")
 
 
 if __name__ == "__main__":
