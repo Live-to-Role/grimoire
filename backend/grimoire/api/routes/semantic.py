@@ -441,28 +441,44 @@ async def re_embed_mismatched(
     db: DbSession,
     target_model: str = Query("nomic-embed-text", description="Target embedding model"),
 ) -> dict:
-    """Queue products whose search vectors don't match the target model for re-embedding."""
+    """Queue products whose stored vectors don't match the target model.
+
+    Two different failure modes leave a product on an old model, and matching
+    only on search vectors catches just one of them:
+
+    1. The search vector itself was built by the old model.
+    2. The chunk embeddings are on the old model and the product has NO search
+       vector at all. The averaged vector is only written at the end of a
+       successful embed, so products interrupted by a model switch have stale
+       chunks and no vector row - invisible both to search and to a
+       search-vector-only repair query.
+
+    Old rows are left in place. The embed handler deletes and replaces them per
+    product, so deleting up front would only blank out search for everything
+    still sitting in the queue.
+    """
     from grimoire.models.product_search_vector import ProductSearchVector
     from grimoire.models import ProcessingQueue
 
-    # Find product IDs with wrong model
+    stale_sv = select(ProductSearchVector.product_id).where(
+        ProductSearchVector.embedding_model != target_model
+    )
+    stale_chunks = select(ProductEmbedding.product_id).where(
+        ProductEmbedding.embedding_model != target_model
+    ).distinct()
+
+    # The embed handler raises on products without text, so filter them out
+    # rather than manufacturing guaranteed queue failures.
     result = await db.execute(
-        select(ProductSearchVector.product_id).where(
-            ProductSearchVector.embedding_model != target_model
+        select(Product.id).where(
+            Product.text_extracted == True,  # noqa: E712
+            Product.id.in_(stale_sv.union(stale_chunks)),
         )
     )
     mismatched_ids = result.scalars().all()
 
     if not mismatched_ids:
         return {"message": "All vectors already match target model", "queued": 0}
-
-    # Delete old embeddings + search vectors so they get re-generated
-    await db.execute(
-        delete(ProductEmbedding).where(ProductEmbedding.product_id.in_(mismatched_ids))
-    )
-    await db.execute(
-        delete(ProductSearchVector).where(ProductSearchVector.product_id.in_(mismatched_ids))
-    )
 
     # Queue for re-embedding
     queued = 0
@@ -489,7 +505,7 @@ async def re_embed_mismatched(
     return {
         "message": f"Queued {queued} products for re-embedding with {target_model}",
         "queued": queued,
-        "deleted_old": len(mismatched_ids),
+        "mismatched": len(mismatched_ids),
         "target_model": target_model,
     }
 
