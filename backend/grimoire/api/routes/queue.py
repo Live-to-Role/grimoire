@@ -1,7 +1,9 @@
 """Processing queue API endpoints."""
 
+import asyncio
 import json
 from datetime import datetime
+from pathlib import Path
 from pydantic import BaseModel, Field
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import StreamingResponse
@@ -460,6 +462,104 @@ async def retry_unextractable(db: DbSession) -> dict:
 
     await db.commit()
     return {"requeued": requeued, "cleared_flags": len(products)}
+
+
+def _stored_extraction_method(text_path: str) -> str | None:
+    """Read the `method` field out of a stored extraction JSON. Runs in a thread."""
+    try:
+        with open(text_path, "r", encoding="utf-8") as f:
+            return json.load(f).get("method")
+    except Exception:
+        return None
+
+
+@router.post("/text-extraction/requeue-ocr-misrouted")
+async def requeue_ocr_misrouted(
+    db: DbSession,
+    limit: int = Query(100, ge=1, le=500, description="Products to scan this call"),
+    after_id: int = Query(0, ge=0, description="Resume cursor: scan products with id > after_id"),
+) -> dict:
+    """One-time repair for books the old 3-page OCR sampler misrouted.
+
+    Finds products whose stored extraction says `tesseract_ocr`, re-checks the
+    source PDF with the whole-document coverage router, and re-queues the ones
+    that actually have a text layer. True scans are left alone.
+
+    Scans in id order and is resumable: pass the returned `last_id` back as
+    `after_id` until `done` is true. It only enqueues — the worker still honours
+    the "I'm working" pause, and re-queued books flow through the normal
+    downstream re-embed pipeline.
+    """
+    from grimoire.processors import text_extractor
+
+    result = await db.execute(
+        select(Product)
+        .where(
+            Product.id > after_id,
+            Product.text_extracted == True,
+            Product.extracted_text_path.isnot(None),
+            Product.is_image_content == False,
+            Product.text_unextractable == False,
+        )
+        .order_by(Product.id)
+        .limit(limit)
+    )
+    products = list(result.scalars().all())
+
+    scanned = 0
+    ocr_products = 0
+    requeued = 0
+    still_ocr = 0
+    missing = 0
+    last_id = None
+
+    for product in products:
+        scanned += 1
+        last_id = product.id
+
+        method = await asyncio.to_thread(
+            _stored_extraction_method, product.extracted_text_path
+        )
+        if method != "tesseract_ocr":
+            continue
+        ocr_products += 1
+
+        if not Path(product.file_path).exists():
+            missing += 1
+            continue
+
+        assessment = await asyncio.to_thread(
+            text_extractor.assess_text_layer, product.file_path
+        )
+        if assessment["needs_ocr"]:
+            still_ocr += 1
+            continue
+
+        existing = await db.execute(
+            select(ProcessingQueue).where(
+                ProcessingQueue.product_id == product.id,
+                ProcessingQueue.task_type == "text",
+                ProcessingQueue.status.in_(["pending", "processing"]),
+            )
+        )
+        if existing.scalar_one_or_none():
+            continue
+
+        db.add(ProcessingQueue(
+            product_id=product.id, task_type="text", priority=5, status="pending",
+        ))
+        requeued += 1
+
+    await db.commit()
+    return {
+        "scanned": scanned,
+        "ocr_products": ocr_products,
+        "requeued": requeued,
+        "still_ocr": still_ocr,
+        "missing": missing,
+        "last_id": last_id,
+        "done": len(products) < limit,
+    }
 
 
 @router.post("/fts/rebuild-all")
