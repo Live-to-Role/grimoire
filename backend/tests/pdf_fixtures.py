@@ -75,6 +75,41 @@ def art_front_matter_pdf(tmp_path):
 
 
 @pytest.fixture
+def block_table_pdf(tmp_path):
+    """A page whose table rows are each one text block with newline-separated cells.
+
+    This is the shape PyMuPDF reports for the real "Table 1-20: The Half-Elf"
+    stat table, where pymupdf4llm's detector shreds the spanning title into
+    'Ta | ble 1 | -20: The half-el | f'.
+    """
+    pdf_path = tmp_path / "block_table.pdf"
+    doc = fitz.open()
+    page = doc.new_page(width=612, height=792)
+
+    page.insert_text((72, 72), "Table 1-20: The Half-Elf", fontsize=14)
+
+    rows = [
+        ["Skill", "L1", "L2", "L3", "L4"],
+        ["Acrobatics*", "+1", "+3", "+5", "+7"],
+        ["Bluff", "+0", "+2", "+4", "+6"],
+        ["Stealth", "+2", "+4", "+6", "+8"],
+    ]
+    # Cells spread across the row with wide column gaps: MuPDF then reports each
+    # row as one block whose cells are separate lines, which is the real corebook
+    # shape. Rows 20pt apart stay within MAX_ROW_GAP of each other.
+    xs = [72, 220, 320, 420, 500]
+    y = 120
+    for row in rows:
+        for x, cell in zip(xs, row):
+            page.insert_text((x, y), cell, fontsize=10)
+        y += 20
+
+    doc.save(str(pdf_path))
+    doc.close()
+    return pdf_path
+
+
+@pytest.fixture
 def repeated_image_pdf(tmp_path):
     """A three-page PDF with the identical image on every page."""
     img = Image.new("RGB", (400, 400), (180, 40, 40))
