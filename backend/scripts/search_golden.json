@@ -12,10 +12,10 @@
     {"mode": "specific", "query": "pirate adventure on the high seas", "expect": ["Pirates!", "Pirate Borg", "Pirates Cove"], "k": 10},
     {"mode": "specific", "query": "frozen winter wilderness survival", "expect": ["Frozen Wind", "Winterland", "Stay Frosty"], "k": 10},
 
-    {"mode": "topical", "query": "undead adventure", "topic": "(undead\\b|necromanc\\w*|vampir\\w*|zombie\\w*|skeleton\\w*|\\blich\\b|ghoul\\w*|barrow\\w*|crypt\\w*|\\btombs?\\b|graveyard\\w*|wight\\w*|wraith\\w*|mumm(y|ies)\\b|revenant\\w*|\\bbones?\\b|corpses?\\b|cadaver\\w*|\\bdead\\b|\\bdeath\\w*)", "k": 10},
+    {"mode": "topical", "query": "undead adventure", "topic": "(undead\\b|necroman\\w*|vampir\\w*|zombie\\w*|skeleton\\w*|\\blich\\b|ghoul\\w*|barrow\\w*|crypt\\w*|\\btombs?\\b|graveyard\\w*|wight\\w*|wraith\\w*|mumm(y|ies)\\b|revenant\\w*|\\bbones?\\b|corpses?\\b|cadaver\\w*|\\bdead\\b|\\bdeath\\w*)", "k": 10},
     {"mode": "topical", "query": "cave adventure", "topic": "(caves?\\b|caverns?\\b|grottos?\\b|subterranean|underdark|\\bdelves?\\b|tunnels?\\b|\\bkobold)", "k": 10},
     {"mode": "topical", "query": "haunted house horror", "topic": "(haunt\\w*|ghosts?\\b|ghostly|spectres?\\b|specters?\\b|spectral|poltergeist|manors?\\b|mansions?\\b|\\bdread\\w*|phantom\\w*)", "k": 10},
     {"mode": "topical", "query": "temple of a dark cult", "topic": "(temples?\\b|shrines?\\b|\\bcults?\\b|cultists?\\b|ziggurat|\\bsect\\b)", "k": 10},
-    {"mode": "topical", "query": "swamp horror", "topic": "(swamps?\\b|swampy|\\bbogs?\\b|marsh\\w*|\\bfens?\\b|\\bmire\\w*|bayou|sunken)", "k": 10}
+    {"mode": "topical", "query": "swamp horror", "topic": "(swamps?\\b|swampy|\\bbogs?\\b|marsh\\w*|\\bfens?\\b|\\bmires?\\b|dreadmire|blackmire|mirefen|bayou|sunken)", "k": 10}
   ]
 }
