@@ -179,3 +179,34 @@ def reconstruct_tables(page) -> list[TableRegion]:
     if not regions:
         regions = _tables_from_words(page)
     return regions
+
+
+def substitute_tables(markdown: str, tables: list[TableRegion]) -> str:
+    """Replace pymupdf4llm's pipe-table runs with reconstructed tables.
+
+    Runs are contiguous lines starting with '|'. Runs pair with `tables` by
+    order — both are top-to-bottom on the page. Any run beyond the supplied
+    tables is left exactly as-is: substituting is an improvement, dropping
+    would be data loss.
+    """
+    if not tables:
+        return markdown
+
+    lines = markdown.split("\n")
+    out: list[str] = []
+    next_table = 0
+    i = 0
+    while i < len(lines):
+        if lines[i].lstrip().startswith("|"):
+            start = i
+            while i < len(lines) and lines[i].lstrip().startswith("|"):
+                i += 1
+            if next_table < len(tables):
+                out.append(tables[next_table].markdown)
+                next_table += 1
+            else:
+                out.extend(lines[start:i])
+            continue
+        out.append(lines[i])
+        i += 1
+    return "\n".join(out)

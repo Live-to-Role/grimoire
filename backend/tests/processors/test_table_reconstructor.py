@@ -6,6 +6,7 @@ from grimoire.processors.table_reconstructor import (
     TableRegion,
     reconstruct_tables,
     rows_to_markdown,
+    substitute_tables,
 )
 
 
@@ -106,3 +107,43 @@ def test_block_path_wins_when_it_finds_a_table(block_table_pdf, monkeypatch):
         doc.close()
     assert tables
     assert called == []
+
+
+def _region(first_cell):
+    return TableRegion(bbox=(0, 0, 1, 1), rows=[[first_cell, "b", "c"]])
+
+
+def test_substitute_replaces_a_table_run():
+    markdown = (
+        "# Heading\n"
+        "Some prose.\n"
+        "|Ta|ble 1|-20: The half-el|f|\n"
+        "|---|---|---|---|\n"
+        "|Acrobatics*|+3|+5|+7|\n"
+        "More prose.\n"
+    )
+    out = substitute_tables(markdown, [_region("CLEAN")])
+    assert "half-el" not in out
+    assert "| CLEAN | b | c |" in out
+    assert "# Heading" in out
+    assert "Some prose." in out
+    assert "More prose." in out
+
+
+def test_substitute_pairs_multiple_runs_in_order():
+    markdown = "|a|\nprose\n|b|\n"
+    out = substitute_tables(markdown, [_region("FIRST"), _region("SECOND")])
+    assert out.index("FIRST") < out.index("prose") < out.index("SECOND")
+
+
+def test_substitute_leaves_extra_runs_untouched():
+    """Fewer reconstructions than detected runs: never drop data."""
+    markdown = "|a|\nprose\n|keepme|\n"
+    out = substitute_tables(markdown, [_region("FIRST")])
+    assert "keepme" in out
+    assert "FIRST" in out
+
+
+def test_substitute_without_tables_is_identity():
+    markdown = "|a|\nprose\n"
+    assert substitute_tables(markdown, []) == markdown

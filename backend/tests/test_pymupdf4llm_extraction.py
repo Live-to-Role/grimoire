@@ -76,3 +76,26 @@ def test_pymupdf4llm_pages_disables_dynamic_ocr(text_pdf, monkeypatch):
     monkeypatch.setattr(text_extractor.pymupdf4llm, "to_markdown", fake_to_markdown)
     text_extractor.extract_with_pymupdf4llm_pages(text_pdf)
     assert captured.get("use_ocr") == OCRMode.NEVER
+
+
+def test_pages_path_substitutes_reconstructed_tables(block_table_pdf):
+    from grimoire.processors.text_extractor import extract_with_pymupdf4llm_pages
+
+    entries = extract_with_pymupdf4llm_pages(block_table_pdf)
+    md = entries[0]["markdown"]
+    assert "| Acrobatics* | +1 | +3 | +5 | +7 |" in md
+
+
+def test_reconstruction_can_be_disabled(block_table_pdf, monkeypatch):
+    from grimoire.processors import text_extractor
+
+    called = []
+    monkeypatch.setattr(
+        text_extractor,
+        "_substitute_reconstructed_tables",
+        lambda *a, **k: called.append(1) or a[2],
+    )
+    text_extractor.extract_with_pymupdf4llm_pages(
+        block_table_pdf, reconstruct_tables=False
+    )
+    assert called == []

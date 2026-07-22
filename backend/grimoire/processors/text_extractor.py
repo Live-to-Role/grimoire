@@ -515,12 +515,17 @@ def extract_with_pymupdf4llm_pages(
     pdf_path: str | Path,
     start_page: int = 1,
     end_page: int | None = None,
+    reconstruct_tables: bool = True,
 ) -> list[dict]:
     """Extract per-page markdown using pymupdf4llm's page_chunks mode.
 
     Returns a list of {"page": <1-based page number>, "markdown": str}.
     Page numbers come from the indices we request, not from pymupdf4llm
     metadata, so they are correct regardless of library version.
+
+    With reconstruct_tables=True the shredded tables in pymupdf4llm's output are
+    replaced by row-major reconstructions (its detector cannot be disabled by
+    parameter — to_markdown silently ignores table_strategy).
     """
     if not PYMUPDF4LLM_AVAILABLE:
         raise ImportError("pymupdf4llm not available")
@@ -537,10 +542,41 @@ def extract_with_pymupdf4llm_pages(
         show_progress=False,
         **_PYMUPDF4LLM_KWARGS,
     )
-    return [
+    entries = [
         {"page": idx + 1, "markdown": chunk["text"]}
         for idx, chunk in zip(page_indices, chunks)
     ]
+    if reconstruct_tables and PYMUPDF_AVAILABLE:
+        entries = _substitute_reconstructed_tables(pdf_path, page_indices, entries)
+    return entries
+
+
+def _substitute_reconstructed_tables(
+    pdf_path: str | Path, page_indices: list[int], entries: list[dict]
+) -> list[dict]:
+    """Swap pymupdf4llm's table output for row-major reconstructions, per page.
+
+    A failure on one page must not lose that page's prose, so each page is
+    guarded independently and falls back to the original markdown.
+    """
+    from grimoire.processors.table_reconstructor import (
+        reconstruct_tables,
+        substitute_tables,
+    )
+
+    doc = fitz.open(str(pdf_path))
+    try:
+        for entry, page_index in zip(entries, page_indices):
+            try:
+                tables = reconstruct_tables(doc[page_index])
+            except Exception as e:
+                print(f"Table reconstruction failed on page {page_index + 1}: {e}")
+                continue
+            if tables:
+                entry["markdown"] = substitute_tables(entry["markdown"], tables)
+    finally:
+        doc.close()
+    return entries
 
 
 _PAGE_MARKER_RE = re.compile(r"^## Page (\d+)\s*$", re.MULTILINE)
