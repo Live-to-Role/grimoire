@@ -903,6 +903,95 @@ def get_tesseract_status() -> dict:
     return status
 
 
+# Whole-document text-layer routing thresholds.
+# A page counts as "has text" at >= TEXT_LAYER_MIN_CHARS; a document goes to OCR
+# only when fewer than TEXT_LAYER_COVERAGE_THRESHOLD of its pages clear that bar.
+TEXT_LAYER_MIN_CHARS = 100
+TEXT_LAYER_COVERAGE_THRESHOLD = 0.10
+
+
+def assess_text_layer(
+    pdf_path: str | Path,
+    min_chars: int = TEXT_LAYER_MIN_CHARS,
+    coverage_threshold: float = TEXT_LAYER_COVERAGE_THRESHOLD,
+) -> dict:
+    """Decide whether a PDF needs OCR by scanning EVERY page's text layer.
+
+    Sampling the first pages misroutes art-heavy books: an RPG corebook's cover,
+    inside art and title page average ~33 chars, so the whole 394-page body — which
+    has a perfectly good text layer — got OCR'd, and OCR interleaves the two columns
+    line by line into unreadable mush. Reading the text layer of every page is cheap:
+    no rendering, no OCR, just the stored content stream.
+
+    A document with no images is never sent to OCR — there is nothing to read.
+
+    Returns:
+        total_pages, pages_with_text, coverage, has_images, needs_ocr, reason
+    """
+    pdf_path = Path(pdf_path)
+    empty = {
+        "total_pages": 0,
+        "pages_with_text": 0,
+        "coverage": 0.0,
+        "has_images": False,
+        "needs_ocr": False,
+    }
+
+    if not pdf_path.exists():
+        return {**empty, "reason": f"File not found: {pdf_path}"}
+    if not PYMUPDF_AVAILABLE:
+        return {**empty, "reason": "PyMuPDF not available for detection"}
+
+    try:
+        doc = fitz.open(str(pdf_path))
+        try:
+            total_pages = len(doc)
+            pages_with_text = 0
+            has_images = False
+            for page in doc:
+                if len(page.get_text().strip()) >= min_chars:
+                    pages_with_text += 1
+                elif not has_images and page.get_images(full=True):
+                    has_images = True
+        finally:
+            doc.close()
+    except Exception as e:
+        return {**empty, "reason": f"Detection failed: {e}"}
+
+    if total_pages == 0:
+        return {**empty, "reason": "PDF has no pages"}
+
+    coverage = pages_with_text / total_pages
+    low_coverage = coverage < coverage_threshold
+    needs_ocr = low_coverage and has_images
+
+    if needs_ocr:
+        reason = (
+            f"Only {pages_with_text}/{total_pages} pages have a text layer "
+            f"({coverage:.0%} < {coverage_threshold:.0%}) with images present - "
+            f"image-based PDF"
+        )
+    elif low_coverage:
+        reason = (
+            f"Low text coverage ({pages_with_text}/{total_pages} pages) but no "
+            f"images detected - may be empty or corrupted"
+        )
+    else:
+        reason = (
+            f"{pages_with_text}/{total_pages} pages have a text layer "
+            f"({coverage:.0%}) - using text layer"
+        )
+
+    return {
+        "total_pages": total_pages,
+        "pages_with_text": pages_with_text,
+        "coverage": coverage,
+        "has_images": has_images,
+        "needs_ocr": needs_ocr,
+        "reason": reason,
+    }
+
+
 def detect_needs_ocr(pdf_path: str | Path, sample_pages: int = 3, min_chars_per_page: int = 100) -> dict:
     """
     Detect if a PDF is image-based and needs OCR for text extraction.

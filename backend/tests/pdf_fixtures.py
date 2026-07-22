@@ -49,6 +49,32 @@ def scanned_pdf(tmp_path):
 
 
 @pytest.fixture
+def art_front_matter_pdf(tmp_path):
+    """The corebook shape: 3 art-only front-matter pages, then 7 text body pages.
+
+    This is the document the old first-3-pages sampler misrouted to OCR.
+    """
+    img = Image.new("RGB", (600, 780), (30, 30, 60))
+    img_path = tmp_path / "cover.png"
+    img.save(img_path)
+
+    pdf_path = tmp_path / "corebook.pdf"
+    doc = fitz.open()
+    for i in range(3):
+        page = doc.new_page(width=612, height=792)
+        page.insert_image(page.rect, filename=str(img_path))
+        # Front matter carries a trace of text (a credit line), well under MIN_CHARS
+        page.insert_text((72, 700), f"vol {i}", fontsize=9)
+    for _ in range(7):
+        page = doc.new_page(width=612, height=792)
+        body = "The adventurer descends into the vault beneath the ruined keep. " * 6
+        page.insert_textbox(fitz.Rect(60, 60, 550, 730), body, fontsize=11)
+    doc.save(str(pdf_path))
+    doc.close()
+    return pdf_path
+
+
+@pytest.fixture
 def repeated_image_pdf(tmp_path):
     """A three-page PDF with the identical image on every page."""
     img = Image.new("RGB", (400, 400), (180, 40, 40))
