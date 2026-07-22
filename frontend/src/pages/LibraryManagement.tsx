@@ -419,6 +419,35 @@ export function LibraryManagement() {
     },
   });
 
+  const requeueOcrMisroutedMutation = useMutation({
+    mutationFn: async () => {
+      // The endpoint scans a bounded batch per call and returns a cursor;
+      // drive it to completion so one click repairs the whole library.
+      let afterId = 0;
+      const totals = { scanned: 0, ocr_products: 0, requeued: 0, still_ocr: 0 };
+      for (;;) {
+        const res = await apiClient.post(
+          '/queue/text-extraction/requeue-ocr-misrouted',
+          null,
+          { params: { limit: 100, after_id: afterId } }
+        );
+        const data = res.data;
+        totals.scanned += data.scanned;
+        totals.ocr_products += data.ocr_products;
+        totals.requeued += data.requeued;
+        totals.still_ocr += data.still_ocr;
+        if (data.done || data.last_id === null) break;
+        afterId = data.last_id;
+      }
+      return totals;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['library-management-stats'] });
+      queryClient.invalidateQueries({ queryKey: ['text-extraction-stats'] });
+      queryClient.invalidateQueries({ queryKey: ['queue-stats'] });
+    },
+  });
+
   const retryUnextractableMutation = useMutation({
     mutationFn: async () => {
       const res = await apiClient.post('/queue/text-extraction/retry-unextractable');
@@ -1422,6 +1451,20 @@ export function LibraryManagement() {
                       <RefreshCw className="h-4 w-4" />
                     )}
                     Re-extract All
+                  </button>
+                  <button
+                    onClick={() => requeueOcrMisroutedMutation.mutate()}
+                    disabled={requeueOcrMisroutedMutation.isPending}
+                    className="inline-flex items-center gap-2 rounded-md border px-3 text-sm font-medium disabled:opacity-50"
+                    style={{ minHeight: '40px', borderColor: 'var(--color-accent)', color: 'var(--color-accent)', backgroundColor: 'var(--color-surface)' }}
+                    title="Find books that were OCR'd despite having a text layer and re-queue them for clean extraction"
+                  >
+                    {requeueOcrMisroutedMutation.isPending ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <RefreshCw className="h-4 w-4" />
+                    )}
+                    Fix misrouted OCR
                   </button>
                 </div>
               </div>
