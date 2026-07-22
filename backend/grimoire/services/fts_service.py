@@ -14,6 +14,76 @@ logger = logging.getLogger(__name__)
 # Cache FTS availability to avoid repeated sqlite_master queries
 _fts_available_cache: bool | None = None
 
+# Under prefix matching ("term"*) these match a large slice of the index while
+# carrying almost no signal: "a"* alone turned a 0.02s FTS query into 1.3s.
+# Dropping them is both faster and more precise.
+_FTS_STOPWORDS = frozenset({
+    "a", "an", "the", "of", "on", "in", "to", "for", "and", "or", "with",
+    "at", "by", "from", "as", "is", "it", "an",
+})
+
+
+def build_fts_match(query: str) -> str | None:
+    """Build an FTS5 MATCH expression from a natural-language query.
+
+    Drops stopwords and single characters (see _FTS_STOPWORDS), prefix-matches
+    each remaining term, and ORs them for recall. Embedded quotes are stripped
+    so a term can't break out of its quoted token. Returns None when the query
+    has no usable content; if every term is a stopword it falls back to the raw
+    terms rather than returning an empty match.
+    """
+    raw = [t for t in query.strip().split() if t]
+    terms = [t for t in raw if len(t) > 1 and t.lower() not in _FTS_STOPWORDS]
+    if not terms:
+        terms = raw
+    if not terms:
+        return None
+    return " OR ".join(f'"{t.replace(chr(34), "")}"*' for t in terms)
+
+
+async def fts_candidates(
+    db: AsyncSession,
+    query: str,
+    *,
+    game_system: str | None = None,
+    product_type: str | None = None,
+    limit: int = 150,
+) -> list[tuple[int, float]]:
+    """Lean FTS candidates for hybrid search: (product_id, bm25_magnitude) only.
+
+    The hybrid search flow uses just the id and score, so this skips the
+    snippet() extraction over the full-text column and the hydration of every
+    matched Product that search_fts does for the UI - that discarded work was
+    the dominant cost of a hybrid search (seconds per query).
+    """
+    match = build_fts_match(query)
+    if match is None:
+        return []
+    sql = text("""
+        SELECT fts.rowid AS product_id, bm25(products_fts) AS rank
+        FROM products_fts fts
+        JOIN products p ON p.id = fts.rowid
+        WHERE products_fts MATCH :query
+        AND p.is_duplicate = 0
+        AND p.is_missing = 0
+        AND (:game_system IS NULL OR p.game_system = :game_system)
+        AND (:product_type IS NULL OR p.product_type = :product_type)
+        ORDER BY rank
+        LIMIT :limit
+    """)
+    try:
+        result = await db.execute(sql, {
+            "query": match,
+            "game_system": game_system,
+            "product_type": product_type,
+            "limit": limit,
+        })
+        # bm25 is negative (more negative = better); callers expect a magnitude.
+        return [(row[0], abs(row[1])) for row in result.fetchall()]
+    except Exception as e:
+        logger.warning(f"FTS candidate search failed: {e}")
+        return []
+
 
 async def update_search_vector(db: AsyncSession, product: Product) -> bool:
     """
@@ -138,14 +208,12 @@ async def search_fts(
     from sqlalchemy.orm import selectinload
     from grimoire.models import ProductTag
     
-    terms = query.strip().split()
-    if not terms:
+    # Shared builder: drops stopwords/single chars that explode under prefix
+    # matching, and escapes embedded quotes.
+    fts_query = build_fts_match(query)
+    if fts_query is None:
         return []
-    
-    # FTS5 query format - quote terms and use OR for flexible matching
-    # Use * suffix for prefix matching
-    fts_query = " OR ".join(f'"{term}"*' for term in terms)
-    
+
     # SQLite FTS5 search with BM25 ranking
     sql = text("""
         SELECT 

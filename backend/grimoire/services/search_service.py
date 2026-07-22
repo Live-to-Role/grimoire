@@ -193,7 +193,7 @@ def merge_candidates(
 # --- Full search flow --------------------------------------------------------
 
 from grimoire.services.embeddings import generate_embeddings  # noqa: E402
-from grimoire.services.fts_service import search_fts  # noqa: E402
+from grimoire.services.fts_service import fts_candidates  # noqa: E402
 from grimoire.services.hybrid_search import reciprocal_rank_fusion  # noqa: E402
 from grimoire.services.query_interpreter import Interpretation, interpret_query  # noqa: E402
 
@@ -261,15 +261,15 @@ async def search(db, request) -> dict:
 
     keyword_ranking: list[tuple[int, float]] = []
     try:
-        fts_results = await search_fts(
+        fts_pairs = await fts_candidates(
             db, semantic_query,
             game_system=request.game_system,
             product_type=request.product_type,
             limit=CANDIDATES_PER_SOURCE,
         )
         keyword_ranking = [
-            (r["id"], r["relevance_score"]) for r in fts_results
-            if allowed is None or r["id"] in allowed
+            (pid, score) for pid, score in fts_pairs
+            if allowed is None or pid in allowed
         ]
     except Exception:
         logger.warning("FTS failed during search; continuing semantic-only")

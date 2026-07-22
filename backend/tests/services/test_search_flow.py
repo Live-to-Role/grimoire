@@ -51,11 +51,11 @@ async def fake_search_env(db, monkeypatch):
     async def fake_embed(texts, provider=None, model=None):
         return [EmbeddingResult(embedding=UNDEAD, model="fake") for _ in texts]
 
-    async def fake_fts(db, query, game_system=None, product_type=None, limit=20):
+    async def fake_fts(db, query, *, game_system=None, product_type=None, limit=20):
         return []
 
     monkeypatch.setattr(search_service, "generate_embeddings", fake_embed)
-    monkeypatch.setattr(search_service, "search_fts", fake_fts)
+    monkeypatch.setattr(search_service, "fts_candidates", fake_fts)
     # avoid real settings lookup / LLM
     from grimoire.services.query_interpreter import Interpretation
 
@@ -112,10 +112,10 @@ async def test_bm25_only_product_survives_without_valid_chunks(db, fake_search_e
     # Product with no chunks at all (mid re-embed) surfaces via keyword rank
     kw = await _mk_product(db, "flow-kw", "Undead Keyword Hit")
 
-    async def fts_hit(db_, query, game_system=None, product_type=None, limit=20):
-        return [{"id": kw.id, "relevance_score": 9.9}]
+    async def fts_hit(db_, query, *, game_system=None, product_type=None, limit=20):
+        return [(kw.id, 9.9)]
 
-    monkeypatch.setattr(search_service, "search_fts", fts_hit)
+    monkeypatch.setattr(search_service, "fts_candidates", fts_hit)
     req = SemanticSearchRequest(query="undead", top_k=10, interpret=False)
     out = await search_service.search(db, req)
     ids = [r["id"] for r in out["results"]]
