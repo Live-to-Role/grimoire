@@ -1,6 +1,6 @@
 {
   "a descent into hell aboard a train": {
-    "semantic_query": "descent into hell train aboard infernal journey",
+    "semantic_query": "a descent into hell aboard a train",
     "level_min": null,
     "level_max": null,
     "game_system": null,
@@ -8,7 +8,7 @@
     "source": "llm"
   },
   "dungeon crawl classics funnel for level 0 characters": {
-    "semantic_query": "funnel level 0 characters dungeon crawl",
+    "semantic_query": "dungeon crawl classics funnel for characters",
     "level_min": 0,
     "level_max": 0,
     "game_system": "Dungeon Crawl Classics",
@@ -24,7 +24,7 @@
     "source": "llm"
   },
   "hunting a dragon": {
-    "semantic_query": "hunting dragon combat encounter",
+    "semantic_query": "hunting a dragon",
     "level_min": null,
     "level_max": null,
     "game_system": null,
@@ -40,7 +40,7 @@
     "source": "llm"
   },
   "old-school essentials cave crawl with orcs": {
-    "semantic_query": "cave crawl orcs dungeon exploration",
+    "semantic_query": "old-school essentials cave crawl with orcs",
     "level_min": null,
     "level_max": null,
     "game_system": "Old-School Essentials",
@@ -48,7 +48,7 @@
     "source": "llm"
   },
   "expedition through a dangerous jungle": {
-    "semantic_query": "expedition jungle dangerous exploration",
+    "semantic_query": "expedition through a dangerous jungle",
     "level_min": null,
     "level_max": null,
     "game_system": null,
@@ -56,7 +56,7 @@
     "source": "llm"
   },
   "caverns full of giant fungus": {
-    "semantic_query": "caverns giant fungus underground fungi monsters",
+    "semantic_query": "caverns full of giant fungus",
     "level_min": null,
     "level_max": null,
     "game_system": null,
@@ -64,7 +64,7 @@
     "source": "llm"
   },
   "pirate adventure on the high seas": {
-    "semantic_query": "pirate adventure high seas naval ocean",
+    "semantic_query": "pirate adventure on the high seas",
     "level_min": null,
     "level_max": null,
     "game_system": null,
@@ -104,7 +104,7 @@
     "source": "llm"
   },
   "temple of a dark cult": {
-    "semantic_query": "temple dark cult",
+    "semantic_query": "temple of a dark cult",
     "level_min": null,
     "level_max": null,
     "game_system": null,
@@ -112,7 +112,7 @@
     "source": "llm"
   },
   "swamp horror": {
-    "semantic_query": "swamp horror monsters creatures",
+    "semantic_query": "swamp horror",
     "level_min": null,
     "level_max": null,
     "game_system": "Horror",

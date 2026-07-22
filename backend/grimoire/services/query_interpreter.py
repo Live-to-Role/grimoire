@@ -178,8 +178,15 @@ def _validate_llm_result(
     known_types: list[str],
 ) -> Interpretation:
     """Merge validated LLM output over the heuristic result. Unknown
-    game_system/product_type values are dropped; levels clamped to 0-30;
-    empty semantic_query keeps the heuristic one."""
+    game_system/product_type values are dropped; levels clamped to 0-30.
+
+    The LLM's semantic_query is intentionally NOT used: it expanded the query
+    with invented topical words ("hunting a dragon" -> "hunting dragon combat
+    encounter") that flooded both retrieval pools with generic books and buried
+    the actual target - dropping the expansion turned specific-query misses into
+    top-2 hits. The heuristic's stripped-but-not-rewritten query is kept for
+    retrieval; the LLM contributes structured filters (level/system/type) only.
+    """
     out = Interpretation(**{**heuristic.to_dict(), "source": "llm"})
 
     if "level_min" in data:
@@ -199,9 +206,7 @@ def _validate_llm_result(
         if hit:
             out.product_type = hit
 
-    sq = data.get("semantic_query")
-    if isinstance(sq, str) and sq.strip():
-        out.semantic_query = sq.strip()
+    # semantic_query deliberately NOT taken from the LLM (see docstring).
     return out
 
 

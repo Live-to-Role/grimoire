@@ -71,13 +71,18 @@ def test_validate_llm_result_clamps_and_drops():
     assert out.level_max == 30
     assert out.game_system is None       # not a known value -> dropped
     assert out.product_type == "Adventure"
-    assert out.semantic_query == "undead crypts"
+    # The LLM's semantic_query is ignored; the heuristic query is kept for
+    # retrieval so the LLM can't pollute it with invented topical words.
+    assert out.semantic_query == "orig"
     assert out.source == "llm"
 
 
-def test_validate_llm_result_empty_semantic_query_keeps_heuristic():
+def test_llm_semantic_query_never_overrides_heuristic():
+    # Even a plausible LLM rewrite is discarded: expansion hurt specific search.
     base = Interpretation(semantic_query="orig words")
-    out = _validate_llm_result({"semantic_query": "  "}, base, SYSTEMS, TYPES)
+    out = _validate_llm_result(
+        {"semantic_query": "orig words combat encounter dungeon"}, base, SYSTEMS, TYPES,
+    )
     assert out.semantic_query == "orig words"
 
 
