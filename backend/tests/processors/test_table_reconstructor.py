@@ -136,12 +136,27 @@ def test_substitute_pairs_multiple_runs_in_order():
     assert out.index("FIRST") < out.index("prose") < out.index("SECOND")
 
 
-def test_substitute_leaves_extra_runs_untouched():
-    """Fewer reconstructions than detected runs: never drop data."""
+def test_fewer_reconstructions_than_runs_leaves_page_untouched():
+    """Never drop rows we cannot account for — a shredded table beats a lost one."""
     markdown = "|a|\nprose\n|keepme|\n"
-    out = substitute_tables(markdown, [_region("FIRST")])
-    assert "keepme" in out
-    assert "FIRST" in out
+    assert substitute_tables(markdown, [_region("FIRST")]) == markdown
+
+
+def test_more_reconstructions_than_runs_keeps_every_table():
+    """The real corebook case: pymupdf4llm emits one run where block grouping
+    finds three tables. All three must land, and no run may survive shredded."""
+    markdown = "prose\n|Ta|ble 1|-20|\n|x|y|z|\ntail\n"
+    out = substitute_tables(
+        markdown, [_region("ONE"), _region("TWO"), _region("THREE")]
+    )
+    assert "ONE" in out and "TWO" in out and "THREE" in out
+    assert "-20" not in out
+    assert "prose" in out and "tail" in out
+
+
+def test_no_table_runs_leaves_markdown_alone():
+    markdown = "just prose\nmore prose\n"
+    assert substitute_tables(markdown, [_region("UNUSED")]) == markdown
 
 
 def test_substitute_without_tables_is_identity():

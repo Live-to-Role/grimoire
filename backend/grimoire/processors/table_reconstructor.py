@@ -181,32 +181,55 @@ def reconstruct_tables(page) -> list[TableRegion]:
     return regions
 
 
-def substitute_tables(markdown: str, tables: list[TableRegion]) -> str:
-    """Replace pymupdf4llm's pipe-table runs with reconstructed tables.
-
-    Runs are contiguous lines starting with '|'. Runs pair with `tables` by
-    order — both are top-to-bottom on the page. Any run beyond the supplied
-    tables is left exactly as-is: substituting is an improvement, dropping
-    would be data loss.
-    """
-    if not tables:
-        return markdown
-
-    lines = markdown.split("\n")
-    out: list[str] = []
-    next_table = 0
+def _table_runs(lines: list[str]) -> list[tuple[int, int]]:
+    """Half-open (start, end) spans of contiguous lines beginning with '|'."""
+    runs: list[tuple[int, int]] = []
     i = 0
     while i < len(lines):
         if lines[i].lstrip().startswith("|"):
             start = i
             while i < len(lines) and lines[i].lstrip().startswith("|"):
                 i += 1
-            if next_table < len(tables):
-                out.append(tables[next_table].markdown)
-                next_table += 1
-            else:
-                out.extend(lines[start:i])
+            runs.append((start, i))
             continue
-        out.append(lines[i])
         i += 1
+    return runs
+
+
+def substitute_tables(markdown: str, tables: list[TableRegion]) -> str:
+    """Replace pymupdf4llm's pipe-table runs with reconstructed tables.
+
+    Runs are contiguous lines starting with '|'. The two detectors disagree about
+    where one table ends and the next begins — on a real corebook page pymupdf4llm
+    emitted two adjacent tables as ONE run while block grouping found three regions
+    — so counts are reconciled before anything is replaced:
+
+    - equal counts: pair by order, preserving prose interleaved between tables;
+    - more reconstructions than runs: all of them replace the first run and the
+      other runs are dropped, since the reconstructions cover that content;
+    - fewer reconstructions than runs: leave the page alone. A shredded table is
+      bad, but silently dropping rows we cannot account for is worse.
+    """
+    if not tables:
+        return markdown
+
+    lines = markdown.split("\n")
+    runs = _table_runs(lines)
+    if not runs or len(tables) < len(runs):
+        return markdown
+
+    if len(tables) == len(runs):
+        replacements = [table.markdown for table in tables]
+    else:
+        replacements = ["\n\n".join(table.markdown for table in tables)]
+        replacements += [None] * (len(runs) - 1)  # drop the remaining runs
+
+    out: list[str] = []
+    cursor = 0
+    for (start, end), replacement in zip(runs, replacements):
+        out.extend(lines[cursor:start])
+        if replacement is not None:
+            out.append(replacement)
+        cursor = end
+    out.extend(lines[cursor:])
     return "\n".join(out)
