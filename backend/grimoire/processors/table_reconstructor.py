@@ -111,6 +111,71 @@ def _tables_from_blocks(page) -> list[TableRegion]:
     return _group_runs(candidates)
 
 
+def _lines_from_words(words: list[tuple]) -> list[list[tuple]]:
+    """Group words into visual lines by vertical proximity."""
+    lines: list[list[tuple]] = []
+    for word in sorted(words, key=lambda w: (round(w[1], 1), w[0])):
+        if lines and abs(lines[-1][0][1] - word[1]) <= Y_TOLERANCE:
+            lines[-1].append(word)
+        else:
+            lines.append([word])
+    return lines
+
+
+def _cells_from_line(line: list[tuple]) -> list[str] | None:
+    """Split one visual line into cells at horizontal gaps."""
+    line.sort(key=lambda w: w[0])
+    cells: list[str] = []
+    current = [line[0][4]]
+    for previous, word in zip(line, line[1:]):
+        if word[0] - previous[2] >= COLUMN_GAP:
+            cells.append(" ".join(current))
+            current = [word[4]]
+        else:
+            current.append(word[4])
+    cells.append(" ".join(current))
+
+    cells = [c.strip() for c in cells if c.strip()]
+    if len(cells) < MIN_CELLS_PER_ROW:
+        return None
+    if any(len(c) > MAX_CELL_CHARS for c in cells):
+        return None
+    return cells
+
+
+def _tables_from_words(page) -> list[TableRegion]:
+    """Fallback: cluster words into rows by y-overlap and columns by x-gap.
+
+    This is pdf-to-markdown's CompactLines/column idea, ported. It handles pages
+    where a table's rows do not come back as one block per row.
+    """
+    words = page.get_text("words")
+    if not words:
+        return []
+
+    candidates = []
+    for line in _lines_from_words(list(words)):
+        cells = _cells_from_line(line)
+        if not cells:
+            continue
+        candidates.append((
+            min(w[0] for w in line),
+            min(w[1] for w in line),
+            max(w[2] for w in line),
+            max(w[3] for w in line),
+            cells,
+        ))
+    candidates.sort(key=lambda c: (c[1], c[0]))
+    return _group_runs(candidates)
+
+
 def reconstruct_tables(page) -> list[TableRegion]:
-    """Rebuild the tables on a `fitz.Page`, ordered top-to-bottom."""
-    return _tables_from_blocks(page)
+    """Rebuild the tables on a `fitz.Page`, ordered top-to-bottom.
+
+    Primary path is block-row grouping; the word-gap fallback runs only when
+    blocks yielded nothing.
+    """
+    regions = _tables_from_blocks(page)
+    if not regions:
+        regions = _tables_from_words(page)
+    return regions

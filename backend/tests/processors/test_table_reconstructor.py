@@ -75,3 +75,34 @@ def test_bbox_covers_all_rows(block_table_pdf):
     x0, y0, x1, y1 = table.bbox
     assert x0 < x1 and y0 < y1
     assert y0 >= 100  # below the title line at y=72
+
+
+def test_word_gap_fallback_recovers_spaced_table(spaced_table_pdf):
+    doc = fitz.open(str(spaced_table_pdf))
+    try:
+        tables = reconstruct_tables(doc[0])
+    finally:
+        doc.close()
+
+    assert len(tables) == 1
+    assert tables[0].rows[0] == ["Skill", "L1", "L2", "L3"]
+    assert ["Acrobatics*", "+1", "+3", "+5"] in tables[0].rows
+
+
+def test_block_path_wins_when_it_finds_a_table(block_table_pdf, monkeypatch):
+    """The word fallback must not run when block grouping already succeeded."""
+    from grimoire.processors import table_reconstructor
+
+    called = []
+    monkeypatch.setattr(
+        table_reconstructor,
+        "_tables_from_words",
+        lambda page: called.append(1) or [],
+    )
+    doc = fitz.open(str(block_table_pdf))
+    try:
+        tables = table_reconstructor.reconstruct_tables(doc[0])
+    finally:
+        doc.close()
+    assert tables
+    assert called == []

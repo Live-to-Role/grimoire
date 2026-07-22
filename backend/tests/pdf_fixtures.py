@@ -110,6 +110,35 @@ def block_table_pdf(tmp_path):
 
 
 @pytest.fixture
+def spaced_table_pdf(tmp_path):
+    """A table whose rows MuPDF merges into a single block — blocks don't split.
+
+    Rows packed 14pt apart get grouped into one block, so block-row grouping
+    finds nothing and the word-gap column logic (ported from pdf-to-markdown)
+    has to recover the grid.
+    """
+    pdf_path = tmp_path / "spaced_table.pdf"
+    doc = fitz.open()
+    page = doc.new_page(width=612, height=792)
+
+    rows = [
+        ["Skill", "L1", "L2", "L3"],
+        ["Acrobatics*", "+1", "+3", "+5"],
+        ["Bluff", "+0", "+2", "+4"],
+    ]
+    xs = [72, 220, 320, 420]
+    y = 120
+    for row in rows:
+        for x, cell in zip(xs, row):
+            page.insert_text((x, y), cell, fontsize=10)
+        y += 14
+
+    doc.save(str(pdf_path))
+    doc.close()
+    return pdf_path
+
+
+@pytest.fixture
 def repeated_image_pdf(tmp_path):
     """A three-page PDF with the identical image on every page."""
     img = Image.new("RGB", (400, 400), (180, 40, 40))

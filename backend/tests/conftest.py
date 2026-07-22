@@ -10,6 +10,7 @@ from tests.pdf_fixtures import (  # noqa: F401
     block_table_pdf,
     repeated_image_pdf,
     scanned_pdf,
+    spaced_table_pdf,
     text_pdf,
 )
 
