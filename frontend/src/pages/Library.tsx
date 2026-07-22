@@ -84,14 +84,19 @@ export function Library({
     staleTime: 300000,
   });
 
+  // Number of semantic results to request (adjustable via the Show selector + Load more)
+  const [resultLimit, setResultLimit] = useState(50);
+
   // Semantic search query
   const {
     data: semanticData,
     isLoading: semanticLoading,
+    isFetching: semanticFetching,
     error: semanticError,
   } = useQuery({
-    queryKey: ['semantic-search', activeSearch, effectiveFilters],
-    queryFn: () => semanticSearch(activeSearch, 20, effectiveFilters),
+    queryKey: ['semantic-search', activeSearch, effectiveFilters, resultLimit],
+    queryFn: () =>
+      semanticSearch(activeSearch, resultLimit, effectiveFilters, { interpret: true }),
     enabled: activeSearch.length > 0 && searchSemantic,
     staleTime: 60000,
   });
@@ -102,6 +107,18 @@ export function Library({
     const map: Record<number, number> = {};
     for (const r of semanticData.results) {
       map[r.id] = r.score;
+    }
+    return map;
+  }, [semanticData]);
+
+  // Build snippet map (page-prefixed) from semantic results
+  const snippetMap = useMemo(() => {
+    if (!semanticData?.results) return undefined;
+    const map: Record<number, string> = {};
+    for (const r of semanticData.results) {
+      if (r.snippet) {
+        map[r.id] = r.matched_page ? `p. ${r.matched_page}: ${r.snippet}` : r.snippet;
+      }
     }
     return map;
   }, [semanticData]);
@@ -118,6 +135,7 @@ export function Library({
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
+    setResultLimit(50);
     if (searchContent || searchSemantic) {
       setActiveSearch(searchInput);
     } else {
@@ -130,6 +148,7 @@ export function Library({
     setSearchInput('');
     setActiveSearch('');
     setFilters((prev) => ({ ...prev, search: undefined }));
+    setResultLimit(50);
   };
 
   // Flatten infinite query pages into a single array
@@ -409,15 +428,107 @@ export function Library({
                 </p>
                 </div>
                 {isSearching && (
-                  <button
-                    onClick={clearSearch}
-                    className="text-sm font-medium"
-                    style={{ color: 'var(--color-accent)' }}
-                  >
-                    Clear search
-                  </button>
+                  <div className="flex items-center gap-3">
+                    {searchSemantic && (
+                      <label
+                        className="flex items-center gap-1.5 text-sm"
+                        style={{ color: 'var(--color-text-secondary)' }}
+                      >
+                        Show
+                        <select
+                          value={resultLimit}
+                          onChange={(e) => setResultLimit(Number(e.target.value))}
+                          className="rounded px-1.5 py-0.5 text-sm cursor-pointer"
+                          style={{
+                            backgroundColor: 'var(--color-surface-raised)',
+                            color: 'var(--color-text-primary)',
+                            border: '1px solid var(--color-border)',
+                          }}
+                        >
+                          {Array.from(new Set([20, 50, 100, 200, resultLimit]))
+                            .sort((a, b) => a - b)
+                            .map((n) => (
+                              <option key={n} value={n}>
+                                {n}
+                              </option>
+                            ))}
+                        </select>
+                      </label>
+                    )}
+                    <button
+                      onClick={clearSearch}
+                      className="text-sm font-medium"
+                      style={{ color: 'var(--color-accent)' }}
+                    >
+                      Clear search
+                    </button>
+                  </div>
                 )}
               </div>
+              {searchSemantic && semanticData?.interpretation && (() => {
+                const interp = semanticData.interpretation;
+                // The interpreter SUGGESTS filters as one-click chips; it never
+                // auto-applies them. Categorical metadata is noisy/mislabeled (a
+                // game system spelled several ways, or an adventure tagged with the
+                // wrong system), so a hard filter would silently exclude good
+                // matches. Explicit FilterDrawer filters remain strict.
+                type Sugg = { key: string; label: string; apply: () => void };
+                const suggestions: Sugg[] = [];
+                if (interp.game_system && !effectiveFilters.game_system) {
+                  suggestions.push({
+                    key: 'system',
+                    label: `System: ${interp.game_system}`,
+                    apply: () => setFilters((p) => ({ ...p, game_system: interp.game_system! })),
+                  });
+                }
+                if (interp.product_type && !effectiveFilters.product_type) {
+                  suggestions.push({
+                    key: 'type',
+                    label: `Type: ${interp.product_type}`,
+                    apply: () => setFilters((p) => ({ ...p, product_type: interp.product_type! })),
+                  });
+                }
+                const hasLevel = interp.level_min !== null || interp.level_max !== null;
+                const levelApplied = Boolean(effectiveFilters.level_min || effectiveFilters.level_max);
+                if (hasLevel && !levelApplied) {
+                  const levelLabel = interp.level_min === interp.level_max
+                    ? `Level ${interp.level_min}`
+                    : `Levels ${interp.level_min ?? '?'}–${interp.level_max ?? '?'}`;
+                  suggestions.push({
+                    key: 'level',
+                    label: levelLabel,
+                    apply: () => setFilters((p) => ({
+                      ...p,
+                      level_min: interp.level_min != null ? String(interp.level_min) : undefined,
+                      level_max: interp.level_max != null ? String(interp.level_max) : undefined,
+                    })),
+                  });
+                }
+                if (suggestions.length === 0) return null;
+                return (
+                  <div className="mb-3 flex flex-wrap items-center gap-2">
+                    <span className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>
+                      Add filter:
+                    </span>
+                    {suggestions.map((s) => (
+                      <button
+                        key={s.key}
+                        onClick={s.apply}
+                        className="flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs"
+                        style={{
+                          backgroundColor: 'transparent',
+                          color: 'var(--color-accent)',
+                          border: '1px dashed var(--color-accent)',
+                        }}
+                        title="Detected in your query — click to apply as a filter"
+                      >
+                        <span aria-hidden>+</span>
+                        {s.label}
+                      </button>
+                    ))}
+                  </div>
+                );
+              })()}
               {searchSemantic && semanticData && semanticData.total_matches < 3 && activeSearch && (
                 <div
                   className="mb-4 rounded-lg p-3 text-sm"
@@ -448,7 +559,27 @@ export function Library({
                 selectedIds={selectedIds}
                 onSelectionChange={handleSelectionChange}
                 scoreMap={searchSemantic ? scoreMap : undefined}
+                snippetMap={searchSemantic ? snippetMap : undefined}
               />
+              {searchSemantic &&
+                semanticData &&
+                semanticData.results.length >= resultLimit &&
+                resultLimit < 200 && (
+                  <div className="mt-4 flex justify-center">
+                    <button
+                      onClick={() => setResultLimit((n) => Math.min(n + 50, 200))}
+                      disabled={semanticFetching}
+                      className="rounded-lg px-4 py-2 text-sm font-medium disabled:opacity-50"
+                      style={{
+                        backgroundColor: 'var(--color-surface-raised)',
+                        color: 'var(--color-text-primary)',
+                        border: '1px solid var(--color-border)',
+                      }}
+                    >
+                      {semanticFetching ? 'Loading…' : 'Load more'}
+                    </button>
+                  </div>
+                )}
             </>
           ) : null}
         </div>

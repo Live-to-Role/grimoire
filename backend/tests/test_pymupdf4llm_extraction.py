@@ -46,3 +46,33 @@ def test_empty_output_falls_through_to_next_backend(text_pdf, monkeypatch):
 
 def test_available_extractors_reports_pymupdf4llm():
     assert "pymupdf4llm" in get_available_extractors()
+
+
+def test_pymupdf4llm_disables_dynamic_ocr(text_pdf, monkeypatch):
+    from grimoire.processors import text_extractor
+    from pymupdf4llm.ocr import OCRMode
+
+    captured = {}
+
+    def fake_to_markdown(*args, **kwargs):
+        captured.update(kwargs)
+        return "# stub"
+
+    monkeypatch.setattr(text_extractor.pymupdf4llm, "to_markdown", fake_to_markdown)
+    extract_with_pymupdf4llm(text_pdf)
+    assert captured.get("use_ocr") == OCRMode.NEVER
+
+
+def test_pymupdf4llm_pages_disables_dynamic_ocr(text_pdf, monkeypatch):
+    from grimoire.processors import text_extractor
+    from pymupdf4llm.ocr import OCRMode
+
+    captured = {}
+
+    def fake_to_markdown(*args, **kwargs):
+        captured.update(kwargs)
+        return [{"text": "# stub"}]
+
+    monkeypatch.setattr(text_extractor.pymupdf4llm, "to_markdown", fake_to_markdown)
+    text_extractor.extract_with_pymupdf4llm_pages(text_pdf)
+    assert captured.get("use_ocr") == OCRMode.NEVER

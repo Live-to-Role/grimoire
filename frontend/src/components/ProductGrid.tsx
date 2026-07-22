@@ -13,9 +13,10 @@ interface ProductGridProps {
   selectedIds?: Set<number>;
   onSelectionChange?: (productId: number, selected: boolean) => void;
   scoreMap?: Record<number, number>;
+  snippetMap?: Record<number, string>;
 }
 
-export function ProductGrid({ products, onProductClick, viewMode = 'grid', hasNextPage, isFetchingNextPage, fetchNextPage, selectable, selectedIds, onSelectionChange, scoreMap }: ProductGridProps) {
+export function ProductGrid({ products, onProductClick, viewMode = 'grid', hasNextPage, isFetchingNextPage, fetchNextPage, selectable, selectedIds, onSelectionChange, scoreMap, snippetMap }: ProductGridProps) {
   const sentinelRef = useRef<HTMLDivElement>(null);
 
   // Trigger fetch when the sentinel becomes visible in the nearest scrollable ancestor
@@ -100,6 +101,7 @@ export function ProductGrid({ products, onProductClick, viewMode = 'grid', hasNe
             selected={selectedIds?.has(product.id)}
             onSelectionChange={onSelectionChange}
             score={scoreMap?.[product.id]}
+            snippet={snippetMap?.[product.id]}
           />
         ))}
       </div>

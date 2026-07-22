@@ -209,6 +209,15 @@ except ImportError:
 try:
     import pymupdf4llm
     PYMUPDF4LLM_AVAILABLE = True
+    # Layout mode's dynamic per-page OCR (default SELECT_KEEP_OLD) misjudges
+    # art-heavy RPG pages and replaces good text layers with garbled Tesseract
+    # output. Scanned PDFs are routed to the dedicated OCR queue by
+    # detect_needs_ocr, so dynamic OCR here is disabled outright.
+    try:
+        from pymupdf4llm.ocr import OCRMode as _OCRMode
+        _PYMUPDF4LLM_KWARGS = {"use_ocr": _OCRMode.NEVER}
+    except ImportError:
+        _PYMUPDF4LLM_KWARGS = {}
     # Layout mode (pymupdf4llm >= 1.28, via pymupdf_layout) emits parser and
     # dynamic-OCR notices through pymupdf.message(), which defaults to stdout
     # and would spam worker logs. Route them to Python logging instead.
@@ -497,7 +506,9 @@ def extract_with_pymupdf4llm(
         end_page = total_pages
 
     pages = list(range(start_page - 1, min(end_page, total_pages)))
-    return pymupdf4llm.to_markdown(str(pdf_path), pages=pages, show_progress=False)
+    return pymupdf4llm.to_markdown(
+        str(pdf_path), pages=pages, show_progress=False, **_PYMUPDF4LLM_KWARGS
+    )
 
 
 def extract_with_pymupdf4llm_pages(
@@ -520,7 +531,11 @@ def extract_with_pymupdf4llm_pages(
 
     page_indices = list(range(start_page - 1, min(end_page, total_pages)))
     chunks = pymupdf4llm.to_markdown(
-        str(pdf_path), pages=page_indices, page_chunks=True, show_progress=False
+        str(pdf_path),
+        pages=page_indices,
+        page_chunks=True,
+        show_progress=False,
+        **_PYMUPDF4LLM_KWARGS,
     )
     return [
         {"page": idx + 1, "markdown": chunk["text"]}

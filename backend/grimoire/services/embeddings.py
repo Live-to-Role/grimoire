@@ -397,11 +397,20 @@ def build_chunks_for_product(
 # In-memory cache for product search vectors
 _vector_cache: dict[int, list[float]] | None = None
 
+_invalidation_callbacks: list = []
+
+
+def register_invalidation_callback(fn) -> None:
+    """Register a zero-arg callable run whenever embeddings change."""
+    _invalidation_callbacks.append(fn)
+
 
 def invalidate_vector_cache():
     """Call when embeddings are added/removed."""
     global _vector_cache
     _vector_cache = None
+    for fn in _invalidation_callbacks:
+        fn()
 
 
 def search_product_vectors(

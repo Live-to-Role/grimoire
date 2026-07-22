@@ -66,10 +66,12 @@ cd backend
 start "Grimoire Backend" cmd /c "set PYTHONPATH=. && python -m uvicorn grimoire.main:app --host 0.0.0.0 --port 8000 --reload"
 
 REM Start dedicated queue worker (owns heavy ProcessingQueue draining, out of the API process)
-start "Grimoire Queue Worker" cmd /c "set PYTHONPATH=. && python -m grimoire.worker.run"
+REM /belownormal keeps heavy extraction/OCR from lagging foreground apps; the
+REM worker still gets full CPU whenever the machine is otherwise idle.
+start "Grimoire Queue Worker" /belownormal cmd /c "set PYTHONPATH=. && python -m grimoire.worker.run"
 
 REM Start Huey worker (folder scan scheduling only)
-start "Grimoire Scan Worker" cmd /c "set PYTHONPATH=. && python -m huey.bin.huey_consumer grimoire.worker.tasks.huey -w 2 -k thread"
+start "Grimoire Scan Worker" /belownormal cmd /c "set PYTHONPATH=. && python -m huey.bin.huey_consumer grimoire.worker.tasks.huey -w 2 -k thread"
 cd ..
 
 REM Start frontend
@@ -81,9 +83,5 @@ echo All services started.
 pause
 
 echo.
-echo Stopping Grimoire...
-taskkill /FI "WINDOWTITLE eq Grimoire Backend*" /F >nul 2>&1
-taskkill /FI "WINDOWTITLE eq Grimoire Queue Worker*" /F >nul 2>&1
-taskkill /FI "WINDOWTITLE eq Grimoire Scan Worker*" /F >nul 2>&1
-taskkill /FI "WINDOWTITLE eq Grimoire Frontend*" /F >nul 2>&1
+call "%~dp0stop.bat"
 echo Goodbye!

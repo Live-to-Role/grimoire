@@ -8,10 +8,20 @@ export interface SemanticSearchStatus {
   embedded_count: number;
 }
 
+export interface SearchInterpretation {
+  semantic_query: string;
+  level_min: number | null;
+  level_max: number | null;
+  game_system: string | null;
+  product_type: string | null;
+  source: 'heuristic' | 'llm';
+}
+
 export interface SemanticSearchResponse {
   query: string;
   results: any[];
   total_matches: number;
+  interpretation: SearchInterpretation | null;
 }
 
 export async function getSemanticSearchStatus(): Promise<SemanticSearchStatus> {
@@ -21,14 +31,15 @@ export async function getSemanticSearchStatus(): Promise<SemanticSearchStatus> {
 
 export async function semanticSearch(
   query: string,
-  topK: number = 20,
+  topK: number = 50,
   filters: Partial<ProductFilters> = {},
+  options: { interpret?: boolean } = {},
 ): Promise<SemanticSearchResponse> {
   const response = await apiClient.post<SemanticSearchResponse>('/semantic/search', {
     query,
     top_k: topK,
-    threshold: 0.3,
     hybrid: true,
+    interpret: options.interpret ?? true,
     game_system: filters.game_system || undefined,
     product_type: filters.product_type || undefined,
     genre: filters.genre || undefined,

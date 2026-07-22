@@ -75,11 +75,13 @@ PYTHONPATH=. python3 -m uvicorn grimoire.main:app --host 0.0.0.0 --port 8000 --r
 BACKEND_PID=$!
 
 # Start dedicated queue worker (owns heavy ProcessingQueue draining, out of the API process)
-PYTHONPATH=. python3 -m grimoire.worker.run &
+# nice -n 10 keeps heavy extraction/OCR from lagging foreground apps; the
+# worker still gets full CPU whenever the machine is otherwise idle.
+PYTHONPATH=. nice -n 10 python3 -m grimoire.worker.run &
 QUEUE_WORKER_PID=$!
 
 # Start Huey worker (folder scan scheduling only)
-PYTHONPATH=. python3 -m huey.bin.huey_consumer grimoire.worker.tasks.huey -w 2 -k thread &
+PYTHONPATH=. nice -n 10 python3 -m huey.bin.huey_consumer grimoire.worker.tasks.huey -w 2 -k thread &
 WORKER_PID=$!
 cd ..
 

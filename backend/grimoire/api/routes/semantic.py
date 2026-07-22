@@ -68,7 +68,7 @@ class EmbedProductRequest(BaseModel):
 class SemanticSearchRequest(BaseModel):
     """Request for semantic search."""
     query: str = Field(..., min_length=1, max_length=1000)
-    top_k: int = Field(10, ge=1, le=100)
+    top_k: int = Field(50, ge=1, le=200)
     threshold: float = Field(0.5, ge=0.0, le=1.0)
     provider: str | None = Field(None)
     model: str | None = Field(None)
@@ -83,6 +83,7 @@ class SemanticSearchRequest(BaseModel):
     tags: str | None = Field(None, description="Comma-separated tag IDs")
     collection: int | None = Field(None)
     hybrid: bool = Field(False, description="Blend keyword (BM25) + vector scores")
+    interpret: bool = Field(True, description="Parse levels/system/type from the query text into lenient filters")
 
 
 def build_semantic_filter_conditions(request: SemanticSearchRequest) -> list:
@@ -107,14 +108,6 @@ def build_semantic_filter_conditions(request: SemanticSearchRequest) -> list:
             (Product.level_range_min <= request.level_max) | (Product.level_range_min.is_(None))
         )
     return conditions
-
-
-class NaturalLanguageQueryRequest(BaseModel):
-    """Request for natural language query."""
-    query: str = Field(..., min_length=1, max_length=500, description="Natural language query like 'Find swamp adventures for level 3'")
-    top_k: int = Field(10, ge=1, le=50)
-    ai_provider: str | None = Field(None, description="AI provider for query interpretation")
-    embedding_provider: str | None = Field(None, description="Embedding provider for search")
 
 
 @router.get("/providers")
@@ -252,16 +245,12 @@ async def semantic_search(
     db: DbSession,
     request: SemanticSearchRequest,
 ) -> dict:
-    """Search products using semantic similarity with per-product vectors."""
+    """Search products: interpretation -> candidate union -> chunk re-rank."""
     import json
     import logging
     import traceback
     from grimoire.models import Setting
-    from grimoire.models.product_search_vector import ProductSearchVector
-    from grimoire.services.embeddings import search_product_vectors
-    from grimoire.api.routes.products import product_to_response
-    from sqlalchemy.orm import selectinload
-    from grimoire.models import ProductTag
+    from grimoire.services import search_service
 
     logger = logging.getLogger(__name__)
 
@@ -276,112 +265,7 @@ async def semantic_search(
         if provider == "none":
             raise HTTPException(status_code=400, detail="Semantic search not configured. Set a search provider in Settings.")
 
-        # Embed the query
-        try:
-            query_embeddings = await generate_embeddings(
-                [request.query], provider, request.model
-            )
-            query_vector = query_embeddings[0].embedding
-        except HTTPException:
-            raise
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Embedding failed: {e}")
-
-        # Load per-product vectors
-        sv_result = await db.execute(select(ProductSearchVector))
-        search_vectors = {sv.product_id: sv.get_vector() for sv in sv_result.scalars().all()}
-
-        if not search_vectors:
-            return {"query": request.query, "results": [], "total_matches": 0}
-
-        # Build filter conditions
-        filter_conditions = build_semantic_filter_conditions(request)
-
-        # Handle tag filtering via subquery
-        if request.tags:
-            tag_ids = [int(t.strip()) for t in request.tags.split(",") if t.strip()]
-            if tag_ids:
-                tag_subq = select(ProductTag.product_id).where(ProductTag.tag_id.in_(tag_ids))
-                filter_conditions.append(Product.id.in_(tag_subq))
-
-        # Handle collection filtering via subquery
-        if request.collection:
-            from grimoire.models.collection import CollectionProduct
-            coll_subq = select(CollectionProduct.product_id).where(
-                CollectionProduct.collection_id == request.collection
-            )
-            filter_conditions.append(Product.id.in_(coll_subq))
-
-        # Fetch more candidates than requested since filters will reduce results
-        search_top_k = request.top_k * 3 if filter_conditions else request.top_k
-
-        # Fast numpy search
-        matches = search_product_vectors(
-            query_vector, search_vectors, search_top_k, request.threshold
-        )
-
-        # Hybrid: blend with BM25 keyword results
-        if request.hybrid and request.query:
-            from grimoire.services.fts_service import search_fts
-            from grimoire.services.hybrid_search import reciprocal_rank_fusion
-
-            try:
-                fts_results = await search_fts(
-                    db, request.query,
-                    game_system=request.game_system,
-                    product_type=request.product_type,
-                    limit=request.top_k * 3,
-                )
-                keyword_matches = [
-                    (r["id"], r["relevance_score"]) for r in fts_results
-                ]
-            except Exception:
-                logger.warning("FTS5 search failed during hybrid search, falling back to pure semantic")
-                keyword_matches = []
-
-            # Fuse rankings
-            matches = reciprocal_rank_fusion(matches, keyword_matches)
-            matches = matches[:search_top_k]
-
-            # Normalize RRF scores to 0-1 range for consistent UI display
-            if matches:
-                max_score = matches[0][1]
-                if max_score > 0:
-                    matches = [(pid, score / max_score) for pid, score in matches]
-
-        # Fetch full product data for matched IDs, applying filters
-        matched_ids = [pid for pid, _ in matches]
-        score_map = {pid: score for pid, score in matches}
-
-        if not matched_ids:
-            return {"query": request.query, "results": [], "total_matches": 0}
-
-        products_query = (
-            select(Product)
-            .where(Product.id.in_(matched_ids))
-            .options(selectinload(Product.product_tags).selectinload(ProductTag.tag))
-        )
-        if filter_conditions:
-            products_query = products_query.where(*filter_conditions)
-        products_result = await db.execute(products_query)
-        products = {p.id: p for p in products_result.scalars().all()}
-
-        results = []
-        for product_id in matched_ids:
-            product = products.get(product_id)
-            if not product:
-                continue
-            item = product_to_response(product).model_dump()
-            item["score"] = round(score_map[product_id], 4)
-            results.append(item)
-
-        results = results[:request.top_k]
-
-        return {
-            "query": request.query,
-            "results": results,
-            "total_matches": len(results),
-        }
+        return await search_service.search(db, request)
     except HTTPException:
         raise
     except Exception as e:
@@ -557,28 +441,44 @@ async def re_embed_mismatched(
     db: DbSession,
     target_model: str = Query("nomic-embed-text", description="Target embedding model"),
 ) -> dict:
-    """Queue products whose search vectors don't match the target model for re-embedding."""
+    """Queue products whose stored vectors don't match the target model.
+
+    Two different failure modes leave a product on an old model, and matching
+    only on search vectors catches just one of them:
+
+    1. The search vector itself was built by the old model.
+    2. The chunk embeddings are on the old model and the product has NO search
+       vector at all. The averaged vector is only written at the end of a
+       successful embed, so products interrupted by a model switch have stale
+       chunks and no vector row - invisible both to search and to a
+       search-vector-only repair query.
+
+    Old rows are left in place. The embed handler deletes and replaces them per
+    product, so deleting up front would only blank out search for everything
+    still sitting in the queue.
+    """
     from grimoire.models.product_search_vector import ProductSearchVector
     from grimoire.models import ProcessingQueue
 
-    # Find product IDs with wrong model
+    stale_sv = select(ProductSearchVector.product_id).where(
+        ProductSearchVector.embedding_model != target_model
+    )
+    stale_chunks = select(ProductEmbedding.product_id).where(
+        ProductEmbedding.embedding_model != target_model
+    ).distinct()
+
+    # The embed handler raises on products without text, so filter them out
+    # rather than manufacturing guaranteed queue failures.
     result = await db.execute(
-        select(ProductSearchVector.product_id).where(
-            ProductSearchVector.embedding_model != target_model
+        select(Product.id).where(
+            Product.text_extracted == True,  # noqa: E712
+            Product.id.in_(stale_sv.union(stale_chunks)),
         )
     )
     mismatched_ids = result.scalars().all()
 
     if not mismatched_ids:
         return {"message": "All vectors already match target model", "queued": 0}
-
-    # Delete old embeddings + search vectors so they get re-generated
-    await db.execute(
-        delete(ProductEmbedding).where(ProductEmbedding.product_id.in_(mismatched_ids))
-    )
-    await db.execute(
-        delete(ProductSearchVector).where(ProductSearchVector.product_id.in_(mismatched_ids))
-    )
 
     # Queue for re-embedding
     queued = 0
@@ -605,7 +505,7 @@ async def re_embed_mismatched(
     return {
         "message": f"Queued {queued} products for re-embedding with {target_model}",
         "queued": queued,
-        "deleted_old": len(mismatched_ids),
+        "mismatched": len(mismatched_ids),
         "target_model": target_model,
     }
 
@@ -699,215 +599,6 @@ async def delete_product_embeddings(
     return {
         "product_id": product_id,
         "deleted": True,
-    }
-
-
-NL_QUERY_PROMPT = """You are a search query interpreter for a TTRPG PDF library.
-
-Convert the user's natural language query into structured search parameters.
-
-Return a JSON object with:
-- search_terms: array of key search terms to look for
-- filters: object with optional filters:
-  - game_system: specific game system (e.g., "D&D 5E", "Pathfinder 2E", "OSR")
-  - product_type: type of product (e.g., "Adventure", "Sourcebook", "Monster Manual")
-  - level_min: minimum character level (number or null)
-  - level_max: maximum character level (number or null)
-  - themes: array of themes (e.g., "horror", "wilderness", "dungeon", "urban")
-- semantic_query: a refined query string optimized for semantic search
-
-User query: {query}
-
-Return ONLY the JSON object."""
-
-
-async def interpret_nl_query(query: str, provider: str | None = None) -> dict:
-    """Use AI to interpret a natural language query."""
-    import json
-    import os
-    import httpx
-
-    openai_key = os.getenv("OPENAI_API_KEY", "")
-    anthropic_key = os.getenv("ANTHROPIC_API_KEY", "")
-
-    if provider is None:
-        if anthropic_key:
-            provider = "anthropic"
-        elif openai_key:
-            provider = "openai"
-        else:
-            # Return basic interpretation without AI
-            return {
-                "search_terms": query.lower().split(),
-                "filters": {},
-                "semantic_query": query,
-            }
-
-    prompt = NL_QUERY_PROMPT.format(query=query)
-
-    try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            if provider == "openai" and openai_key:
-                response = await client.post(
-                    "https://api.openai.com/v1/chat/completions",
-                    headers={
-                        "Authorization": f"Bearer {openai_key}",
-                        "Content-Type": "application/json",
-                    },
-                    json={
-                        "model": "gpt-4o-mini",
-                        "messages": [{"role": "user", "content": prompt}],
-                        "temperature": 0.1,
-                        "response_format": {"type": "json_object"},
-                    },
-                )
-                response.raise_for_status()
-                data = response.json()
-                return json.loads(data["choices"][0]["message"]["content"])
-
-            elif provider == "anthropic" and anthropic_key:
-                response = await client.post(
-                    "https://api.anthropic.com/v1/messages",
-                    headers={
-                        "x-api-key": anthropic_key,
-                        "Content-Type": "application/json",
-                        "anthropic-version": "2023-06-01",
-                    },
-                    json={
-                        "model": "claude-haiku-4-5",
-                        "max_tokens": 500,
-                        "messages": [{"role": "user", "content": prompt}],
-                    },
-                )
-                response.raise_for_status()
-                data = response.json()
-                content = data["content"][0]["text"].strip()
-                # Extract JSON
-                start = content.find('{')
-                end = content.rfind('}')
-                if start != -1 and end != -1:
-                    return json.loads(content[start:end + 1])
-
-    except Exception as e:
-        print(f"NL query interpretation failed: {e}")
-
-    # Fallback
-    return {
-        "search_terms": query.lower().split(),
-        "filters": {},
-        "semantic_query": query,
-    }
-
-
-@router.post("/query")
-async def natural_language_query(
-    db: DbSession,
-    request: NaturalLanguageQueryRequest,
-) -> dict:
-    """
-    Search using natural language queries like "Find swamp adventures for level 3".
-    Uses AI to interpret the query and semantic search to find results.
-    """
-    # Interpret the query
-    interpretation = await interpret_nl_query(request.query, request.ai_provider)
-
-    # Get semantic query
-    semantic_query = interpretation.get("semantic_query", request.query)
-    filters = interpretation.get("filters", {})
-
-    # Generate query embedding
-    try:
-        query_embeddings = await generate_embeddings(
-            [semantic_query],
-            request.embedding_provider,
-        )
-        query_vector = query_embeddings[0].embedding
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Embedding failed: {e}")
-
-    # Get stored embeddings
-    emb_query = select(ProductEmbedding)
-    emb_result = await db.execute(emb_query)
-    stored_embeddings = list(emb_result.scalars().all())
-
-    if not stored_embeddings:
-        return {
-            "query": request.query,
-            "interpretation": interpretation,
-            "results": [],
-            "message": "No embeddings found. Run /embed on products first.",
-        }
-
-    # Find similar
-    embeddings_list = [
-        (emb.id, emb.get_embedding_vector())
-        for emb in stored_embeddings
-    ]
-
-    similar = find_similar(
-        query_vector,
-        embeddings_list,
-        request.top_k * 3,
-        0.4,
-    )
-
-    # Get products and apply filters
-    seen_products = set()
-    results = []
-
-    for emb_id, score in similar:
-        emb_record = next((e for e in stored_embeddings if e.id == emb_id), None)
-        if not emb_record:
-            continue
-
-        product_id = emb_record.product_id
-        if product_id in seen_products:
-            continue
-        seen_products.add(product_id)
-
-        # Get product
-        prod_query = select(Product).where(Product.id == product_id)
-        prod_result = await db.execute(prod_query)
-        product = prod_result.scalar_one_or_none()
-
-        if not product:
-            continue
-
-        # Apply filters
-        if filters.get("game_system"):
-            if product.game_system and filters["game_system"].lower() not in product.game_system.lower():
-                continue
-
-        if filters.get("product_type"):
-            if product.product_type and filters["product_type"].lower() not in product.product_type.lower():
-                continue
-
-        if filters.get("level_min") is not None:
-            if product.level_range_max and product.level_range_max < filters["level_min"]:
-                continue
-
-        if filters.get("level_max") is not None:
-            if product.level_range_min and product.level_range_min > filters["level_max"]:
-                continue
-
-        results.append({
-            "product_id": product_id,
-            "title": product.title or product.file_name,
-            "game_system": product.game_system,
-            "product_type": product.product_type,
-            "level_range": f"{product.level_range_min or '?'}-{product.level_range_max or '?'}" if product.level_range_min or product.level_range_max else None,
-            "score": round(score, 4),
-            "matched_chunk": emb_record.chunk_text[:150] + "..." if len(emb_record.chunk_text) > 150 else emb_record.chunk_text,
-        })
-
-        if len(results) >= request.top_k:
-            break
-
-    return {
-        "query": request.query,
-        "interpretation": interpretation,
-        "results": results,
-        "total_matches": len(results),
     }
 
 
