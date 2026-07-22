@@ -452,10 +452,14 @@ async def reset_stuck_queue_items(
     Args:
         timeout_minutes: Consider items stuck if processing for longer than this
     """
-    from datetime import datetime, timedelta
+    from datetime import UTC, datetime, timedelta
     from grimoire.models import ProcessingQueue
-    
-    cutoff = datetime.now() - timedelta(minutes=timeout_minutes)
+
+    # started_at is written as datetime.now(UTC) by the queue processor, so the
+    # cutoff must be UTC too. A local-clock cutoff silently breaks this endpoint
+    # everywhere but UTC: west of it nothing is ever reset, east of it every
+    # running task gets clobbered.
+    cutoff = datetime.now(UTC) - timedelta(minutes=timeout_minutes)
     
     # Find stuck items
     query = select(ProcessingQueue).where(
@@ -552,13 +556,15 @@ async def mark_missing_files(db: DbSession) -> dict:
     This is useful for detecting files that have been moved or deleted.
     """
     from pathlib import Path
-    from datetime import datetime
-    
+    from datetime import UTC, datetime
+
     query = select(Product).where(Product.is_missing == False)
     result = await db.execute(query)
     products = list(result.scalars().all())
-    
-    now = datetime.now()
+
+    # scanner.py writes missing_since as datetime.now(UTC); this path must agree
+    # or the same column ends up holding two clocks hours apart.
+    now = datetime.now(UTC)
     marked = []
     
     for product in products:
