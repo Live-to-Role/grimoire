@@ -52,3 +52,24 @@ def test_ocr_failure_falls_back_to_standard_extraction(scanned_pdf, monkeypatch)
     assert result["ocr_used"] is False
     assert "OCR attempted but failed" in result["ocr_reason"]
     assert "markdown" in result  # standard extraction ran as fallback
+
+
+def test_art_front_matter_book_skips_ocr(art_front_matter_pdf, monkeypatch):
+    """A book with art front matter and a text body must never reach OCR."""
+    ocr_calls = []
+    monkeypatch.setattr(
+        text_extractor,
+        "extract_with_ocr",
+        lambda *a, **k: ocr_calls.append(1) or "## Page 1\n\nOCR\n\n",
+    )
+    monkeypatch.setattr(text_extractor, "TESSERACT_AVAILABLE", True)
+
+    result = extract_text_with_ocr_fallback(art_front_matter_pdf)
+
+    assert ocr_calls == []
+    assert result["ocr_used"] is False
+    assert "adventurer descends" in result["markdown"]
+
+
+def test_detect_needs_ocr_is_retired():
+    assert not hasattr(text_extractor, "detect_needs_ocr")

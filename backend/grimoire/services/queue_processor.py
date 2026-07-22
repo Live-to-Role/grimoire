@@ -254,7 +254,7 @@ async def handle_text_task(db: AsyncSession, product: Product) -> bool:
     """
     from grimoire.services.processor import process_text_extraction_sync
     from grimoire.services.fts_service import update_search_vector
-    from grimoire.processors.text_extractor import detect_needs_ocr
+    from grimoire.processors.text_extractor import assess_text_layer
     from pathlib import Path
 
     # Guard: skip PDFs too large/long to extract before any file open or OCR.
@@ -312,7 +312,7 @@ async def handle_text_task(db: AsyncSession, product: Product) -> bool:
             return True
 
         # Not image content — check if it still needs OCR
-        detection = await asyncio.to_thread(detect_needs_ocr, pdf_path)
+        detection = await asyncio.to_thread(assess_text_layer, pdf_path)
         if detection["needs_ocr"]:
             ocr_item = ProcessingQueue(
                 product_id=product.id,

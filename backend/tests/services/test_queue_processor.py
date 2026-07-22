@@ -40,8 +40,8 @@ async def test_text_task_runs_in_thread():
         to_thread_calls.append(func.__name__ if hasattr(func, '__name__') else str(func))
         if func.__name__ == "detect_image_content":
             return {"is_image_content": False, "classification": None, "reason": "test", "stats": {}}
-        if func.__name__ == "detect_needs_ocr":
-            return {"needs_ocr": False}
+        if func.__name__ == "assess_text_layer":
+            return {"needs_ocr": False, "reason": "test"}
         return True
 
     with patch(

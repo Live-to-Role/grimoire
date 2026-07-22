@@ -212,7 +212,7 @@ try:
     # Layout mode's dynamic per-page OCR (default SELECT_KEEP_OLD) misjudges
     # art-heavy RPG pages and replaces good text layers with garbled Tesseract
     # output. Scanned PDFs are routed to the dedicated OCR queue by
-    # detect_needs_ocr, so dynamic OCR here is disabled outright.
+    # assess_text_layer, so dynamic OCR here is disabled outright.
     try:
         from pymupdf4llm.ocr import OCRMode as _OCRMode
         _PYMUPDF4LLM_KWARGS = {"use_ocr": _OCRMode.NEVER}
@@ -992,100 +992,6 @@ def assess_text_layer(
     }
 
 
-def detect_needs_ocr(pdf_path: str | Path, sample_pages: int = 3, min_chars_per_page: int = 100) -> dict:
-    """
-    Detect if a PDF is image-based and needs OCR for text extraction.
-    
-    Checks the first few pages for extractable text. If pages have very little
-    text but do have images, the PDF likely needs OCR.
-    
-    Args:
-        pdf_path: Path to the PDF file
-        sample_pages: Number of pages to sample
-        min_chars_per_page: Minimum characters expected per page for text-based PDF
-        
-    Returns:
-        Dictionary with detection results:
-        - needs_ocr: bool - True if OCR is recommended
-        - reason: str - Explanation of the detection
-        - text_chars: int - Total text characters found in sampled pages
-        - has_images: bool - Whether images were detected
-        - pages_sampled: int - Number of pages actually sampled
-    """
-    pdf_path = Path(pdf_path)
-    if not pdf_path.exists():
-        return {"needs_ocr": False, "reason": "File not found", "text_chars": 0, "has_images": False, "pages_sampled": 0}
-    
-    if not PYMUPDF_AVAILABLE:
-        return {"needs_ocr": False, "reason": "PyMuPDF not available for detection", "text_chars": 0, "has_images": False, "pages_sampled": 0}
-    
-    try:
-        doc = fitz.open(str(pdf_path))
-        total_pages = len(doc)
-        pages_to_check = min(sample_pages, total_pages)
-        
-        total_text_chars = 0
-        total_images = 0
-        
-        for i in range(pages_to_check):
-            page = doc[i]
-            
-            # Get text content
-            text = page.get_text().strip()
-            # Filter out common watermark patterns (email + transaction)
-            # These are often the only "text" in image-based PDFs
-            filtered_text = re.sub(r'[\w.+-]+@[\w-]+\.[\w.-]+', '', text)  # Remove emails
-            filtered_text = re.sub(r'Transaction:\s*\d+', '', filtered_text)  # Remove transaction IDs
-            filtered_text = re.sub(r'\s+', '', filtered_text)  # Remove whitespace for counting
-            
-            total_text_chars += len(filtered_text)
-            
-            # Check for images
-            image_list = page.get_images(full=True)
-            total_images += len(image_list)
-        
-        doc.close()
-        
-        avg_chars_per_page = total_text_chars / pages_to_check if pages_to_check > 0 else 0
-        has_images = total_images > 0
-        
-        # Determine if OCR is needed
-        if avg_chars_per_page < min_chars_per_page:
-            if has_images:
-                return {
-                    "needs_ocr": True,
-                    "reason": f"Low text content ({avg_chars_per_page:.0f} chars/page avg) with {total_images} images - likely image-based PDF",
-                    "text_chars": total_text_chars,
-                    "has_images": has_images,
-                    "pages_sampled": pages_to_check,
-                }
-            else:
-                return {
-                    "needs_ocr": False,
-                    "reason": f"Low text content but no images detected - may be empty or corrupted",
-                    "text_chars": total_text_chars,
-                    "has_images": has_images,
-                    "pages_sampled": pages_to_check,
-                }
-        else:
-            return {
-                "needs_ocr": False,
-                "reason": f"Sufficient text content ({avg_chars_per_page:.0f} chars/page avg)",
-                "text_chars": total_text_chars,
-                "has_images": has_images,
-                "pages_sampled": pages_to_check,
-            }
-            
-    except Exception as e:
-        return {
-            "needs_ocr": False,
-            "reason": f"Detection failed: {e}",
-            "text_chars": 0,
-            "has_images": False,
-            "pages_sampled": 0,
-        }
-
-
 def _extract_with_pdf2image_ocr(
     pdf_path: str | Path,
     start_page: int = 1,
@@ -1227,7 +1133,7 @@ def extract_text_with_ocr_fallback(
     Extract text from PDF, automatically falling back to OCR if needed.
     
     First attempts standard text extraction. If the PDF appears to be
-    image-based (detected via detect_needs_ocr), falls back to OCR.
+    image-based (detected via assess_text_layer), falls back to OCR.
     
     Args:
         pdf_path: Path to the PDF file
@@ -1269,9 +1175,9 @@ def extract_text_with_ocr_fallback(
         except Exception as e:
             return {"error": f"OCR extraction failed: {e}"}
     
-    # Detect FIRST (cheap: samples 3 pages) so image-based PDFs never
-    # pay for a full standard extraction that gets thrown away.
-    detection = detect_needs_ocr(pdf_path)
+    # Decide FIRST (cheap: text-layer read of every page, no rendering) so
+    # image-based PDFs never pay for a standard extraction that gets thrown away.
+    detection = assess_text_layer(pdf_path)
 
     if detection["needs_ocr"] and TESSERACT_AVAILABLE:
         try:
