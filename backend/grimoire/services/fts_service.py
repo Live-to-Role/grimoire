@@ -59,13 +59,17 @@ async def fts_candidates(
     match = build_fts_match(query)
     if match is None:
         return []
+    # The unary + on the boolean columns is load-bearing: without it SQLite
+    # drives the join from ix_products_is_duplicate and re-runs the FTS MATCH
+    # once per product (~19k times, ~87s). + disqualifies those indexes so the
+    # MATCH drives and products is a primary-key lookup (~0.03s). Do not remove.
     sql = text("""
         SELECT fts.rowid AS product_id, bm25(products_fts) AS rank
         FROM products_fts fts
         JOIN products p ON p.id = fts.rowid
         WHERE products_fts MATCH :query
-        AND p.is_duplicate = 0
-        AND p.is_missing = 0
+        AND +p.is_duplicate = 0
+        AND +p.is_missing = 0
         AND (:game_system IS NULL OR p.game_system = :game_system)
         AND (:product_type IS NULL OR p.product_type = :product_type)
         ORDER BY rank
@@ -214,17 +218,20 @@ async def search_fts(
     if fts_query is None:
         return []
 
-    # SQLite FTS5 search with BM25 ranking
+    # SQLite FTS5 search with BM25 ranking. The unary + on the boolean columns
+    # is load-bearing: without it SQLite drives the join from
+    # ix_products_is_duplicate and re-runs the MATCH once per product (~87s);
+    # + forces the MATCH to drive (~0.03s). Do not remove. See fts_candidates.
     sql = text("""
-        SELECT 
+        SELECT
             fts.rowid as product_id,
             bm25(products_fts) as rank,
             snippet(products_fts, 6, '<mark>', '</mark>', '...', 32) as snippet
         FROM products_fts fts
         JOIN products p ON p.id = fts.rowid
         WHERE products_fts MATCH :query
-        AND p.is_duplicate = 0
-        AND p.is_missing = 0
+        AND +p.is_duplicate = 0
+        AND +p.is_missing = 0
         AND (:game_system IS NULL OR p.game_system = :game_system)
         AND (:product_type IS NULL OR p.product_type = :product_type)
         ORDER BY rank
