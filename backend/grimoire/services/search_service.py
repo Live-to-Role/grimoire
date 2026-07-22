@@ -17,10 +17,14 @@ logger = logging.getLogger(__name__)
 # Tunable retrieval constants (adjust via the eval harness, Task 11)
 CANDIDATES_PER_SOURCE = 150
 MAX_CANDIDATES = 200
-TOP_K_CHUNKS = 3
+# TOP_K_CHUNKS=1 (score a product by its single best chunk) and
+# KEYWORD_RRF_WEIGHT=0.75 (trust the semantic side more than noisy BM25) came
+# from the Task 11 golden-query sweep: specific hit@k 50%->60%, MRR
+# 0.350->0.394, at a -4pp topical precision cost. See runs/tuned.json.
+TOP_K_CHUNKS = 1
 CHUNK_SCORE_THRESHOLD = 0.45
 SEMANTIC_RRF_WEIGHT = 1.0
-KEYWORD_RRF_WEIGHT = 1.0
+KEYWORD_RRF_WEIGHT = 0.75
 
 # --- Caches ----------------------------------------------------------------
 
