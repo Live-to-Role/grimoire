@@ -10,7 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from grimoire.models import Product, WatchedFolder, ScanJob, ScanJobStatus
-from grimoire.services.scanner import calculate_file_hash
+from grimoire.services.scanner import calculate_file_hash, scan_folder
 from grimoire.services.exclusion_service import create_exclusion_matcher, increment_rule_match
 from grimoire.services.duplicate_service import check_and_mark_duplicate, is_deleted_duplicate
 
@@ -36,7 +36,11 @@ async def create_scan_job(
 
 
 async def get_active_scan_job(db: AsyncSession) -> ScanJob | None:
-    """Get the currently running scan job, if any."""
+    """Get the currently running scan job, if any.
+
+    Returns the most recent one rather than raising when several are active —
+    a status endpoint should never 500 because two jobs got stuck.
+    """
     query = select(ScanJob).where(
         ScanJob.status.in_([
             ScanJobStatus.PENDING.value,
@@ -44,9 +48,9 @@ async def get_active_scan_job(db: AsyncSession) -> ScanJob | None:
             ScanJobStatus.HASHING.value,
             ScanJobStatus.PROCESSING.value,
         ])
-    ).order_by(ScanJob.created_at.desc())
+    ).order_by(ScanJob.created_at.desc(), ScanJob.id.desc())
     result = await db.execute(query)
-    return result.scalar_one_or_none()
+    return result.scalars().first()
 
 
 async def get_scan_job(db: AsyncSession, job_id: int) -> ScanJob | None:
@@ -262,6 +266,142 @@ async def batch_scan_folder(
         "excluded_files": excluded_count,
         "errors": error_count,
     }
+
+
+async def run_scan_job(
+    db: AsyncSession,
+    job: ScanJob,
+    folders: list[WatchedFolder],
+    force: bool = False,
+) -> dict[str, Any]:
+    """Run a scan for `folders`, driving `job` through to a terminal state.
+
+    The route creates the job in `pending` and hands off to the worker; this is
+    the other half of that handoff. Whatever happens, the job must not be left
+    running — an abandoned `pending` job makes get_active_scan_job block every
+    later scan with a 409.
+
+    Args:
+        db: Database session
+        job: The ScanJob to advance
+        folders: Folders to scan, in order
+        force: Re-scan files even if they haven't changed
+
+    Returns:
+        Aggregate scan results across all folders
+    """
+    job.status = ScanJobStatus.SCANNING.value
+    job.current_phase = "Scanning folders"
+    job.started_at = datetime.now(UTC)
+    await db.commit()
+
+    new_count = 0
+    duplicate_count = 0
+    excluded_count = 0
+    error_count = 0
+    failures: list[str] = []
+
+    # Capture identity up front: a rollback below expires the ORM objects, and
+    # re-reading an expired attribute mid-loop would need implicit IO.
+    targets = [(f.id, f.path) for f in folders]
+
+    try:
+        for folder_id, folder_path in targets:
+            job.current_phase = f"Scanning {folder_path}"
+            job.current_file = folder_path
+            await db.commit()
+
+            folder = await db.get(WatchedFolder, folder_id)
+            if folder is None:
+                failures.append(f"{folder_path}: folder no longer exists")
+                error_count += 1
+                continue
+
+            try:
+                result = await scan_folder(db, folder, force=force)
+            except Exception as e:
+                # One unreadable folder must not strand the rest of the job.
+                logger.exception(f"Scan failed for folder {folder_path}")
+                failures.append(f"{folder_path}: {e}")
+                error_count += 1
+                await db.rollback()
+                await db.refresh(job)
+                continue
+
+            new_count += result.get("new_count", 0)
+            duplicate_count += result.get("duplicates", 0)
+            excluded_count += result.get("excluded", 0)
+            error_count += result.get("errors", 0)
+
+            folder.last_scanned_at = datetime.now(UTC)
+
+            job.new_products = new_count
+            job.duplicates_found = duplicate_count
+            job.excluded_files = excluded_count
+            job.errors = error_count
+            await db.commit()
+    except Exception as e:
+        logger.exception("Scan job failed")
+        job.status = ScanJobStatus.FAILED.value
+        job.error_message = str(e)
+        job.current_phase = None
+        job.current_file = None
+        job.completed_at = datetime.now(UTC)
+        await db.commit()
+        raise
+
+    job.new_products = new_count
+    job.duplicates_found = duplicate_count
+    job.excluded_files = excluded_count
+    job.errors = error_count
+    job.error_message = "; ".join(failures) if failures else None
+    # Only a total washout counts as a failed job; partial results are still results.
+    all_failed = bool(folders) and len(failures) == len(folders)
+    job.status = (
+        ScanJobStatus.FAILED.value if all_failed else ScanJobStatus.COMPLETE.value
+    )
+    job.current_phase = None
+    job.current_file = None
+    job.completed_at = datetime.now(UTC)
+    await db.commit()
+
+    logger.info(
+        f"Scan job {job.id} {job.status}: {new_count} new, "
+        f"{duplicate_count} duplicates, {excluded_count} excluded, {error_count} errors"
+    )
+
+    return {
+        "status": job.status,
+        "new_products": new_count,
+        "duplicates_found": duplicate_count,
+        "excluded_files": excluded_count,
+        "errors": error_count,
+    }
+
+
+async def run_scan_job_by_id(
+    db: AsyncSession,
+    job_id: int,
+    folder_ids: list[int],
+    force: bool = False,
+) -> dict[str, Any]:
+    """Resolve ids to rows and run the scan job.
+
+    Only ids survive the trip to the worker process, so this is the entry point
+    the Huey task uses.
+    """
+    job = await db.get(ScanJob, job_id)
+    if job is None:
+        logger.warning(f"Scan job {job_id} no longer exists; nothing to run")
+        return {"status": "missing", "job_id": job_id}
+
+    result = await db.execute(
+        select(WatchedFolder).where(WatchedFolder.id.in_(folder_ids))
+    )
+    by_id = {f.id: f for f in result.scalars().all()}
+    folders = [by_id[fid] for fid in folder_ids if fid in by_id]
+
+    return await run_scan_job(db, job, folders, force=force)
 
 
 async def cancel_scan_job(db: AsyncSession, job_id: int) -> bool:
