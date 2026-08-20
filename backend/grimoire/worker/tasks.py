@@ -51,6 +51,31 @@ def scan_folder_task(folder_id: int, force: bool = False) -> int:
     return run_async(_scan())
 
 
+@huey.task()
+def scan_job_task(job_id: int, folder_ids: list[int], force: bool = False) -> dict:
+    """Run a tracked scan for a ScanJob created by the API.
+
+    The API creates the job in 'pending' and hands off here; this task owns
+    driving it to a terminal state so it stops blocking later scans.
+
+    Args:
+        job_id: ID of the ScanJob to advance
+        folder_ids: Folders to scan, in order
+        force: Re-scan unchanged files
+
+    Returns:
+        Aggregate scan results
+    """
+    from grimoire.database import async_session_maker
+    from grimoire.services.batch_scanner import run_scan_job_by_id
+
+    async def _run():
+        async with async_session_maker() as db:
+            return await run_scan_job_by_id(db, job_id, folder_ids, force=force)
+
+    return run_async(_run())
+
+
 @huey.periodic_task(crontab(minute="*/30"))
 def periodic_scan() -> None:
     """Periodically scan all enabled folders."""

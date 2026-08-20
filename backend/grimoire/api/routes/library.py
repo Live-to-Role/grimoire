@@ -15,7 +15,7 @@ from grimoire.services.batch_scanner import (
     cancel_scan_job,
     get_scan_history,
 )
-from grimoire.worker.tasks import scan_folder_task
+from grimoire.worker.tasks import scan_job_task
 
 router = APIRouter()
 
@@ -174,13 +174,11 @@ async def start_scan(
     if not folders:
         raise HTTPException(status_code=400, detail="No folders to scan")
     
-    # Create scan job
+    # Create scan job, then hand the whole set of folders to a single task so
+    # one job tracks the whole scan and reaches a terminal state when it ends.
     job = await create_scan_job(db, folder_id)
-    
-    # Trigger the scan task for each folder
-    for folder in folders:
-        scan_folder_task(folder.id)
-    
+    scan_job_task(job.id, [f.id for f in folders])
+
     return {
         "job_id": job.id,
         "status": "started",
