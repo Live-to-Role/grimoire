@@ -38,6 +38,10 @@ services:
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
       - CODEX_API_URL=${CODEX_API_URL:-https://codex-api.livetorole.com/api/v1}
+    extra_hosts:
+      # Ollama runs on the host; host-gateway makes host.docker.internal
+      # resolve on native Linux Docker too, not just Docker Desktop.
+      - "host.docker.internal:host-gateway"
     restart: unless-stopped
     depends_on:
       - redis
@@ -47,6 +51,22 @@ services:
       timeout: 10s
       retries: 3
       start_period: 10s
+
+  frontend:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.frontend
+    ports:
+      - "5173:80"
+    restart: unless-stopped
+    depends_on:
+      - grimoire
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
 
   worker:
     build:
@@ -68,6 +88,13 @@ services:
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
       - CODEX_API_URL=${CODEX_API_URL:-https://codex-api.livetorole.com/api/v1}
     command: ["python", "-m", "huey.bin.huey_consumer", "grimoire.worker.tasks.huey", "-w", "2", "-k", "thread"]
+    extra_hosts:
+      # Ollama runs on the host; host-gateway makes host.docker.internal
+      # resolve on native Linux Docker too, not just Docker Desktop.
+      - "host.docker.internal:host-gateway"
+    # Worker runs Huey, not the HTTP API — disable the image's inherited HTTP healthcheck
+    healthcheck:
+      disable: true
     restart: unless-stopped
     depends_on:
       - grimoire

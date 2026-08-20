@@ -67,16 +67,20 @@ Grimoire uses Ollama for local AI processing (metadata identification, embedding
 
 2. Start the services:
    ```bash
-   docker compose -f docker/docker-compose.yml up -d
+   docker compose -f docker/docker-compose.yml --project-directory . up -d
    ```
 
-   This starts three services:
+   > **Note**: `--project-directory .` is required. Without it, Compose resolves
+   > the build context relative to `docker/` and the build fails.
+
+   This starts four services:
+   - **frontend** - The web UI, served by nginx (port 5173)
    - **grimoire** - The API server (port 8000)
    - **worker** - Background task processor (Huey with 2 threads)
    - **redis** - Message queue and cache (port 6379)
 
 3. Access the app:
-   - **Frontend**: http://localhost:5173 (if running the dev server)
+   - **App**: http://localhost:5173
    - **API Docs**: http://localhost:8000/api/docs
 
 4. Configure your library:
@@ -131,8 +135,8 @@ PDF_LIBRARY_PATH_3=/path/to/third/library
 
 Then restart Docker:
 ```bash
-docker compose -f docker/docker-compose.yml down
-docker compose -f docker/docker-compose.yml up -d
+docker compose -f docker/docker-compose.yml --project-directory . down
+docker compose -f docker/docker-compose.yml --project-directory . up -d
 ```
 
 In the app **Settings**, add folders using the **container paths**:
@@ -226,12 +230,12 @@ POPPLER_PATH=C:\poppler\Library\bin
 ### Running in Development Mode
 
 ```bash
-docker compose -f docker/docker-compose.dev.yml up
+docker compose -f docker/docker-compose.dev.yml --project-directory . up
 ```
 
-This mounts the source code for hot-reloading.
-
-For the frontend dev server:
+This mounts the backend source for hot-reloading. The dev stack runs the API,
+worker and Redis only — no frontend container — so run the Vite dev server on the
+host alongside it:
 ```bash
 cd frontend
 npm install
@@ -277,6 +281,8 @@ grimoire/
 │       └── types/           # TypeScript definitions
 ├── docker/
 │   ├── Dockerfile.backend
+│   ├── Dockerfile.frontend
+│   ├── nginx.conf
 │   ├── docker-compose.yml
 │   └── docker-compose.dev.yml
 └── docs/
