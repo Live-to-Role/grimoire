@@ -70,10 +70,14 @@ Grimoire uses Ollama for local AI processing (metadata identification, embedding
    cp .env.example .env
    ```
 
-   Edit `.env` and set the host path of each library you want. All three are
-   optional — any you leave blank fall back to the empty `./pdfs` folder.
+   Now open `.env` in a text editor and set the host path of each library you
+   want. All three are optional — any you leave blank fall back to the empty
+   `./pdfs` folder.
 
-   ```bash
+   The lines below are the *contents of the `.env` file*, not commands to type
+   into a terminal. Use forward slashes, on Windows too.
+
+   ```ini
    # Windows example
    PDF_LIBRARY_PATH=D:/RPG/PDFs
    # macOS example
