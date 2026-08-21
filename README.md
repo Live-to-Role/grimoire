@@ -119,7 +119,7 @@ Grimoire uses Ollama for local AI processing (metadata identification, embedding
    - Go to **Settings** in the app
    - Under **Library Folders**, add the **container** paths — `/library`,
      `/library2`, `/library3` — not the host paths you put in `.env`
-   - Click **Scan** in Library Management to discover your PDFs
+   - In Grimoire, nav to **Manage**. Start **Scan** to discover your PDFs
 
 ### Configuring AI Providers
 
