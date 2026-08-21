@@ -65,7 +65,32 @@ Grimoire uses Ollama for local AI processing (metadata identification, embedding
    cd grimoire
    ```
 
-2. Start the services:
+2. Point Grimoire at your PDF folders:
+   ```bash
+   cp .env.example .env
+   ```
+
+   Edit `.env` and set the host path of each library you want. All three are
+   optional — any you leave blank fall back to the empty `./pdfs` folder.
+
+   ```bash
+   # Windows example
+   PDF_LIBRARY_PATH=D:/RPG/PDFs
+   # macOS example
+   # PDF_LIBRARY_PATH=/Users/yourname/Documents/RPG
+   # Linux example
+   # PDF_LIBRARY_PATH=/home/yourname/rpg-library
+
+   # Optional additional libraries
+   PDF_LIBRARY_PATH_2=/path/to/second/library
+   PDF_LIBRARY_PATH_3=/path/to/third/library
+   ```
+
+   These are mounted read-only in the container at `/library`, `/library2` and
+   `/library3`. Set them before the first start — bind mounts are fixed when the
+   containers are created, so changing a path later needs a `down` then `up`.
+
+3. Start the services:
    ```bash
    docker compose -f docker/docker-compose.yml --project-directory . up -d
    ```
@@ -79,16 +104,18 @@ Grimoire uses Ollama for local AI processing (metadata identification, embedding
    - **worker** - Background task processor (Huey with 2 threads)
    - **redis** - Message queue and cache (port 6379)
 
-3. Access the app:
+4. Access the app:
    - **App**: http://localhost:5173
    - **API Docs**: http://localhost:8000/api/docs
 
-4. Configure your library:
-   - Go to **Settings** in the app
-   - Add your PDF folder path(s) under **Library Folders**
-   - Click **Scan** in Library Management to discover your PDFs
+   The API takes up to a minute to finish starting. Until it is ready,
+   `docker compose ps` shows `grimoire` as `health: starting`.
 
-> **Note**: By default, the `./pdfs` folder is mounted. You can configure up to 3 library paths using environment variables.
+5. Configure your library:
+   - Go to **Settings** in the app
+   - Under **Library Folders**, add the **container** paths — `/library`,
+     `/library2`, `/library3` — not the host paths you put in `.env`
+   - Click **Scan** in Library Management to discover your PDFs
 
 ### Configuring AI Providers
 
@@ -115,36 +142,23 @@ OLLAMA_BASE_URL=http://host.docker.internal:11434
 
 **Priority order**: Settings UI > Environment variables > Default (`http://localhost:11434`)
 
-### Configuring Multiple Library Paths
+### Changing Library Paths Later
 
-Create a `.env` file in the project root:
+Edit the `PDF_LIBRARY_PATH` values in `.env`, then recreate the containers so the
+new mounts take effect — a restart is not enough:
 
-```bash
-# Primary library (mounted at /library in container)
-# Windows example:
-PDF_LIBRARY_PATH=D:/RPG/PDFs
-# macOS example:
-# PDF_LIBRARY_PATH=/Users/yourname/Documents/RPG
-# Linux example:
-# PDF_LIBRARY_PATH=/home/yourname/rpg-library
-
-# Additional libraries (mounted at /library2, /library3)
-PDF_LIBRARY_PATH_2=/path/to/second/library
-PDF_LIBRARY_PATH_3=/path/to/third/library
-```
-
-Then restart Docker:
 ```bash
 docker compose -f docker/docker-compose.yml --project-directory . down
 docker compose -f docker/docker-compose.yml --project-directory . up -d
 ```
 
-In the app **Settings**, add folders using the **container paths**:
-- `/library` (for PDF_LIBRARY_PATH)
-- `/library2` (for PDF_LIBRARY_PATH_2)
-- `/library3` (for PDF_LIBRARY_PATH_3)
+| `.env` variable | Container path to enter in Settings |
+|-----------------|-------------------------------------|
+| `PDF_LIBRARY_PATH` | `/library` |
+| `PDF_LIBRARY_PATH_2` | `/library2` |
+| `PDF_LIBRARY_PATH_3` | `/library3` |
 
-> **Important**: Enter the container path (e.g., `/library2`), not your host path.
+> **Important**: Enter the container path (e.g. `/library2`), not your host path.
 
 ## Running Natively (without Docker)
 

@@ -50,7 +50,9 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 10s
+      # The app takes ~50s to import and start; a shorter grace period marks
+      # it unhealthy on every boot before it self-heals on the next probe.
+      start_period: 90s
 
   frontend:
     build:

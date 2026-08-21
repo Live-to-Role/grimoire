@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   redis:
     image: redis:7-alpine
@@ -18,7 +16,9 @@ services:
       - "8000:8000"
     volumes:
       - ./data:/app/data
-      - ./pdfs:/library:ro
+      - ${PDF_LIBRARY_PATH:-./pdfs}:/library:ro
+      - ${PDF_LIBRARY_PATH_2:-./pdfs}:/library2:ro
+      - ${PDF_LIBRARY_PATH_3:-./pdfs}:/library3:ro
       - ./backend/grimoire:/app/grimoire:ro
     env_file:
       - .env
@@ -31,6 +31,8 @@ services:
       - LOG_LEVEL=DEBUG
       - DEBUG=true
       - CORS_ORIGINS=["http://localhost:5173","http://localhost:3000","http://localhost:8000"]
+      # .env's localhost:11434 points at this container, not the host
+      - OLLAMA_BASE_URL=http://host.docker.internal:11434
     command: ["uvicorn", "grimoire.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
     extra_hosts:
       # Native Docker in WSL: route host.docker.internal to the WSL host (where Ollama runs)
@@ -45,8 +47,12 @@ services:
       dockerfile: docker/Dockerfile.backend
     volumes:
       - ./data:/app/data
-      - ./pdfs:/library:ro
+      - ${PDF_LIBRARY_PATH:-./pdfs}:/library:ro
+      - ${PDF_LIBRARY_PATH_2:-./pdfs}:/library2:ro
+      - ${PDF_LIBRARY_PATH_3:-./pdfs}:/library3:ro
       - ./backend/grimoire:/app/grimoire:ro
+    env_file:
+      - .env
     environment:
       - DATABASE_URL=sqlite+aiosqlite:///./data/grimoire.db
       - REDIS_URL=redis://redis:6379/0
