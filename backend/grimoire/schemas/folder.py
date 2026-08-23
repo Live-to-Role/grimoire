@@ -74,8 +74,20 @@ class DirectoryEntry(BaseModel):
     path: str
 
 
+class QuickLocation(BaseModel):
+    """A shortcut shown above the browse listing."""
+    name: str
+    path: str
+
+
 class BrowseResponse(BaseModel):
     """Response for the folder browse endpoint."""
     current_path: str
     parent_path: str | None
     directories: list[DirectoryEntry]
+    # Shortcuts to the places worth starting from — in Docker the mounted
+    # library paths are otherwise unreachable by guesswork.
+    locations: list[QuickLocation] = []
+    # Entries skipped because the server could not stat them (Windows junctions,
+    # dropped network mounts). Surfaced so a short listing is explainable.
+    skipped: int = 0

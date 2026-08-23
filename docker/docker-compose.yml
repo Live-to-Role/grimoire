@@ -70,6 +70,40 @@ services:
       retries: 3
       start_period: 5s
 
+  # Drains ProcessingQueue: text extraction, covers, AI identify, embeddings.
+  # Without this service every queued item stays "pending" forever — the Huey
+  # consumer below only schedules folder scans.
+  queue-worker:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.backend
+    volumes:
+      - grimoire_data:/app/data
+      - ${PDF_LIBRARY_PATH:-./pdfs}:/library:ro
+      - ${PDF_LIBRARY_PATH_2:-./pdfs}:/library2:ro
+      - ${PDF_LIBRARY_PATH_3:-./pdfs}:/library3:ro
+    environment:
+      - DATABASE_URL=sqlite+aiosqlite:///./data/grimoire.db
+      - REDIS_URL=redis://redis:6379/0
+      - LIBRARY_PATH=/library
+      - DATA_DIR=/app/data
+      - COVERS_DIR=/app/data/covers
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - CODEX_API_URL=${CODEX_API_URL:-https://codex-api.livetorole.com/api/v1}
+    command: ["python", "-m", "grimoire.worker.run"]
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    # Runs a polling loop, not the HTTP API — disable the image's healthcheck
+    healthcheck:
+      disable: true
+    restart: unless-stopped
+    depends_on:
+      - grimoire
+
+  # Schedules periodic folder scans (Huey). Does not process the queue.
   worker:
     build:
       context: .

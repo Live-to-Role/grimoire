@@ -54,9 +54,20 @@ async def _commit_with_retry(db: AsyncSession, max_retries: int = 5) -> None:
 # Task type handlers
 TASK_HANDLERS = {}
 
-# DB-backed "I'm working" pause flag. Stored in the settings table so the API
-# process and the dedicated worker process share it across the process boundary.
+# DB-backed pause flag ("Grimoire Paused"). Stored in the settings table so the
+# API process and the dedicated worker process share it across the process
+# boundary.
 PROCESSING_PAUSED_KEY = "processing_paused"
+
+# Last time the queue worker completed a loop iteration. Written even while
+# paused, so diagnostics can tell "paused on purpose" apart from "the worker
+# process is not running" — the two look identical from the queue counts alone.
+WORKER_HEARTBEAT_KEY = "queue_worker_heartbeat"
+
+# A heartbeat older than this means the worker process is gone or wedged. The
+# loop ticks at most every poll_interval (2s) plus one task, so this is loose
+# enough to survive a single long extraction.
+WORKER_HEARTBEAT_STALE_SECONDS = 120
 
 # Below this many non-whitespace chars, an OCR result counts as "no text".
 MIN_EXTRACTED_CHARS = 20
@@ -66,6 +77,16 @@ MIN_EXTRACTED_CHARS = 20
 # stall the whole sequential queue.
 MAX_EXTRACTION_FILE_MB = 250
 MAX_EXTRACTION_PAGES = 1000
+
+
+def parse_paused(value: str | None) -> bool:
+    """Decode a stored pause flag. Anything unreadable counts as paused."""
+    if value is None:
+        return True
+    try:
+        return bool(json.loads(value))
+    except (json.JSONDecodeError, TypeError):
+        return True
 
 
 async def is_processing_paused(session_maker=None) -> bool:
@@ -83,16 +104,11 @@ async def is_processing_paused(session_maker=None) -> bool:
         )
         setting = result.scalar_one_or_none()
 
-    if setting is None:
-        return True
-    try:
-        return bool(json.loads(setting.value))
-    except (json.JSONDecodeError, TypeError):
-        return True
+    return parse_paused(setting.value if setting else None)
 
 
 async def set_processing_paused(paused: bool, session_maker=None) -> None:
-    """Persist the "I'm working" pause flag."""
+    """Persist the pause flag behind "Grimoire Paused" / "Grimoire Working"."""
     from grimoire.models import Setting
 
     maker = session_maker or async_session_maker
@@ -107,6 +123,53 @@ async def set_processing_paused(paused: bool, session_maker=None) -> None:
         else:
             setting.value = value
         await session.commit()
+
+
+async def touch_worker_heartbeat(session_maker=None) -> None:
+    """Record that the queue worker is alive right now."""
+    from grimoire.models import Setting
+
+    maker = session_maker or async_session_maker
+    value = datetime.now(UTC).isoformat()
+    try:
+        async with maker() as session:
+            result = await session.execute(
+                select(Setting).where(Setting.key == WORKER_HEARTBEAT_KEY)
+            )
+            setting = result.scalar_one_or_none()
+            if setting is None:
+                session.add(Setting(key=WORKER_HEARTBEAT_KEY, value=value))
+            else:
+                setting.value = value
+            await session.commit()
+    except Exception as e:
+        # A heartbeat is diagnostics, never a reason to stop draining the queue.
+        logger.debug(f"Could not write worker heartbeat: {e}")
+
+
+def parse_heartbeat(value: str | None) -> datetime | None:
+    """Decode a stored heartbeat. Anything unreadable counts as no heartbeat."""
+    if value is None:
+        return None
+    try:
+        stamp = datetime.fromisoformat(value)
+    except (TypeError, ValueError):
+        return None
+    return stamp if stamp.tzinfo else stamp.replace(tzinfo=UTC)
+
+
+async def get_worker_heartbeat(session_maker=None) -> datetime | None:
+    """Return the queue worker's last heartbeat, or None if it never ran."""
+    from grimoire.models import Setting
+
+    maker = session_maker or async_session_maker
+    async with maker() as session:
+        result = await session.execute(
+            select(Setting).where(Setting.key == WORKER_HEARTBEAT_KEY)
+        )
+        setting = result.scalar_one_or_none()
+
+    return parse_heartbeat(setting.value if setting else None)
 
 
 def register_handler(task_type: str):
@@ -772,7 +835,7 @@ async def handle_monster_extract_task(
     # calls (tens of minutes); if the delete+commit happened up front (as it
     # did before this fix) the write transaction would sit open for that
     # entire duration, and every other write in the app (confirming an
-    # entry, toggling "I'm working", queueing anything) would hit SQLite's
+    # entry, toggling pause/resume, queueing anything) would hit SQLite's
     # 30s busy_timeout and fail. Keeping the loop DB-free also means a
     # worker restart mid-run no longer discards every LLM call already paid
     # for — nothing is written until the short transaction below.
@@ -1172,11 +1235,16 @@ async def run_queue_worker(
             logger.info("Queue worker stopping")
             break
 
-        # Wait while paused ("I'm working" mode). Re-read the DB flag each cycle
+        await touch_worker_heartbeat()
+
+        # Wait while paused ("Grimoire Paused"). Re-read the DB flag each cycle
         # so the API's pause/resume takes effect across the process boundary.
         while await is_processing_paused():
             if stop_event and stop_event.is_set():
                 break
+            # Keep beating while paused: a paused worker is still a live one,
+            # and diagnostics needs to tell those two states apart.
+            await touch_worker_heartbeat()
             await asyncio.sleep(1.0)
 
         if stop_event and stop_event.is_set():

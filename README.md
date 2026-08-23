@@ -102,10 +102,13 @@ Grimoire uses Ollama for local AI processing (metadata identification, embedding
    > **Note**: `--project-directory .` is required. Without it, Compose resolves
    > the build context relative to `docker/` and the build fails.
 
-   This starts four services:
+   This starts five services:
    - **frontend** - The web UI, served by nginx (port 5173)
    - **grimoire** - The API server (port 8000)
-   - **worker** - Background task processor (Huey with 2 threads)
+   - **queue-worker** - Processes queued PDFs: text extraction, covers, AI
+     identification, embeddings. If this one is not running, everything stays
+     at "pending" forever
+   - **worker** - Schedules periodic folder scans (Huey with 2 threads)
    - **redis** - Message queue and cache (port 6379)
 
 4. Access the app:
@@ -221,27 +224,94 @@ POPPLER_PATH=C:\poppler\Library\bin
 
 3. Start the application using the provided scripts:
    ```bash
-   # Windows
+   # Windows (interactive — keeps a window open, stops everything on keypress)
    start.bat
+
+   # Windows (detached — starts and returns; use this over a remote shell)
+   start-headless.bat
 
    # macOS / Linux
    ./start.sh
    ```
 
-   Or start services manually:
-   ```bash
-   # Terminal 1 - Backend
-   cd backend
-   uvicorn grimoire.main:app --host 0.0.0.0 --port 8000
+   `start.bat` ends in a `pause`, and stops every service when that keypress
+   arrives. Run it where stdin is not a console and `pause` reads EOF, returns
+   instantly, and tears down everything it just launched. Use
+   `start-headless.bat` whenever you are not sitting at the machine — over SSH,
+   from a remote shell, or from a scheduled task. It launches the services
+   detached, waits for the API to answer, and exits.
 
-   # Terminal 2 - Frontend
-   cd frontend
-   npm run dev
+4. Stop the application:
+   ```bash
+   # Windows
+   stop.bat
+
+   # macOS / Linux
+   ./stop.sh
    ```
 
-4. Access the app at http://localhost:5173
+   `stop.bat` matches on command lines rather than window titles, so it works no
+   matter how the services were started.
+
+5. Access the app at http://localhost:5173
+
+**Four processes make up a native install.** The start scripts launch all four;
+if you start things by hand, start all four or Grimoire will look healthy while
+nothing is ever processed:
+
+| Process | Command (run from `backend/`) | Without it |
+|---------|-------------------------------|------------|
+| API | `uvicorn grimoire.main:app --host 0.0.0.0 --port 8000` | No app at all |
+| **Queue worker** | `python -m grimoire.worker.run` | **Everything sits at "pending" forever** |
+| Scan worker | `python -m huey.bin.huey_consumer grimoire.worker.tasks.huey -w 2 -k thread` | Periodic folder scans never run |
+| Frontend | `npm run dev` (from `frontend/`) | No web UI |
 
 > **Note**: When running natively, Ollama URL defaults to `http://localhost:11434` (no `host.docker.internal` needed). Redis is optional — the queue falls back to SQLite-based processing.
+
+## Troubleshooting
+
+### Generate a diagnostic report
+
+**Settings → Diagnostics → Generate Diagnostic Report.**
+
+The report names the problem in plain language, and **Copy** / **Download** give
+you a Markdown blob to paste into a bug report. It covers:
+
+- whether the queue worker process is actually alive, and whether it is paused
+- queue counts, the age of the oldest pending item, and recent error messages
+- each library folder as the *server* sees it — exists, readable, product count
+- whether Ollama is reachable, and which models it has
+- OS, CPU count, RAM, free disk, and whether Grimoire is running in Docker
+
+API keys and secrets are never included — only whether each one is set.
+
+### Nothing is processing / everything is stuck at "pending"
+
+Two very different causes look identical from the queue count, and the
+diagnostic report tells them apart:
+
+1. **Grimoire is paused.** The status widget in the bottom-right reads
+   **"Grimoire Paused"**. Grimoire starts paused on every launch so it never
+   competes with you for CPU. Flip the toggle to **"Grimoire Working"**.
+2. **The queue worker is not running.** The report says
+   *"the background worker is not running (no recent heartbeat)"*.
+   - Docker: `docker compose -f docker/docker-compose.yml --project-directory . ps`
+     — the `queue-worker` service must be up.
+   - Native: the "Grimoire Queue Worker" process (`python -m grimoire.worker.run`)
+     must be running. Re-run `start.bat` / `start-headless.bat` / `./start.sh`.
+
+If the GPU sits near idle while items are pending, nothing is being sent to
+Ollama at all — that is this problem, not a model or GPU problem.
+
+### "Select Folder" says it could not open the folder
+
+The modal now shows the server's own message. The common ones:
+
+| Message | Cause |
+|---------|-------|
+| `... does not exist on the server` | In Docker, you entered a host path. Use the container path (`/library`, `/library2`, `/library3`) — the **Library** shortcuts at the top of the modal jump straight there |
+| `Permission denied reading ...` | The host folder mounted there is not readable by the container |
+| `No response from the Grimoire API` | The API is still starting. It takes up to a minute on a cold start |
 
 ## Development
 
@@ -252,8 +322,8 @@ docker compose -f docker/docker-compose.dev.yml --project-directory . up
 ```
 
 This mounts the backend source for hot-reloading. The dev stack runs the API,
-worker and Redis only — no frontend container — so run the Vite dev server on the
-host alongside it:
+both workers and Redis only — no frontend container — so run the Vite dev server
+on the host alongside it:
 ```bash
 cd frontend
 npm install

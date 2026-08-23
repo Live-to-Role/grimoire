@@ -41,6 +41,39 @@ services:
     depends_on:
       - redis
 
+  # Drains ProcessingQueue: text extraction, covers, AI identify, embeddings.
+  # Without this service every queued item stays "pending" forever — the Huey
+  # consumer below only schedules folder scans.
+  queue-worker:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.backend
+    volumes:
+      - ./data:/app/data
+      - ${PDF_LIBRARY_PATH:-./pdfs}:/library:ro
+      - ${PDF_LIBRARY_PATH_2:-./pdfs}:/library2:ro
+      - ${PDF_LIBRARY_PATH_3:-./pdfs}:/library3:ro
+      - ./backend/grimoire:/app/grimoire:ro
+    env_file:
+      - .env
+    environment:
+      - DATABASE_URL=sqlite+aiosqlite:///./data/grimoire.db
+      - REDIS_URL=redis://redis:6379/0
+      - LIBRARY_PATH=/library
+      - DATA_DIR=/app/data
+      - COVERS_DIR=/app/data/covers
+      - LOG_LEVEL=DEBUG
+      - OLLAMA_BASE_URL=http://host.docker.internal:11434
+    command: ["python", "-m", "grimoire.worker.run"]
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      disable: true
+    restart: "no"
+    depends_on:
+      - grimoire
+
+  # Schedules periodic folder scans (Huey). Does not process the queue.
   worker:
     build:
       context: .
