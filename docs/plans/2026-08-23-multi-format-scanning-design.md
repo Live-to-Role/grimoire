@@ -2,7 +2,9 @@
 
 Status: draft for review
 Date: 2026-08-23
-Depends on: `2026-08-23-codex-contract-realignment.md` (phases 0–3)
+Depends on: `2026-08-23-codex-contract-realignment.md` (phases 0–2 land
+first; its Phase 3 eligibility predicate is *completed* here, in Phase 2 —
+see [Codex eligibility](#codex-eligibility))
 
 ## What
 
@@ -227,14 +229,20 @@ A single predicate, so the rule lives in one place:
 ```python
 # grimoire/services/sync_service.py
 def is_codex_eligible(product: Product) -> tuple[bool, str]:
-    if product.file_type != "pdf":
+    if product.file_type != "pdf":                    # ← added in Phase 2 here
         return False, "unsupported_file_type"
-    if product.is_image_content:
+    if product.is_image_content:                      # ← realignment Phase 3
         return False, "image_content"
     if product.product_type in IMAGE_PRODUCT_TYPES:   # "Art/Maps", "Map", ...
         return False, "image_content"
     return True, "eligible"
 ```
+
+⚠️ **The two clauses cannot land together.** `file_type` does not exist on
+`Product` until Phase 2 of *this* plan, so the realignment plan — which lands
+first — ships the predicate with its image/map clauses only, and Phase 2 here
+adds the `file_type` clause and its test in the same commit that adds the
+column. Anything else is a circular dependency between the two plans.
 
 Called from two places, because there are two ways into the queue:
 
@@ -268,7 +276,8 @@ This predates the multi-format work and is a bug on its own merits. It is
 **owned by `2026-08-23-codex-contract-realignment.md` Phase 3**, which lands
 before this feature — that review found the Grimoire↔Codex read path is
 currently broken as well, and the eligibility predicate belongs with the rest
-of the Codex work rather than being duplicated here.
+of the Codex work rather than being duplicated here. This plan adds one clause
+to it (`file_type`) in Phase 2 and otherwise leaves it alone.
 
 ## Discovery
 
@@ -320,7 +329,9 @@ pass unchanged (against the six known pre-existing failures on main).
 
 **Phase 2 — `file_type` column, migration, generalised discovery, settings
 toggle.** Still PDF-only in effect: default `["pdf"]` means no user sees a
-change. Per-format scan counts in the summary.
+change. Per-format scan counts in the summary. **Also completes
+`is_codex_eligible`**: the `file_type != "pdf"` clause goes in with the column,
+since the realignment plan's Phase 3 could not carry it.
 
 **Phase 3 — EPUB.** Exercises the full happy path: real metadata, embedded
 cover, synthetic pagination, search, embeddings, bestiary.
@@ -353,11 +364,12 @@ Following the TDD workflow in AGENTS.md, and mirroring `tests/pdf_fixtures.py`:
 - `tests/services/test_scanner_multiformat.py` — disabled formats are not
   discovered; enabled ones are; single-walk behaviour.
 - Regression: an EPUB never enters the `ocr_text` or `extract_images` branch.
-- `tests/services/test_codex_eligibility.py` — `is_codex_eligible` rejects
-  non-PDF and image/map products and accepts ordinary PDFs; both call sites
-  enforce it; `skip_no_change_check=True` still cannot get an ineligible
-  product queued; the manual API route returns 422; inbound
-  `sync_product_from_codex` remains unaffected for non-PDF.
+- `tests/services/test_codex_eligibility.py` — most of this file belongs to
+  the realignment plan (image/map rejection, both call sites,
+  `skip_no_change_check=True` still cannot get an ineligible product queued,
+  the manual API route's 422). Phase 2 here adds the non-PDF cases: a non-PDF
+  product is rejected, and inbound `sync_product_from_codex` remains
+  unaffected for non-PDF.
 - Regression: a fresh install and an upgraded install both default to
   `["pdf"]`, and registering a new handler does not change that.
 
@@ -386,4 +398,5 @@ Run via the Docker image (torch lives in requirements).
 2. Should a DOCX/ODT placeholder cover be regenerated if the user later edits
    the document title, or is it fire-and-forget at scan time?
 3. *(resolved — the eligibility guard is Phase 3 of the Codex contract
-   realignment plan, landing before this feature.)*
+   realignment plan, landing before this feature, with its `file_type` clause
+   added by Phase 2 here.)*
