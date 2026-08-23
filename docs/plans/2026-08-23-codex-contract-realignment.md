@@ -116,9 +116,13 @@ a scan did not reach far enough is how 919 duplicate products appeared.
 
 `IdentifyView` carries `throttle_classes = [IdentifyRateThrottle]`.
 `sync_all_products` walks the library calling `identify_by_hash` per product
-with no backoff and no 429 handling. Whatever the limit is, a first sync over
-the real library is the request pattern most likely to hit it — and this is
-exactly the case that cannot be exercised on the dev laptop.
+with no backoff and no 429 handling.
+
+The limit is **60 requests per minute**, and `IdentifyRateThrottle` subclasses
+`AnonRateThrottle` (`codex/backend/apps/core/throttling.py:34`) — so the bucket
+is keyed by **IP, not by token**, and every client behind one address shares it.
+A first sync over the real library is the request pattern most likely to hit it,
+and this is exactly the case that cannot be exercised on the dev laptop.
 
 ## Finding 6 — Grimoire never learns a contribution's fate
 
@@ -150,6 +154,15 @@ submissions should be processed like anyone else's. A Grimoire sync will
 queue regardless of privilege. That is a Codex-side change, planned in
 `codex/docs/GRIMOIRE_MODERATION_PARITY_PLAN.md`.
 
+⚠️ **That gate keys on the `source` label Grimoire itself sends.**
+`_effective_source` maps a token client to `API` unless it declares
+`grimoire`, and the parity plan leaves `API` on direct apply for the bulk
+importer's sake. So after parity, `API` is the *more* privileged label, and
+dropping one line from the payload (`services/codex.py:347`) would silently
+restore the bypass for a privileged account. Grimoire must keep sending
+`"source": "grimoire"` on every request, and a test should assert it —
+the correctness of the Codex-side rule now depends on this client's payload.
+
 Two consequences land squarely on this plan:
 
 - **Phase 2's polling becomes mandatory, not optional.** Once every sync
@@ -161,9 +174,10 @@ Two consequences land squarely on this plan:
   rare; with several people owning the same books it is routine — and
   Grimoire currently records that 400 as a permanent failure (Finding 2).
 
-**Grimoire Phases 2 and 3 should therefore land before the Codex parity
-change**, or ordinary syncs will start failing visibly and products will
-become permanently un-contributable.
+**Grimoire Phase 2 should therefore land before the Codex parity change**,
+or ordinary syncs will start failing visibly and products will become
+permanently un-contributable. (Phase 3 is unrelated to parity and cannot
+land that early — see the phase note below.)
 
 **Grimoire never closes the loop.** `ContributionStatus.REJECTED` exists in
 `models/contribution.py:16` and **nothing ever sets it**. Nothing re-reads a
@@ -213,7 +227,9 @@ in the catalogue:
 - `GET /identify?hash=…` and record the raw JSON.
 - `GET /identify?title=…` likewise.
 - Run one `sync_product_from_codex` and capture the traceback (or absence).
-- Note the `IdentifyRateThrottle` limit from a response header or Codex settings.
+
+The throttle needs no session to establish: it is `60/minute` per IP, read
+straight from `codex/backend/apps/core/throttling.py:34`. See Finding 5.
 
 Save the payloads into `backend/tests/fixtures/codex/` as the fixtures every
 later phase tests against. This is the step that turns Finding 1 from
@@ -239,18 +255,56 @@ machine.
   discarding them.
 - Surface `warnings` on the contribution record and in the UI.
 - Handle 429 with backoff in `submit_all_pending` and `sync_all_products`.
+  The bucket is per IP at 60/minute (Finding 5), so the backoff is shared
+  across the whole library walk rather than per product.
+- **Store the handle polling needs.** `ContributionQueue` has
+  `codex_product_id` — which nothing ever writes — and **no column at all for
+  Codex's contribution id**. `submit_contribution`
+  (`services/contribution_service.py:150`) logs `result.contribution_id` and
+  discards it. Polling is impossible until a migration adds
+  `codex_contribution_id` (and the same write populates `codex_product_id`
+  from an `applied` response and from `existing_product_id` on `no_change`).
+  This is a schema change and should be the first commit of the phase.
 - **Poll submitted contributions** (`GET /contributions/?…`) to resolve
-  `SUBMITTED` into `APPROVED` / `REJECTED`, read `review_notes` for the
-  held-back warnings the queued path never returns inline, and unblock
-  re-contribution once a contribution is no longer outstanding. Fixes the
-  permanent-block bug in Finding 6.
+  `SUBMITTED`, read `review_notes` for the held-back warnings the queued path
+  never returns inline, and unblock re-contribution once a contribution is no
+  longer outstanding. Fixes the permanent-block bug in Finding 6.
+  - **Status vocabulary.** Codex's states are `pending` / `approved` /
+    `rejected` (`catalog/models/catalog.py:665`); Grimoire's enum has
+    `ACCEPTED`, not `APPROVED` (`models/contribution.py:16`). Map Codex
+    `approved` → local `ACCEPTED`; do not add a fourth spelling.
+  - **Unblocking must not become a resubmit loop.** `queue_product_for_contribution`
+    blocks only on `PENDING` / `SUBMITTED` (`services/sync_service.py:509`), so
+    the moment polling writes `REJECTED` the next sync re-queues the identical
+    payload, Codex re-rejects it, and this repeats every sync forever — and
+    each round leaves another rejected row in the moderation queue. A rejected
+    contribution must therefore stay un-resent **until the local data changes**:
+    record the payload (or its hash) alongside the rejection and refuse to
+    re-queue an unchanged one. Codex's own `duplicate_pending` cannot help
+    here, because a rejected contribution is no longer `PENDING`.
 
 ### Phase 3 — Codex eligibility guard **[dev]**
 
-The `is_codex_eligible` predicate from the multi-format plan: PDF only, no
-image/map collections, outbound only. Independently useful — it closes the
-existing gap where a stock-art PDF with a title is contributable today —
-and the multi-format work needs it to exist.
+The `is_codex_eligible` predicate from the multi-format plan, wired into both
+call sites (`should_contribute` and `queue_contribution`) and returning
+`(bool, reason)`. Outbound only; reading from Codex stays enabled for
+everything.
+
+⚠️ **Ships in two halves, and this phase is only the first.** The predicate as
+drafted in the multi-format plan opens with `product.file_type != "pdf"`, and
+`Product` **has no `file_type` column** — `models/product.py:100` has
+`is_image_content` and nothing else of the sort. That column arrives in
+multi-format Phase 2, so this phase cannot contain that clause without
+depending on the work it is supposed to precede.
+
+- **Here (before multi-format):** the image/map half —
+  `is_image_content` and `product_type in IMAGE_PRODUCT_TYPES`. That is the
+  pre-existing bug on its own merits: a stock-art PDF with a title is
+  contributable today, which the classifier's own `Art/Maps` verdict says it
+  should not be. `IMAGE_PRODUCT_TYPES` does not exist yet either and is
+  defined here.
+- **In multi-format Phase 2, with the column:** add the `file_type != "pdf"`
+  clause and its test, in the same commit that adds `file_type`.
 
 ### Phase 4 — Close the drift **[dev]**, verify **[home]**
 
@@ -278,12 +332,15 @@ lands, there is one path and the admin account exercises it like any other.
 
 ## Sequencing against multi-format scanning
 
-Phase 3 here **is** the Codex-eligibility step in the multi-format plan; do it
-once, in this plan, and let the other reference it. Phases 0–2 should land
-before multi-format Phase 1 — not because they conflict, but because
-debugging a broken read path is much harder once a second variable (new file
-types) is in the library. Phase 4 can run in parallel with multi-format work;
-Phase 5 wants to be a single deliberate session at the home machine.
+Phase 3 here **owns** the Codex-eligibility predicate; the multi-format plan
+references it rather than restating it. The dependency is not one-way: Phase 3
+ships the image/map half, and multi-format Phase 2 completes it with the
+`file_type` clause once that column exists (see the phase note above). Phases
+0–2 should land before multi-format Phase 1 — not because they conflict, but
+because debugging a broken read path is much harder once a second variable
+(new file types) is in the library. Phase 4 can run in parallel with
+multi-format work; Phase 5 wants to be a single deliberate session at the home
+machine.
 
 ## Open questions
 
