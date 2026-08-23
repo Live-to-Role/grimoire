@@ -91,9 +91,9 @@ Call sites that change from direct-call to `get_handler(path).…`:
 | `services/processor.py:44` `extract_cover_image` | `fitz.open` |
 | `services/processor.py:82` `extract_pdf_metadata` | `fitz.open` |
 | `services/processor.py:163` `process_text_extraction_sync` | `extract_text_to_markdown` |
-| `services/metadata_extractor.py:147,211` | `fitz.open` |
-| `queue_processor.py:295` `_diagnose_pdf_unextractable` | `fitz.open` |
-| `queue_processor.py:312` `handle_text_task` (OCR + image-content routing) | PDF-only branches, guard with `handler.needs_ocr` |
+| `services/metadata_extractor.py:159,222` | `fitz.open` |
+| `services/queue_processor.py:295` `_diagnose_pdf_unextractable` | `fitz.open` |
+| `services/queue_processor.py:312` `handle_text_task` (OCR + image-content routing) | PDF-only branches, guard with `handler.needs_ocr` |
 
 ---
 
@@ -205,13 +205,36 @@ placeholder cover. Alongside the toggles, add to `DEFAULT_EXCLUSION_RULES`
 {"rule_type": "filename", "pattern": "credits*",   ...},
 ```
 
-New rules must be added idempotently to **existing** installs, matching how
-`LEGACY_SIZE_MIN_PATTERN` is migrated in `exclusion_service.py:135` — a fresh
+New rules must be added idempotently to **existing** installs — a fresh
 `config/install`-style default is not enough when the table is already
 populated.
 
-The 1KB `size_min` floor stays as-is; it was deliberately set for one-page
-PDFs and is not the right lever here.
+⚠️ **There is no precedent to copy here.** An earlier draft said to match how
+`LEGACY_SIZE_MIN_PATTERN` is migrated in `exclusion_service.py:135`. No such
+symbol exists anywhere in the repo, and the seeding function —
+`seed_default_rules`, at `exclusion_service.py:115`, not `:135` — opens with a
+blanket `if existing: return 0` over every `is_default` rule. So it has never
+added a rule to a populated table and there is no per-rule idempotency to
+follow. This is a migration to write from scratch, in `grimoire/migrations/`
+alongside the `add_*_columns.py` files: insert each new default only when no
+rule with that `rule_type` + `pattern` already exists, and leave a user's
+disabled or edited rules alone.
+
+⚠️ **The `size_min` floor is a live decision, not settled state.** An earlier
+draft said "the 1KB floor stays as-is". The shipped default is **10240**, not
+1024 — `models/exclusion.py:69`, described as "Files under 10KB (likely
+corrupt)" — and the local database still holds that value. The lowering to 1KB
+is deliberate and correct (a one-page dungeon is a legitimate product and a
+10KB floor silently swallows it), but **it has not shipped**, so it belongs in
+this plan's Phase 2 next to the other exclusion changes rather than being
+described as existing behaviour.
+
+That also sharpens the case for the filename rules above rather than weakening
+it. At 10KB the floor was incidentally catching most `readme.txt`; at 1KB it
+catches almost none of them, and every junk text file in a bundle is a Product
+with a placeholder cover. **Lowering the floor and enabling a flat-text format
+must not land in the same release without the filename rules in between** —
+that combination is the one that fills a library with `license.txt`.
 
 ## Codex eligibility
 
@@ -258,7 +281,17 @@ Called from two places, because there are two ways into the queue:
 The second is a genuine backstop rather than belt-and-braces:
 `queue_product_for_contribution` takes `skip_no_change_check=True`
 (`sync_service.py:471`), which skips `should_contribute` altogether. A guard
-placed only there is bypassable by an existing parameter.
+placed only there is bypassable by an existing parameter. It is also a real
+choke point — `ContributionQueue` is constructed in exactly one place
+(`contribution_service.py:109`), reached from `sync_service.py:535`, `:600`
+and `api/routes/contributions.py:95`.
+
+One wrinkle for whoever writes it: `queue_contribution` takes `product_id: int`,
+not a `Product`, so the predicate as drafted above cannot be called there
+without loading the row first. Widen it to accept an id, or load once at the
+top of the function — but do not move the check out to the three callers, since
+being the single place they all pass through is the whole reason it is the
+backstop.
 
 `api/routes/contributions.py` returns a 422 naming the reason rather than
 silently succeeding, and the frontend hides the contribute action on
@@ -286,7 +319,7 @@ Four sites glob for PDFs and all must consult the registry:
 - `services/scanner.py:73` — `rglob("*.pdf")`
 - `services/batch_scanner.py:71` — `discover_files`
 - `services/watcher.py:62` — suffix check on filesystem events
-- `services/exclusion_service.py:268` — rule-preview walk
+- `services/exclusion_service.py:229` — rule-preview walk
 
 Replace with a single walk matching an extension set. **Performance
 constraint:** the current single-pattern `rglob` was chosen for large network
@@ -331,7 +364,10 @@ pass unchanged (against the six known pre-existing failures on main).
 toggle.** Still PDF-only in effect: default `["pdf"]` means no user sees a
 change. Per-format scan counts in the summary. **Also completes
 `is_codex_eligible`**: the `file_type != "pdf"` clause goes in with the column,
-since the realignment plan's Phase 3 could not carry it.
+since the realignment plan's Phase 3 could not carry it. **Also the exclusion
+work**: the five filename rules, the idempotent migration that puts them on
+existing installs, and the `size_min` lowering from 10240 to 1024 — all three
+together, for the reason given under [Opt-in per format](#opt-in-per-format).
 
 **Phase 3 — EPUB.** Exercises the full happy path: real metadata, embedded
 cover, synthetic pagination, search, embeddings, bestiary.
@@ -384,6 +420,9 @@ Run via the Docker image (torch lives in requirements).
 - [ ] With default settings, an existing user's rescan finds exactly what it
       found before
 - [ ] Scan summary reports counts per format
+- [ ] An upgraded install gets the new filename exclusion rules and the 1KB
+      `size_min` without losing rules the user disabled or edited, and running
+      the migration twice changes nothing the second time
 - [ ] No non-PDF document is ever routed to OCR or image-content classification
 - [ ] No non-PDF product, and no image/map product, can reach the Codex
       contribution queue by any route — including `skip_no_change_check=True`
