@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { Stethoscope, Copy, Check, Download, AlertCircle, AlertTriangle, Info, Loader2 } from 'lucide-react';
 import apiClient from '../api/client';
+import { describeApiError, isBackendStarting } from '../api/errors';
 
 interface Problem {
   severity: 'error' | 'warning' | 'info';
@@ -190,6 +191,9 @@ export function DiagnosticReport() {
       setReport(data);
       setCopied(false);
     },
+    // This button is what a stuck user reaches for while the API is still
+    // coming up, so ride out a slow start rather than reporting a failure.
+    retry: (failureCount, err) => failureCount < 2 && isBackendStarting(err),
   });
 
   const copyReport = async () => {
@@ -279,7 +283,7 @@ export function DiagnosticReport() {
 
       {generate.isError && (
         <p className="mt-4 text-base" style={{ color: '#dc2626' }}>
-          Could not reach the Grimoire API: {generate.error.message}
+          {describeApiError(generate.error, 'Could not reach the Grimoire API.')}
         </p>
       )}
 
