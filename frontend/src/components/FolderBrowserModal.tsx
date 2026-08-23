@@ -1,8 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { FolderOpen, ChevronUp, X } from 'lucide-react';
-import { AxiosError } from 'axios';
 import apiClient from '../api/client';
+import { describeApiError, isBackendStarting } from '../api/errors';
 
 interface DirectoryEntry {
   name: string;
@@ -20,30 +20,6 @@ interface BrowseResponse {
   directories: DirectoryEntry[];
   locations?: QuickLocation[];
   skipped?: number;
-}
-
-/**
- * Turn a failed browse into something the user (or a bug report) can act on.
- * "Failed to load directory" alone never distinguished a missing path from an
- * unreadable one from a backend that had not finished starting.
- */
-function describeBrowseError(error: unknown): string {
-  const axiosError = error as AxiosError<{ detail?: string }>;
-
-  if (axiosError?.response) {
-    const detail = axiosError.response.data?.detail;
-    if (detail) return detail;
-    return `The server returned ${axiosError.response.status} ${axiosError.response.statusText}.`;
-  }
-
-  if (axiosError?.request) {
-    return (
-      'No response from the Grimoire API. It may still be starting up — ' +
-      'wait a few seconds and try again.'
-    );
-  }
-
-  return axiosError?.message || 'Could not load the directory.';
 }
 
 interface FolderBrowserModalProps {
@@ -82,9 +58,9 @@ export function FolderBrowserModal({ isOpen, onClose, onSelect }: FolderBrowserM
       return res.data;
     },
     enabled: isOpen,
-    // A missing or unreadable path is a settled answer; only retry transport
-    // failures, which is what a still-starting backend looks like.
-    retry: (failureCount, err) => failureCount < 2 && !(err as AxiosError).response,
+    // A missing or unreadable path is a settled answer and must not be retried.
+    // A still-starting backend is worth a couple of attempts.
+    retry: (failureCount, err) => failureCount < 2 && isBackendStarting(err),
   });
 
   if (!isOpen) return null;
@@ -143,7 +119,7 @@ export function FolderBrowserModal({ isOpen, onClose, onSelect }: FolderBrowserM
           {error && (
             <div className="px-4 py-8 text-center text-sm">
               <p className="font-medium text-red-600">Could not open this folder</p>
-              <p className="mt-1 break-words text-neutral-600">{describeBrowseError(error)}</p>
+              <p className="mt-1 break-words text-neutral-600">{describeApiError(error, 'Could not load the directory.')}</p>
               <button
                 onClick={() => void refetch()}
                 disabled={isFetching}
