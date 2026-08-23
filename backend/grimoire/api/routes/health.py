@@ -15,6 +15,7 @@ from grimoire import __version__
 from grimoire.api.deps import DbSession
 from grimoire.config import Settings, settings
 from grimoire.models import ProcessingQueue, Product, Setting, WatchedFolder
+from grimoire.utils.runtime import in_container
 
 router = APIRouter()
 
@@ -77,16 +78,6 @@ def _safe_config() -> dict:
     return safe
 
 
-def _in_container() -> bool:
-    """Best-effort detection of running inside Docker."""
-    if Path("/.dockerenv").exists():
-        return True
-    try:
-        return "docker" in Path("/proc/1/cgroup").read_text()
-    except OSError:
-        return False
-
-
 def _system_info() -> dict:
     """Host facts that shape processing speed — cores, RAM, disk, GPU hints."""
     info = {
@@ -94,7 +85,7 @@ def _system_info() -> dict:
         "platform": platform.platform(),
         "machine": platform.machine(),
         "cpu_count": os.cpu_count(),
-        "in_container": _in_container(),
+        "in_container": in_container(),
     }
 
     try:
