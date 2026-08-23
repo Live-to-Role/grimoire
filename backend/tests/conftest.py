@@ -22,8 +22,16 @@ def event_loop():
     loop.close()
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture
 async def engine():
+    """A fresh in-memory database per test.
+
+    This was session-scoped, which made every test share one database. The `db`
+    fixture below rolls back, but a test that commits — directly or through a
+    route handler — leaves its rows behind for good, and later tests counting
+    rows then failed depending on the order they ran in. Per-test engines make
+    that leak structurally impossible.
+    """
     engine = create_async_engine("sqlite+aiosqlite:///:memory:", echo=False)
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)

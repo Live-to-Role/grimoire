@@ -1,7 +1,29 @@
 """Tests for batch queue insertion during scanning."""
 
+from types import SimpleNamespace
+
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
+
+
+def _eligible_product(product_id: int) -> SimpleNamespace:
+    """A product that should be queued for both a cover and a text extraction.
+
+    Deliberately not a MagicMock: every flag the scanner reads is an
+    auto-created truthy attribute on a MagicMock, so as the scanner grew
+    `is_superseded` / `is_image_content` / `text_unextractable` filters, the
+    mocks silently became ineligible and the test asserted on an empty result.
+    """
+    return SimpleNamespace(
+        id=product_id,
+        is_duplicate=False,
+        is_superseded=False,
+        cover_extracted=False,
+        text_extracted=False,
+        ai_identified=False,
+        is_image_content=False,
+        text_unextractable=False,
+    )
 
 
 @pytest.mark.asyncio
@@ -9,15 +31,7 @@ async def test_queue_products_uses_batch_insert():
     """Queue insertion should batch products instead of one-by-one INSERT+SELECT."""
     from grimoire.services.scanner import queue_products_for_processing
 
-    products = []
-    for i in range(100):
-        p = MagicMock()
-        p.id = i + 1
-        p.is_duplicate = False
-        p.cover_extracted = False
-        p.text_extracted = False
-        p.ai_identified = False
-        products.append(p)
+    products = [_eligible_product(i + 1) for i in range(100)]
 
     db = AsyncMock()
 
