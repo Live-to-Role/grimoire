@@ -11,6 +11,12 @@ from sqlalchemy import func, select
 
 from grimoire.api.deps import DbSession
 from grimoire.config import settings
+from grimoire.utils.runtime import (
+    CONTAINER_LIBRARY_PATHS,
+    in_container,
+    looks_like_container_library_path,
+    looks_like_windows_path,
+)
 from grimoire.models import Product, WatchedFolder
 from grimoire.schemas.folder import (
     BrowseResponse,
@@ -204,14 +210,53 @@ async def list_folders(db: DbSession) -> list[WatchedFolderResponse]:
     return responses
 
 
+def _explain_missing_folder(path: str) -> str:
+    """Say why the path is not there, in terms of the deployment in use.
+
+    The commonest mistake is entering a path that belongs to the *other*
+    deployment: `/library` exists only inside the Docker stack, and a Windows
+    host path never exists inside it. Both come back as "does not exist", but
+    the fix is the opposite in each case, so name it.
+    """
+    mounts = ", ".join(CONTAINER_LIBRARY_PATHS)
+
+    if not in_container():
+        if looks_like_container_library_path(path):
+            return (
+                f"{path} only exists inside the Docker stack, and Grimoire is running "
+                "natively here. Enter the actual folder path on this machine instead — "
+                r"for example C:\Users\you\Documents\RPG. PDF_LIBRARY_PATH in .env "
+                "is read only by Docker Compose and has no effect on a native install."
+            )
+        return f"{path} does not exist on this machine"
+
+    if looks_like_windows_path(path) or path.startswith(("/Users/", "/home/")):
+        return (
+            f"{path} is a path on your computer, and Grimoire is running inside Docker "
+            f"where that path does not exist. Use the container path instead ({mounts}), "
+            "and make sure PDF_LIBRARY_PATH in .env points at this folder."
+        )
+
+    if looks_like_container_library_path(path):
+        return (
+            f"{path} is not mounted in the container. Set PDF_LIBRARY_PATH in .env to "
+            "the folder holding your PDFs, then recreate the stack with `docker compose "
+            "-f docker/docker-compose.yml --project-directory . down` followed by `up -d` "
+            "— bind mounts are fixed when the containers are created, so editing .env "
+            "afterwards has no effect until they are recreated."
+        )
+
+    return f"{path} does not exist inside the container"
+
+
 @router.post("", response_model=WatchedFolderResponse, status_code=201)
 async def create_folder(db: DbSession, data: WatchedFolderCreate) -> WatchedFolderResponse:
     """Add a new watched folder."""
     folder_path = Path(data.path)
     if not folder_path.exists():
-        raise HTTPException(status_code=400, detail="Folder path does not exist")
+        raise HTTPException(status_code=400, detail=_explain_missing_folder(data.path))
     if not folder_path.is_dir():
-        raise HTTPException(status_code=400, detail="Path is not a directory")
+        raise HTTPException(status_code=400, detail=f"{data.path} is not a directory")
 
     existing = await db.execute(select(WatchedFolder).where(WatchedFolder.path == data.path))
     if existing.scalar_one_or_none():

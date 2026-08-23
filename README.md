@@ -22,6 +22,13 @@ A self-hosted digital library manager for tabletop RPG content with AI-powered o
 
 ## Quick Start
 
+**This section is the Docker install.** If you would rather run Grimoire
+directly on your machine — which is the usual choice on Windows — skip to
+[Running Natively](#running-natively-without-docker) instead. The two installs
+configure libraries differently, and mixing their steps is the most common way
+to get stuck: `PDF_LIBRARY_PATH` and the `/library` paths below are **Docker
+only** and do nothing in a native install.
+
 ### Prerequisites
 
 - Docker and Docker Compose
@@ -122,7 +129,17 @@ Grimoire uses Ollama for local AI processing (metadata identification, embedding
    - Go to **Settings** in the app
    - Under **Library Folders**, add the **container** paths — `/library`,
      `/library2`, `/library3` — not the host paths you put in `.env`
+
+     Grimoire runs inside the container, so `C:/Users/you/Documents/RPG` does
+     not exist as far as it is concerned. `PDF_LIBRARY_PATH` in `.env` is what
+     makes that folder appear at `/library` inside the container; the app only
+     ever sees the `/library` name.
    - In Grimoire, nav to **Manage**. Start **Scan** to discover your PDFs
+
+   > If adding `/library` is rejected with "not mounted in the container", the
+   > bind mount never happened — `PDF_LIBRARY_PATH` was empty or was set after
+   > the containers were created. Fix `.env`, then `down` and `up -d` to
+   > recreate them; editing `.env` alone will not move an existing mount.
 
 ### Configuring AI Providers
 
@@ -255,6 +272,21 @@ POPPLER_PATH=C:\poppler\Library\bin
 
 5. Access the app at http://localhost:5173
 
+6. Configure your library:
+   - Go to **Settings** in the app
+   - Under **Library Folders**, add the **real path to your PDFs on this
+     machine** — for example `C:\Users\you\Documents\RPG` on Windows, or
+     `/home/you/rpg-library` on Linux. Use the **Select Folder** button to
+     browse to it rather than typing it
+   - Nav to **Manage** and start a **Scan** to discover your PDFs
+
+   > **`PDF_LIBRARY_PATH` in `.env` does nothing in a native install.** It is
+   > read only by Docker Compose, to decide what to bind-mount into the
+   > container. Likewise `/library`, `/library2` and `/library3` exist only
+   > inside the Docker stack — entering them here will be rejected, because on
+   > this machine there is no such folder. A native install has no indirection:
+   > Grimoire reads the folder you name, directly.
+
 **Four processes make up a native install.** The start scripts launch all four;
 if you start things by hand, start all four or Grimoire will look healthy while
 nothing is ever processed:
@@ -302,6 +334,20 @@ diagnostic report tells them apart:
 
 If the GPU sits near idle while items are pending, nothing is being sent to
 Ollama at all — that is this problem, not a model or GPU problem.
+
+### A library folder is rejected when I add it
+
+Grimoire tells you which deployment it thinks it is in, and the fix is opposite
+in each:
+
+| Message | Fix |
+|---------|-----|
+| `... only exists inside the Docker stack, and Grimoire is running natively here` | You are running natively. Enter the real path on your machine (`C:\Users\you\Documents\RPG`), not `/library`. `PDF_LIBRARY_PATH` in `.env` does nothing here |
+| `... is a path on your computer, and Grimoire is running inside Docker` | You are running Docker. Enter `/library` (or `/library2` / `/library3`) and point `PDF_LIBRARY_PATH` at the folder in `.env` |
+| `... is not mounted in the container` | Docker, but the bind mount never happened. Set `PDF_LIBRARY_PATH`, then `down` and `up -d` — mounts are fixed when containers are created |
+
+Not sure which one you are running? **Settings → Diagnostics → Generate
+Diagnostic Report** reports it as `in_container`.
 
 ### "Select Folder" says it could not open the folder
 
