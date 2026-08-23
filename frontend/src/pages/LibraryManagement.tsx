@@ -1108,7 +1108,7 @@ export function LibraryManagement() {
                             : newRule.rule_type === 'filename'
                             ? '*.tmp'
                             : newRule.rule_type.startsWith('size')
-                            ? '10240'
+                            ? '1024'
                             : ''
                         }
                         className="mt-1 w-full rounded-md border px-3 text-base"

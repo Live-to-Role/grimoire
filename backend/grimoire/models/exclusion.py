@@ -66,5 +66,8 @@ DEFAULT_EXCLUSION_RULES = [
     {"rule_type": "filename", "pattern": "Thumbs.db", "description": "Windows thumbnails", "priority": 90},
     
     # Size limits
-    {"rule_type": "size_min", "pattern": "10240", "description": "Files under 10KB (likely corrupt)", "priority": 80},
+    # 1KB, not 10KB: a one-page PDF — a character sheet, handout, map or
+    # one-page dungeon — is routinely 2-8KB, and those are ordinary library
+    # contents rather than corruption. Below 1KB a PDF cannot hold a page.
+    {"rule_type": "size_min", "pattern": "1024", "description": "Files under 1KB (empty or truncated)", "priority": 80},
 ]

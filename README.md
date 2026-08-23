@@ -335,6 +335,27 @@ diagnostic report tells them apart:
 If the GPU sits near idle while items are pending, nothing is being sent to
 Ollama at all — that is this problem, not a model or GPU problem.
 
+### A scan finds far fewer PDFs than are in the folder
+
+Files can be skipped before they ever become products, so the queue looks
+healthy precisely because the work was never created. Two causes:
+
+1. **An exclusion rule matched them.** **Manage → Exclusions** lists every rule
+   with the number of files it has skipped. Size rules are the usual culprit —
+   a one-page PDF (character sheet, handout, map) is a few KB, far smaller than
+   a book. Adjust or disable the rule, then re-scan.
+2. **They are duplicates.** Grimoire fingerprints files by size plus their first
+   1MB, so copies of the same book collapse to one product. **Manage →
+   Duplicates** shows what was grouped.
+
+**Settings → Diagnostics → Generate Diagnostic Report** reports both, naming the
+rule responsible and how many files it took.
+
+> Grimoire used to ship a default rule skipping everything under **10KB**, which
+> quietly excluded legitimate one-page PDFs. The default is now 1KB, and
+> existing installs are corrected on startup unless the threshold was changed by
+> hand. Re-scan to pick up files the old rule skipped.
+
 ### A library folder is rejected when I add it
 
 Grimoire tells you which deployment it thinks it is in, and the fix is opposite
