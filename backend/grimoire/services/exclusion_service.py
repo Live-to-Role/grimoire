@@ -112,6 +112,45 @@ async def create_exclusion_matcher(db: AsyncSession) -> ExclusionMatcher:
     return ExclusionMatcher(rules)
 
 
+# The minimum-size default, and the value it used to ship as. 10KB silently
+# excluded legitimate one-page PDFs; installs still carrying that exact value
+# get corrected on startup.
+SIZE_MIN_PATTERN = "1024"
+LEGACY_SIZE_MIN_PATTERN = "10240"
+SIZE_MIN_DESCRIPTION = "Files under 1KB (empty or truncated)"
+
+
+async def correct_legacy_size_min_default(db: AsyncSession) -> int:
+    """Lower the shipped 10KB minimum-size rule to 1KB on existing installs.
+
+    Only touches a rule that is still exactly what Grimoire shipped — default,
+    with the old threshold. A threshold the user chose is theirs to keep, and
+    so is whether the rule is enabled.
+
+    Returns the number of rules corrected.
+    """
+    result = await db.execute(
+        select(ExclusionRule).where(
+            ExclusionRule.rule_type == ExclusionRuleType.SIZE_MIN.value,
+            ExclusionRule.pattern == LEGACY_SIZE_MIN_PATTERN,
+            ExclusionRule.is_default == True,  # noqa: E712 — SQL, not Python truthiness
+        )
+    )
+    rules = list(result.scalars().all())
+    for rule in rules:
+        rule.pattern = SIZE_MIN_PATTERN
+        rule.description = SIZE_MIN_DESCRIPTION
+
+    if rules:
+        await db.commit()
+        logger.info(
+            f"Lowered the default minimum-size exclusion from "
+            f"{LEGACY_SIZE_MIN_PATTERN} to {SIZE_MIN_PATTERN} bytes "
+            f"({len(rules)} rule(s)); re-scan to pick up files it was skipping"
+        )
+    return len(rules)
+
+
 async def seed_default_rules(db: AsyncSession) -> int:
     """
     Seed default exclusion rules if they don't exist.

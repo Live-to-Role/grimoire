@@ -14,7 +14,7 @@ from sqlalchemy import func, select, text
 from grimoire import __version__
 from grimoire.api.deps import DbSession
 from grimoire.config import Settings, settings
-from grimoire.models import ProcessingQueue, Product, Setting, WatchedFolder
+from grimoire.models import ExclusionRule, ProcessingQueue, Product, Setting, WatchedFolder
 from grimoire.utils.runtime import in_container
 
 router = APIRouter()
@@ -210,10 +210,34 @@ async def _library_info(db) -> dict:
             }
         )
 
-    return {"watched_folders": entries}
+    # Rules that have actually skipped something. A file dropped here never
+    # becomes a Product, so it is invisible in every other number the report
+    # shows — the queue looks healthy precisely because the work never existed.
+    rules_result = await db.execute(
+        select(ExclusionRule)
+        .where(ExclusionRule.files_excluded > 0)
+        .order_by(ExclusionRule.files_excluded.desc())
+    )
+    exclusions = [
+        {
+            "rule_type": rule.rule_type,
+            "pattern": rule.pattern,
+            "description": rule.description,
+            "enabled": rule.enabled,
+            "files_excluded": rule.files_excluded,
+            "last_matched_at": rule.last_matched_at.isoformat()
+            if rule.last_matched_at
+            else None,
+        }
+        for rule in rules_result.scalars().all()
+    ]
+
+    return {"watched_folders": entries, "exclusions": exclusions}
 
 
-def _find_problems(worker: dict, queue: dict, library: dict, ai: dict) -> list[dict]:
+def _find_problems(
+    worker: dict, queue: dict, library: dict, ai: dict, product_count: int
+) -> list[dict]:
     """Turn the raw numbers into the sentences a support reply would write."""
     problems: list[dict] = []
     pending = queue["pending"]
@@ -305,6 +329,32 @@ def _find_problems(worker: dict, queue: dict, library: dict, ai: dict) -> list[d
                     "hint": "Check the permissions on the host folder that is mounted there.",
                 }
             )
+
+    exclusions = library.get("exclusions", [])
+    excluded_total = sum(e["files_excluded"] for e in exclusions if e["enabled"])
+    # Cumulative, so compare against the library rather than using a fixed
+    # threshold: skipping more files than you ended up with is the signal.
+    if excluded_total and excluded_total >= max(product_count, 1):
+        worst = max(
+            (e for e in exclusions if e["enabled"]), key=lambda e: e["files_excluded"]
+        )
+        label = worst["description"] or f"{worst['rule_type']} {worst['pattern']}"
+        problems.append(
+            {
+                "severity": "warning",
+                "code": "files_excluded_by_rules",
+                "message": (
+                    f"Exclusion rules have skipped {excluded_total} file(s) while the "
+                    f"library holds {product_count}. The biggest is \"{label}\", which "
+                    f"skipped {worst['files_excluded']}."
+                ),
+                "hint": (
+                    "Manage → Exclusions shows every rule and its count. A size rule is "
+                    "the usual culprit — a one-page PDF is much smaller than a book. "
+                    "Adjust or disable the rule there, then re-scan to pick those files up."
+                ),
+            }
+        )
 
     if ai["ollama_reachable"] is False and not (
         ai["openai_key_set"] or ai["anthropic_key_set"]
@@ -422,7 +472,7 @@ async def get_diagnostics_data(db, check_network: bool = True) -> dict:
         "queue": queue,
         "library": library,
         "ai": ai,
-        "problems": _find_problems(worker, queue, library, ai),
+        "problems": _find_problems(worker, queue, library, ai, product_count),
     }
 
 

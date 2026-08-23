@@ -28,6 +28,15 @@ interface WatchedFolderInfo {
   last_scanned_at: string | null;
 }
 
+interface ExclusionInfo {
+  rule_type: string;
+  pattern: string;
+  description: string | null;
+  enabled: boolean;
+  files_excluded: number;
+  last_matched_at: string | null;
+}
+
 export interface Diagnostics {
   generated_at: string;
   app: { version: string };
@@ -57,7 +66,7 @@ export interface Diagnostics {
       product_id: number;
     }[];
   };
-  library: { watched_folders: WatchedFolderInfo[] };
+  library: { watched_folders: WatchedFolderInfo[]; exclusions?: ExclusionInfo[] };
   ai: {
     ollama_base_url: string;
     ollama_reachable: boolean | null;
@@ -141,6 +150,16 @@ export function formatReport(d: Diagnostics): string {
         `- ${f.path} — ${f.exists ? 'exists' : 'MISSING'}, ${
           f.readable ? 'readable' : 'NOT READABLE'
         }, ${f.enabled ? 'enabled' : 'disabled'}, ${f.product_count} products`,
+      );
+    }
+  }
+  const exclusions = d.library.exclusions ?? [];
+  if (exclusions.length) {
+    lines.push('- Files skipped by exclusion rules:');
+    for (const e of exclusions) {
+      const label = e.description || `${e.rule_type} ${e.pattern}`;
+      lines.push(
+        `  - ${e.files_excluded} — ${label}${e.enabled ? '' : ' (rule disabled)'}`,
       );
     }
   }

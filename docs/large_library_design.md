@@ -141,7 +141,7 @@ DEFAULT_EXCLUSIONS = [
     {"rule_type": "filename", "pattern": "*(1).pdf", "description": "Download duplicates"},
     
     # Size limits
-    {"rule_type": "size_min", "pattern": "10240", "description": "Files under 10KB (likely corrupt)"},
+    {"rule_type": "size_min", "pattern": "1024", "description": "Files under 1KB (empty or truncated)"},
 ]
 ```
 

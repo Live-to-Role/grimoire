@@ -186,10 +186,15 @@ async def init_db() -> None:
         await _ensure_fts_table(conn)
         await _ensure_columns(conn)
 
-    # Seed default exclusion rules
-    from grimoire.services.exclusion_service import seed_default_rules
+    # Seed default exclusion rules, and correct the one default that shipped
+    # with a threshold high enough to skip legitimate one-page PDFs.
+    from grimoire.services.exclusion_service import (
+        correct_legacy_size_min_default,
+        seed_default_rules,
+    )
     async with async_session_maker() as session:
         await seed_default_rules(session)
+        await correct_legacy_size_min_default(session)
 
     # Seed built-in tags
     from grimoire.services.tag_service import seed_builtin_tags
