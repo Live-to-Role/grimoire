@@ -5,7 +5,7 @@ import { useProcessingControls } from '../hooks/useProcessingControls';
 import { useIdleTimer } from '../hooks/useIdleTimer';
 
 /**
- * Global, always-visible processing status + "I'm working" toggle.
+ * Global, always-visible processing status + background-processing toggle.
  * Rendered once in App.tsx (inside the QueryClientProvider). Fixed bottom-right,
  * offset above the mobile bottom nav. Expands to show an idle prompt after the
  * idle threshold when processing is paused.
@@ -39,7 +39,7 @@ export function ProcessingStatusWidget() {
   };
 
   const detail = paused
-    ? `${status.pending} queued`
+    ? `${status.pending} queued · nothing running`
     : `${status.processing} processing · ${status.pending} queued`;
 
   return (
@@ -85,7 +85,7 @@ export function ProcessingStatusWidget() {
 
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-medium" style={{ color: 'var(--color-text-primary)' }}>
-            {paused ? "I'm working" : 'Processing'}
+            {paused ? 'Grimoire Paused' : 'Grimoire Working'}
           </p>
           <p className="truncate text-xs" style={{ color: 'var(--color-text-secondary)' }}>
             {detail}
@@ -94,16 +94,16 @@ export function ProcessingStatusWidget() {
 
         <button
           role="switch"
-          aria-checked={paused}
-          aria-label="Toggle I'm working mode"
+          aria-checked={!paused}
+          aria-label="Toggle background processing"
           onClick={onToggle}
           disabled={pause.isPending || resume.isPending}
           className="relative h-6 w-11 shrink-0 rounded-full transition-colors disabled:opacity-50"
-          style={{ backgroundColor: paused ? 'var(--color-accent)' : 'var(--color-border)' }}
+          style={{ backgroundColor: paused ? 'var(--color-border)' : 'var(--color-accent)' }}
         >
           <span
             className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${
-              paused ? 'left-5' : 'left-0.5'
+              paused ? 'left-0.5' : 'left-5'
             }`}
           />
         </button>

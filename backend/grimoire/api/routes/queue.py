@@ -24,7 +24,7 @@ class QueueStats(BaseModel):
     failed: int = 0
     total: int = 0
     pending_by_type: dict[str, int] = {}
-    # "I'm working" pause flag. Declared here so it survives FastAPI's
+    # Pause flag ("Grimoire Paused"). Declared here so it survives FastAPI's
     # response_model filtering (the /stats handler is annotated -> QueueStats).
     paused: bool = True
 
@@ -94,7 +94,7 @@ async def get_queue_stats(db: DbSession) -> QueueStats:
 
 @router.post("/pause")
 async def pause_processing_queue() -> dict:
-    """Enable "I'm working" mode — pause background processing.
+    """Pause background processing — the widget reads "Grimoire Paused".
 
     In-flight tasks finish; the worker stops fetching new ones.
     """
@@ -105,7 +105,7 @@ async def pause_processing_queue() -> dict:
 
 @router.post("/resume")
 async def resume_processing_queue() -> dict:
-    """Disable "I'm working" mode — resume background processing."""
+    """Resume background processing — the widget reads "Grimoire Working"."""
     from grimoire.services.queue_processor import set_processing_paused
     await set_processing_paused(False)
     return {"paused": False}
@@ -487,7 +487,7 @@ async def requeue_ocr_misrouted(
 
     Scans in id order and is resumable: pass the returned `last_id` back as
     `after_id` until `done` is true. It only enqueues — the worker still honours
-    the "I'm working" pause, and re-queued books flow through the normal
+    the pause flag, and re-queued books flow through the normal
     downstream re-embed pipeline.
     """
     from grimoire.processors import text_extractor

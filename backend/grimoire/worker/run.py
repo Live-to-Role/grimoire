@@ -18,7 +18,7 @@ async def main() -> None:
     setup_logging()
     await init_db()
 
-    # Start paused every launch ("I'm working" mode). The worker only starts when
+    # Start paused every launch ("Grimoire Paused"). The worker only starts when
     # the app starts, so forcing the flag here means the app always opens paused;
     # the user enables background processing when ready.
     await set_processing_paused(True)

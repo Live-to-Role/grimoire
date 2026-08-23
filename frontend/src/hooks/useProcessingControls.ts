@@ -7,8 +7,8 @@ interface OptimisticContext {
 }
 
 /**
- * Pause = enable "I'm working" (POST /queue/pause).
- * Resume = disable it (POST /queue/resume).
+ * Pause = stop background processing (POST /queue/pause) — "Grimoire Paused".
+ * Resume = start it again (POST /queue/resume) — "Grimoire Working".
  * Both optimistically flip `paused` in the ['queue-stats'] cache so the toggle
  * feels instant, roll back on error, and re-sync on settle.
  */
