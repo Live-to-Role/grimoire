@@ -1,9 +1,15 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { FolderOpen, ChevronUp, X } from 'lucide-react';
+import { AxiosError } from 'axios';
 import apiClient from '../api/client';
 
 interface DirectoryEntry {
+  name: string;
+  path: string;
+}
+
+interface QuickLocation {
   name: string;
   path: string;
 }
@@ -12,6 +18,32 @@ interface BrowseResponse {
   current_path: string;
   parent_path: string | null;
   directories: DirectoryEntry[];
+  locations?: QuickLocation[];
+  skipped?: number;
+}
+
+/**
+ * Turn a failed browse into something the user (or a bug report) can act on.
+ * "Failed to load directory" alone never distinguished a missing path from an
+ * unreadable one from a backend that had not finished starting.
+ */
+function describeBrowseError(error: unknown): string {
+  const axiosError = error as AxiosError<{ detail?: string }>;
+
+  if (axiosError?.response) {
+    const detail = axiosError.response.data?.detail;
+    if (detail) return detail;
+    return `The server returned ${axiosError.response.status} ${axiosError.response.statusText}.`;
+  }
+
+  if (axiosError?.request) {
+    return (
+      'No response from the Grimoire API. It may still be starting up — ' +
+      'wait a few seconds and try again.'
+    );
+  }
+
+  return axiosError?.message || 'Could not load the directory.';
 }
 
 interface FolderBrowserModalProps {
@@ -42,7 +74,7 @@ export function FolderBrowserModal({ isOpen, onClose, onSelect }: FolderBrowserM
     }
   }, [isOpen, handleKeyDown]);
 
-  const { data, isLoading, error } = useQuery({
+  const { data, isLoading, error, refetch, isFetching } = useQuery({
     queryKey: ['browse-directories', currentPath],
     queryFn: async () => {
       const params = currentPath ? { path: currentPath } : {};
@@ -50,6 +82,9 @@ export function FolderBrowserModal({ isOpen, onClose, onSelect }: FolderBrowserM
       return res.data;
     },
     enabled: isOpen,
+    // A missing or unreadable path is a settled answer; only retry transport
+    // failures, which is what a still-starting backend looks like.
+    retry: (failureCount, err) => failureCount < 2 && !(err as AxiosError).response,
   });
 
   if (!isOpen) return null;
@@ -80,9 +115,25 @@ export function FolderBrowserModal({ isOpen, onClose, onSelect }: FolderBrowserM
             </button>
           )}
           <p className="min-w-0 flex-1 truncate text-sm text-neutral-600">
-            {data?.current_path || 'Loading...'}
+            {data?.current_path || (error ? 'Not loaded' : 'Loading...')}
           </p>
         </div>
+
+        {/* Quick locations — in Docker these are the only paths that exist */}
+        {!!data?.locations?.length && (
+          <div className="flex flex-wrap gap-1.5 border-b border-neutral-100 px-4 py-2">
+            {data.locations.map((loc) => (
+              <button
+                key={loc.path}
+                onClick={() => setCurrentPath(loc.path)}
+                title={loc.path}
+                className="rounded-full border border-neutral-200 px-2.5 py-1 text-xs text-neutral-600 hover:border-purple-300 hover:bg-purple-50 hover:text-purple-700"
+              >
+                {loc.name}
+              </button>
+            ))}
+          </div>
+        )}
 
         {/* Directory listing */}
         <div className="flex-1 overflow-auto p-2">
@@ -90,14 +141,28 @@ export function FolderBrowserModal({ isOpen, onClose, onSelect }: FolderBrowserM
             <div className="py-8 text-center text-sm text-neutral-500">Loading...</div>
           )}
           {error && (
-            <div className="py-8 text-center text-sm text-red-500">
-              Failed to load directory. Check that the path is accessible.
+            <div className="px-4 py-8 text-center text-sm">
+              <p className="font-medium text-red-600">Could not open this folder</p>
+              <p className="mt-1 break-words text-neutral-600">{describeBrowseError(error)}</p>
+              <button
+                onClick={() => void refetch()}
+                disabled={isFetching}
+                className="mt-3 rounded-lg border border-neutral-300 px-3 py-1.5 text-xs font-medium text-neutral-700 hover:bg-neutral-50 disabled:opacity-50"
+              >
+                {isFetching ? 'Retrying…' : 'Try again'}
+              </button>
             </div>
           )}
           {data && data.directories.length === 0 && (
             <div className="py-8 text-center text-sm text-neutral-500">
               No subdirectories found
             </div>
+          )}
+          {!!data?.skipped && (
+            <p className="px-3 py-2 text-xs text-neutral-500">
+              {data.skipped} item{data.skipped === 1 ? '' : 's'} skipped — the server could not
+              read them.
+            </p>
           )}
           {data?.directories.map((dir) => (
             <button

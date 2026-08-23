@@ -10,11 +10,13 @@ from fastapi import APIRouter, HTTPException, Query, Response
 from sqlalchemy import func, select
 
 from grimoire.api.deps import DbSession
+from grimoire.config import settings
 from grimoire.models import Product, WatchedFolder
 from grimoire.schemas.folder import (
     BrowseResponse,
     DirectoryEntry,
     LibraryStats,
+    QuickLocation,
     ScanRequest,
     ScanResponse,
     WatchedFolderCreate,
@@ -26,22 +28,90 @@ router = APIRouter()
 
 
 def _list_windows_drives() -> BrowseResponse:
-    """List available drive letters on Windows."""
+    """List available drive letters on Windows.
+
+    A: and B: are skipped: on machines with no floppy controller, probing them
+    can block for seconds or pop a "no disk" dialog on the server's desktop.
+    """
     directories = []
-    for letter in string.ascii_uppercase:
+    for letter in string.ascii_uppercase[2:]:
         drive = Path(f"{letter}:\\")
-        if drive.exists():
-            directories.append(DirectoryEntry(name=f"{letter}:", path=str(drive)))
+        try:
+            if drive.exists():
+                directories.append(DirectoryEntry(name=f"{letter}:", path=str(drive)))
+        except OSError:
+            # Disconnected mapped drive — not available, but not an error either.
+            continue
     return BrowseResponse(
         current_path="My Computer",
         parent_path=None,
         directories=directories,
+        locations=_quick_locations(),
     )
+
+
+def _default_browse_path() -> Path:
+    """Where the browser opens when the client asks for no particular path.
+
+    Home is the friendliest starting point on a desktop install. In a container
+    it can be missing or unresolvable, so fall back rather than 500.
+    """
+    try:
+        home = Path.home()
+        if home.is_dir():
+            return home
+    except (RuntimeError, OSError):
+        pass
+    return Path(settings.library_path) if Path(settings.library_path).is_dir() else Path("/")
+
+
+def _quick_locations() -> list[QuickLocation]:
+    """Shortcuts to the directories worth starting from on this server.
+
+    Under Docker the user's host paths do not exist inside the container; the
+    mounted library roots are the only ones that do, and nothing in the UI
+    would otherwise reveal them.
+    """
+    locations: list[QuickLocation] = []
+    seen: set[str] = set()
+
+    def add(name: str, candidate: Path) -> None:
+        try:
+            if not candidate.is_dir():
+                return
+        except OSError:
+            return
+        key = str(candidate)
+        if key in seen:
+            return
+        seen.add(key)
+        locations.append(QuickLocation(name=name, path=key))
+
+    try:
+        add("Home", Path.home())
+    except (RuntimeError, OSError):
+        pass
+
+    add("Library", Path(settings.library_path))
+    for extra in ("/library", "/library2", "/library3"):
+        add(f"Mounted {extra}", Path(extra))
+
+    if platform.system() == "Windows":
+        add("This PC", Path(Path.home().anchor or "C:\\"))
+    else:
+        add("Filesystem root", Path("/"))
+
+    return locations
 
 
 @router.get("/browse", response_model=BrowseResponse)
 async def browse_directories(path: str | None = Query(None, description="Directory path to browse")) -> BrowseResponse:
-    """Browse server filesystem directories for folder selection."""
+    """Browse server filesystem directories for folder selection.
+
+    Every failure path returns a message naming the directory: "Select Folder"
+    is the first thing a new user touches, and a bare "failed" tells neither
+    them nor us whether the path is missing, unreadable, or off a dead mount.
+    """
     is_windows = platform.system() == "Windows"
 
     # Special "My Computer" view to list all drives on Windows
@@ -49,14 +119,20 @@ async def browse_directories(path: str | None = Query(None, description="Directo
         return _list_windows_drives()
 
     if path:
-        browse_path = Path(path).resolve()
+        try:
+            browse_path = Path(path).resolve()
+        except OSError as e:
+            raise HTTPException(status_code=400, detail=f"Cannot resolve {path}: {e.strerror or e}")
     else:
-        browse_path = Path.home()
+        browse_path = _default_browse_path()
 
-    if not browse_path.exists():
-        raise HTTPException(status_code=404, detail="Path does not exist")
-    if not browse_path.is_dir():
-        raise HTTPException(status_code=400, detail="Path is not a directory")
+    try:
+        if not browse_path.exists():
+            raise HTTPException(status_code=404, detail=f"{browse_path} does not exist on the server")
+        if not browse_path.is_dir():
+            raise HTTPException(status_code=400, detail=f"{browse_path} is not a directory")
+    except OSError as e:
+        raise HTTPException(status_code=400, detail=f"Cannot read {browse_path}: {e.strerror or e}")
 
     # Get parent path
     parent = browse_path.parent
@@ -68,17 +144,34 @@ async def browse_directories(path: str | None = Query(None, description="Directo
 
     # List subdirectories, excluding hidden dirs
     directories = []
+    skipped = 0
     try:
-        for entry in sorted(browse_path.iterdir(), key=lambda e: e.name.lower()):
+        entries = sorted(browse_path.iterdir(), key=lambda e: e.name.lower())
+    except PermissionError:
+        raise HTTPException(
+            status_code=403, detail=f"Permission denied reading {browse_path}"
+        )
+    except OSError as e:
+        raise HTTPException(
+            status_code=400, detail=f"Cannot list {browse_path}: {e.strerror or e}"
+        )
+
+    for entry in entries:
+        # One unreadable entry must not lose the other 200. Windows user
+        # profiles carry deny-listed junctions ("Application Data", "Cookies");
+        # network mounts can vanish between the listing and the stat.
+        try:
             if entry.is_dir() and not entry.name.startswith('.'):
                 directories.append(DirectoryEntry(name=entry.name, path=str(entry)))
-    except PermissionError:
-        raise HTTPException(status_code=403, detail="Permission denied accessing this directory")
+        except OSError:
+            skipped += 1
 
     return BrowseResponse(
         current_path=str(browse_path),
         parent_path=parent_path,
         directories=directories,
+        locations=_quick_locations(),
+        skipped=skipped,
     )
 
 
