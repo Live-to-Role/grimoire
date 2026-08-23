@@ -38,11 +38,23 @@ field_mappings = [
 ]
 ```
 
-On any product Codex actually matches, `publisher` and `game_system` bind a
-`dict` to a VARCHAR parameter. Under aiosqlite that is an
+The loop skips a `None` and only writes when `overwrite_existing or not
+current_value` (`:243-252`), so the precise trigger is *a matched product
+whose local field is blank* — which, under `sync_all_products`' default
+`only_unidentified=True`, is very nearly all of them. There, `publisher` and
+`game_system` bind a `dict` to a VARCHAR parameter. Under aiosqlite that is an
 `InterfaceError`, not a silent coercion — so enrichment does not degrade, it
 raises, and it raises only for products Codex *does* know, which are the
 ones the feature exists to serve.
+
+⚠️ **And it takes the rest of the run with it.** `sync_all_products` catches
+per product and continues (`:329-332`) but never calls `db.rollback()`. The
+`InterfaceError` surfaces inside `await db.commit()`, which leaves the
+`AsyncSession` inactive; every subsequent statement raises
+`PendingRollbackError`. So the first matched product does not fail alone — it
+poisons the session and every product after it is counted as `failed`. The
+summary reports a total collapse rather than one bad row, which is worth
+knowing before Phase 0 tries to interpret a traceback.
 
 Fields that silently became no-ops, because Codex no longer sends the key:
 
@@ -94,6 +106,20 @@ The guard is right, and Grimoire should not try to defeat it. But Grimoire
 currently cannot tell a full apply from one that was almost entirely held
 back, which makes "did my library actually sync?" unanswerable.
 
+⚠️ **On the queued path the warnings are not merely unread — they are
+destroyed.** Codex's `approve_contribution`
+(`catalog/contributions.py:565`) appends them to `contribution.review_notes`
+in memory and leaves saving to the caller, and both API review paths then
+assign the moderator's own `review_notes` (default `""`) over the top before
+saving — single review at `api/views_contributions.py:501-511`, batch review
+at `:544-555`. Only the Django-admin actions preserve them. So reading
+`review_notes` back, which is what Phase 2's polling is for, returns nothing
+on the route moderators actually use. **This is a Codex-side fix and it is a
+prerequisite of Phase 2**; it is written into
+`codex/docs/GRIMOIRE_MODERATION_PARITY_PLAN.md` Phase 1. Until it lands,
+polling can resolve a contribution's *status* but not learn what was held
+back.
+
 ## Finding 4 — Grimoire is on the legacy ingest path
 
 Codex marks `dtrpg_url` / `itch_url` as *legacy ingest keys* — "the columns
@@ -123,6 +149,33 @@ The limit is **60 requests per minute**, and `IdentifyRateThrottle` subclasses
 is keyed by **IP, not by token**, and every client behind one address shares it.
 A first sync over the real library is the request pattern most likely to hit it,
 and this is exactly the case that cannot be exercised on the dev laptop.
+
+⚠️ **The ceiling exists only because Grimoire calls `/identify` anonymously.**
+`AnonRateThrottle.get_cache_key` returns `None` for an authenticated request —
+it throttles anonymous callers and nobody else. `identify_by_hash` and
+`identify_by_title` (`services/codex.py:257`, `:294`) send no `Authorization`
+header, which is the entire reason the limit applies to us. `IdentifyView` is
+`AllowAny`, so adding the token we already hold removes the constraint outright.
+That is a decision to make deliberately rather than by omission — and it cuts
+both ways: if Phase 4's `dtrpg_id` work adds a token header for consistency,
+the backoff written in Phase 2 silently stops ever firing. Either authenticate
+identify and say so, or keep it anonymous and build the backoff, but do not do
+one while planning for the other.
+
+⚠️ **A throttled lookup does not fail — it reports "new product".**
+`identify_by_hash` wraps `response.raise_for_status()` in
+`except Exception: return None` (`services/codex.py:246-272`), and
+`should_contribute` reads a `None` match as `return True, "new_product"`
+(`services/sync_service.py:135-138`). So hitting the ceiling mid-walk does not
+stall the sync; it converts every remaining product into a new-product
+contribution for things Codex already holds. That is precisely the failure
+Codex's own comment at `api/views_products.py:141-144` blames for 919
+duplicates, arriving from the other direction. Codex softens it — a
+`new_product` whose `file_hash` it already knows is converted to `edit_product`
+(`api/views_contributions.py:207-242`) — but only for hashes it already has.
+The fix is not only backoff: **a swallowed identify error must never be read as
+"Codex does not have this."** `should_contribute` needs to distinguish "no
+match" from "could not ask".
 
 ## Finding 6 — Grimoire never learns a contribution's fate
 
@@ -178,6 +231,13 @@ Two consequences land squarely on this plan:
 or ordinary syncs will start failing visibly and products will become
 permanently un-contributable. (Phase 3 is unrelated to parity and cannot
 land that early — see the phase note below.)
+
+⚠️ **But half of the Codex work has to come first.** The parity plan's Phase 1
+is two changes: the `review_notes` fix (above) and the gate itself. Phase 2
+here needs the first and must precede the second, so the real order is
+**Codex `review_notes` fix → Grimoire Phase 2 → Codex gate**. Not circular,
+but it means the Codex branch ships as two commits with this work in between,
+and that is worth agreeing before either side starts.
 
 **Grimoire never closes the loop.** `ContributionStatus.REJECTED` exists in
 `models/contribution.py:16` and **nothing ever sets it**. Nothing re-reads a
@@ -245,6 +305,11 @@ machine.
 - `sync_product_from_codex` never assigns a non-scalar to a scalar column —
   a type guard in the mapping loop, so a future Codex reshape degrades
   instead of raising.
+- **`sync_all_products` rolls back before continuing.** Its per-product
+  `except` (`services/sync_service.py:329-332`) currently leaves the session
+  inactive after a failed commit, so one bad row fails every row after it.
+  `await db.rollback()` in the handler, and a test that a product which raises
+  on commit does not prevent the next one syncing.
 - Regression test per field in the table above, driven by the Phase 0 fixtures.
 
 ### Phase 2 — Honest contribution outcomes **[dev]**
@@ -256,19 +321,45 @@ machine.
 - Surface `warnings` on the contribution record and in the UI.
 - Handle 429 with backoff in `submit_all_pending` and `sync_all_products`.
   The bucket is per IP at 60/minute (Finding 5), so the backoff is shared
-  across the whole library walk rather than per product.
+  across the whole library walk rather than per product — **unless the
+  decision in Finding 5 is to authenticate `/identify`**, in which case the
+  throttle does not apply to us at all and this bullet is defensive only. Say
+  which, in this plan, before writing the backoff.
+- **Distinguish "Codex has no match" from "Codex could not be asked."**
+  `identify_by_hash` / `identify_by_title` currently return `None` for both,
+  and `should_contribute` reads `None` as `new_product` — so a throttle, a
+  timeout or a 500 all produce a duplicate contribution (Finding 5). Return a
+  third state, or raise, and have `should_contribute` skip rather than
+  contribute when the lookup failed.
 - **Store the handle polling needs.** `ContributionQueue` has
   `codex_product_id` — which nothing ever writes — and **no column at all for
   Codex's contribution id**. `submit_contribution`
   (`services/contribution_service.py:150`) logs `result.contribution_id` and
   discards it. Polling is impossible until a migration adds
-  `codex_contribution_id` (and the same write populates `codex_product_id`
-  from an `applied` response and from `existing_product_id` on `no_change`).
-  This is a schema change and should be the first commit of the phase.
+  `codex_contribution_id`. This is a schema change and should be the first
+  commit of the phase.
+  - **`codex_product_id` has fewer sources than it looks.** The intention was
+    to fill it from an `applied` response and from `existing_product_id` on a
+    `no_change`. Once the Codex parity change lands there is no `applied`
+    response for a Grimoire sync — the queued path returns `201` with
+    `contribution_id` and no `product_id`
+    (Codex `api/views_contributions.py:356`), and for a `new_product` the
+    Codex `Product` does not exist until a moderator approves. So after parity
+    the only sources are `no_change` and polling. Write it that way now rather
+    than shipping a branch that goes dead on the parity merge.
 - **Poll submitted contributions** (`GET /contributions/?…`) to resolve
   `SUBMITTED`, read `review_notes` for the held-back warnings the queued path
   never returns inline, and unblock re-contribution once a contribution is no
   longer outstanding. Fixes the permanent-block bug in Finding 6.
+  - **The read side on Codex is ready; the write side is not.**
+    `ContributionSerializer` carries `status` and `review_notes`, a
+    non-moderator's list is filtered to their own rows, and `filterset_fields`
+    covers `status` and `source`. But both Codex review paths assign the
+    moderator's `review_notes` over the apply warnings before saving
+    (Finding 3), so **the warnings half of this bullet cannot work until the
+    Codex-side fix in `GRIMOIRE_MODERATION_PARITY_PLAN.md` Phase 1 lands.**
+    The status half works today. Build the poller so the warnings are a field
+    it reads if present, not a thing it assumes.
   - **Status vocabulary.** Codex's states are `pending` / `approved` /
     `rejected` (`catalog/models/catalog.py:665`); Grimoire's enum has
     `ACCEPTED`, not `APPROVED` (`models/contribution.py:16`). Map Codex
@@ -289,6 +380,14 @@ The `is_codex_eligible` predicate from the multi-format plan, wired into both
 call sites (`should_contribute` and `queue_contribution`) and returning
 `(bool, reason)`. Outbound only; reading from Codex stays enabled for
 everything.
+
+Note the signature mismatch at the second site: `queue_contribution`
+(`services/contribution_service.py:99`) takes `product_id: int`, not a
+`Product`, so it must load the row before it can ask. Either widen the
+predicate to accept an id, or load once at the top of the function — but do
+not push the check up to its callers, since being the one place they all pass
+through (`sync_service.py:535`, `:600`, `api/routes/contributions.py:95`) is
+the entire reason it is the backstop.
 
 ⚠️ **Ships in two halves, and this phase is only the first.** The predicate as
 drafted in the multi-format plan opens with `product.file_type != "pdf"`, and
@@ -320,6 +419,10 @@ depending on the work it is supposed to precede.
 ### Phase 5 — First real sync **[home]**
 
 Run enrichment across the real library, with the throttle handling in place.
+**Do not run this before Phase 2's throttle work**, whichever form Finding 5's
+decision gives it: without it, hitting the ceiling mid-walk silently converts
+the rest of the library into duplicate `new_product` contributions rather than
+stopping.
 Record how many products matched, how many were enriched, how many hit
 `no_change`, and whether the rate limit was reached. This is the acceptance
 test for Phases 1–4 and cannot be simulated on the dev laptop.
