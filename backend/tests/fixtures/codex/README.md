@@ -69,10 +69,62 @@ diagnostic script and misreading the result as an outage.
 
 **5. `/products/{id}/` 404s — the detail route keys on `slug`.**
 
-## Not yet captured
+## Observed 2026-08-24, on "Zombie Reign"
 
-`GET /identify?hash=…` **with a match**, and the live
-`sync_product_from_codex` traceback. Both need a Codex product that carries a
-file hash; the run was cut short by the hour-scale throttle above. The
-`InterfaceError` is predicted rather than observed — treat it as such until
-this is finished.
+The traceback is no longer predicted. Running the real `sync_all_products`
+over five local products against the live API:
+
+```
+sqlite3.ProgrammingError: Error binding parameter 2: type 'dict' is not supported
+UPDATE products SET title=?, publisher=?, product_type=?, ... WHERE products.id = 19193
+  ('SoRoPlay GamTools Zine: Zombie Ref',
+   {'id': '9dbf77a5-…', 'name': 'Ken Wickham', 'slug': 'ken-wickham', …}, …)
+```
+
+and then, on the next product:
+
+```
+sqlalchemy.exc.PendingRollbackError: This Session's transaction has been rolled
+back due to a previous exception during flush.
+```
+
+Two corrections to the plan. The exception is **`sqlite3.ProgrammingError`
+("type 'dict' is not supported")**, not `InterfaceError` — match on behaviour,
+not on the class name. And the session poisoning is real: the run made two
+`/identify` calls for five products, because everything after the first
+failure died before reaching the network.
+
+## ⚠️ Found by that run — no confidence floor on the title fallback
+
+Look at what it was about to write. The local product is **"Zombie Reign" by
+Angry Engine Games**; Codex returned **"SoRoPlay GamTools Zine: Zombie Ref" by
+Ken Wickham** — a different product — as `match: fuzzy`, confidence 0.818. The
+`UPDATE` above would have renamed the user's product to it.
+
+There is no threshold anywhere in the path:
+
+- `identify_by_title`'s docstring claims "Returns matches above confidence
+  threshold" (`codex.py:298`). **The real path has no threshold** — it accepts
+  any `match` of `exact` *or* `fuzzy` (`:315`). The only `0.5` gate (`:448`) is
+  inside `_mock_identify_by_title` and never runs against the live API.
+- `sync_product_from_codex` records `match.confidence` onto the product
+  (`sync_service.py:257`) but never gates on it, and never inspects
+  `match_type`.
+
+**This is a Phase 1 blocker, and the ordering is counterintuitive.** Today the
+dict crash is the only thing stopping the bad write — the corruption is
+prevented by a bug. Fixing `from_dict` so `publisher` is a string makes the
+`UPDATE` succeed, which turns a loud failure into silent metadata corruption
+across the library. **A confidence floor has to land in the same commit as the
+`from_dict` fix, not after it.**
+
+Since hash lookup almost never matches (see above), the title fallback is the
+*normal* path, not the exceptional one — so this affects essentially every
+product a sync touches.
+
+## Still not captured
+
+`GET /identify?hash=…` **with a match**. Codex's catalogue carries almost no
+`file_hashes`, and Grimoire's own 37 contributions are unapproved, so there
+may be no such product to find until one is approved. Not blocking: the title
+path is what production actually exercises.

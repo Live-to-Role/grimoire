@@ -97,9 +97,48 @@ remedies — reshape `CodexProduct.from_dict`, or add a type guard to
 both, in that order of importance:** `from_dict` is the fix, and the type guard
 is a backstop against the next reshape, not an alternative to it.
 
-**This wants verifying against the live API before anything is rewritten** —
-the serializer is unambiguous, but a stale deployment would change the
-priority. See Phase 0.
+**Confirmed against the live API 2026-08-24** (Phase 0; fixtures and full
+record in `backend/tests/fixtures/codex/`). The deployment is current with
+`main`, so the compatibility shims below are defensive rather than
+load-bearing. Two corrections from the observed run: the exception is
+`sqlite3.ProgrammingError` — *"type 'dict' is not supported"* — not
+`InterfaceError`, so tests should match on behaviour rather than the class
+name; and the session poisoning is real, with a five-product sync making only
+two `/identify` calls because everything after the first failure died before
+reaching the network.
+
+## Finding 1b — the title fallback has no confidence floor (severity: high)
+
+Found while confirming Finding 1, and it is the more dangerous of the two
+because it fails *quietly*.
+
+`sync_product_from_codex` tries hash first and falls back to title
+(`sync_service.py:213-221`). Phase 0 established that Codex's catalogue
+carries almost no `file_hashes`, so **the title fallback is the normal path**,
+not the exceptional one.
+
+Nothing gates what comes back:
+
+- `identify_by_title`'s docstring says "Returns matches above confidence
+  threshold" (`codex.py:298`). **The real path has no threshold** — it accepts
+  any `match` of `exact` *or* `fuzzy` (`:315`). The only `0.5` gate (`:448`)
+  lives in `_mock_identify_by_title` and never runs against the live API.
+- `sync_product_from_codex` writes `match.confidence` onto the product
+  (`:257`) but never gates on it, and never looks at `match_type`.
+
+Observed: local **"Zombie Reign" by Angry Engine Games** matched Codex's
+**"SoRoPlay GamTools Zine: Zombie Ref" by Ken Wickham** at `fuzzy` / 0.818,
+and the `UPDATE` was about to rename the local product to it.
+
+⚠️ **This inverts the Phase 1 ordering.** Right now the only thing preventing
+that write is Finding 1's dict crash — the corruption is being held off by a
+bug. Fix `from_dict` so `publisher` is a string and the `UPDATE` succeeds,
+turning a loud failure into silent metadata corruption across the library.
+**The confidence floor must land in the same commit as the `from_dict` fix**,
+with a test that a low-confidence fuzzy match writes nothing. Deciding the
+floor is a judgement call — 0.818 was wrong here, so it is not low — and
+`match_type == "fuzzy"` may deserve a stricter bar than `exact`, or no
+automatic apply at all.
 
 ## Finding 2 — benign Codex outcomes are recorded as permanent failures
 
@@ -364,6 +403,15 @@ machine.
 
 ### Phase 1 — Fix the read path **[dev]**, verify **[home]**
 
+- **A confidence floor, in the same commit as the `from_dict` change.** See
+  Finding 1b: the dict crash is currently the only thing stopping a fuzzy
+  match from overwriting a product with a different product's metadata, so
+  fixing `from_dict` without this converts a loud failure into silent
+  corruption. Test that a low-confidence fuzzy match writes nothing.
+- **Cache the `/health` verdict.** *(done — `09bd6d0`.)* `get_codex_client`
+  rebuilt its singleton on every call that passed an `api_key`, so each
+  product paid for its own `/health`; the verdict is now reused for
+  `AVAILABILITY_TTL_SECONDS`. Left here because Phase 5 depends on it.
 - `CodexProduct.from_dict` accepts nested `publisher` / `game_system`
   (object *or* string, so an older deployment keeps working), derives
   `publication_year` from `publication_date`, reads `dtrpg_id` and `links`,
