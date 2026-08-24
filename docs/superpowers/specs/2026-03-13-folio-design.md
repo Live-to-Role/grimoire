@@ -21,6 +21,7 @@ The core insight: people accumulate PDF collections around specific interests (T
 | Plugin depth | Metadata schemas + custom extractors | Low contributor bar; no plugin UI needed |
 | Tech stack | FastAPI + SQLAlchemy + SQLite / React + TypeScript | Proven in Grimoire, single `pip install`, runs on Pi |
 | Distribution | pip/pipx install, frontend bundled | No Docker, no Node, no DB server required |
+| Folder grouping | Auto-detect with manual override | Folders often represent a single product with multiple files; group automatically, let users adjust |
 
 ## Architecture
 
@@ -64,6 +65,9 @@ Universal fields only — no domain-specific metadata in core:
 | file_size | int | File size in bytes |
 | path | str | Absolute path to PDF |
 | hash | str | SHA-256 for dedup |
+| parent_document_id | int | FK to parent document (null = standalone or main) |
+| is_attachment | bool | If true, hidden from library grid by default |
+| attachment_type | str | Label: "map", "handout", "printer-friendly", etc. |
 | cover_extracted | bool | Processing flag |
 | text_extracted | bool | Processing flag |
 | images_extracted | bool | Processing flag |
@@ -86,6 +90,53 @@ Lightweight pointers enabling cross-topic search without coupling databases:
 | author | str | Denormalized for fast display |
 | averaged_embedding | blob | Mean of all chunk embeddings for this document |
 | plugin_type | str | Which plugin manages this topic |
+
+## Folder Grouping
+
+### Concept
+
+PDF collections are often organized in folders where one folder represents a single logical product with multiple files — the main document plus supplementary materials (maps, handouts, printer-friendly versions, appendices). Folio detects this structure automatically and groups files under a single library entry.
+
+### How It Works
+
+When the scanner encounters a folder containing 2+ PDF files, it evaluates whether to group them:
+
+1. **Folder must look like a product title** — not a category name like "Adventures" or "2024". Heuristic: folders containing only PDFs (no subdirectories with their own PDFs) are candidates.
+2. **Main document detection** (layered heuristics):
+   - **Filename match** — the PDF whose filename most closely matches the folder name is the main document
+   - **Largest file** — if no filename match, the largest PDF is assumed to be the main document
+   - **AI tiebreaker** — if ambiguous, the AI identifier examines all files and picks the primary
+3. **Remaining files become attachments** — linked via `parent_document_id`, marked `is_attachment = True`, assigned an `attachment_type` label (map, handout, character sheet, etc.)
+
+### Folder Context for AI Identification
+
+When identifying any document in a group, the AI receives:
+- The folder name (strong signal for product title)
+- Sibling filenames (helps classify attachments)
+- The folder's position in the directory hierarchy (e.g., `Publisher/Product Title/files`)
+
+This context dramatically improves identification accuracy compared to identifying isolated files — especially for maps and handouts that contain little or no text.
+
+### User Overrides
+
+- **Promote attachment to standalone** — clears `parent_document_id` and `is_attachment`, making it a full library entry. Handles the case where a folder contains bundled standalone products.
+- **Demote standalone to attachment** — sets `parent_document_id` and `is_attachment`, nesting it under a main document.
+- **Add file to group** — attach an ungrouped document to an existing main document.
+- **Remove from group** — detach an attachment, promoting it to standalone.
+- **Trigger AI identification on attachment** — by default, attachments inherit the main document's metadata. Users can manually request a full AI identification pass for attachments that contain substantive content.
+
+### Library Grid Behavior
+
+- **Grouped documents** appear as a single entry showing the main document's cover and metadata.
+- **Attachment count badge** — shows how many attachments are nested (e.g., "+3 files").
+- **Expand to access** — clicking a grouped entry reveals all files (main + attachments) with their type labels.
+- **Filter for attachment types** — users can search across all topics for "all maps" or "all handouts" even though these are attachments.
+
+### Plugin Enhancement
+
+Plugins can enhance grouping behavior:
+- **Custom attachment type labels** — the TTRPG plugin knows "VTT" means virtual tabletop assets, "encounter" means encounter maps
+- **Main document heuristics** — a plugin can provide domain-specific rules for which file is the main document (e.g., "the file with 'adventure' in the name is always main")
 
 ## Plugin System
 
@@ -245,6 +296,11 @@ async def list_documents(topic_id: str, db: AsyncSession = Depends(get_topic_db)
 | DELETE | /api/topics/{id}/documents/{doc_id} | Remove document |
 | GET | /api/topics/{id}/documents/{doc_id}/cover | Serve cover image |
 | GET | /api/topics/{id}/documents/{doc_id}/text | Serve extracted text |
+| **Grouping** | | |
+| GET | /api/topics/{id}/documents/{doc_id}/attachments | List attachments for a document |
+| POST | /api/topics/{id}/documents/{doc_id}/attachments | Add existing document as attachment |
+| DELETE | /api/topics/{id}/documents/{doc_id}/attachments/{att_id} | Detach (promote to standalone) |
+| PATCH | /api/topics/{id}/documents/{doc_id}/promote | Promote attachment to standalone |
 | **Search** | | |
 | GET | /api/topics/{id}/search | Basic + FTS search within a topic |
 | POST | /api/topics/{id}/semantic | Semantic search within a topic |
@@ -296,10 +352,11 @@ Uses averaged vectors in `index.db`. The "All Topics" view loads index vectors a
 Queue-based, same architecture as Grimoire, generalized:
 
 ```
-PDF added → cover extraction        (priority 1)
+PDF added → folder grouping          (priority 0, detect groups before processing)
+         → cover extraction        (priority 1)
          → text extraction          (priority 2)
          → plugin extractors        (priority 3, requires text)
-         → AI identification        (priority 3, requires text)
+         → AI identification        (priority 3, requires text, uses folder context)
          → embedding generation     (priority 4, requires text)
          → cross-topic index update (priority 5, requires embedding)
 ```
@@ -437,3 +494,5 @@ Folio's niche: **the intersection of library management and AI search, running l
 - **Plugin removal:** When a plugin is uninstalled, topics using it should fall back to the base plugin. Plugin metadata is preserved in JSON but domain-specific filters/extractors become unavailable until the plugin is reinstalled.
 - **Index consistency:** The cross-topic index can be rebuilt from topic databases via `folio reindex`. Needed if the app crashes between embedding generation and index update (separate SQLite files have no cross-DB transactions).
 - **`pipx inject` limitations:** Injected plugin packages share a virtualenv with the core app; dependency conflicts between plugins are possible. Acceptable for v1 given a small plugin ecosystem.
+- **Grouping non-PDF files:** Should Folio support non-PDF attachments within a group (e.g., PNG maps, JPEG handouts)? v1 could restrict to PDFs only and expand later.
+- **Nested groups:** Should a main document be able to contain sub-groups? Likely YAGNI for v1 — flat parent-child only.
