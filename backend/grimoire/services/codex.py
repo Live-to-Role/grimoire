@@ -8,6 +8,7 @@ and optionally contributes new identifications back to Codex.
 
 import hashlib
 import logging
+import time
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
@@ -18,6 +19,12 @@ import httpx
 from grimoire.config import settings
 
 logger = logging.getLogger(__name__)
+
+# How long a reachability verdict stays good. Long enough that a library-wide
+# sync costs one `/health` call a minute rather than one per product; short
+# enough that a throttled or blipped check does not disable Codex for the
+# lifetime of the process, which is what an unbounded cache used to do.
+AVAILABILITY_TTL_SECONDS = 60.0
 
 
 class MatchType(str, Enum):
@@ -225,22 +232,31 @@ class CodexClient:
         else:
             self.use_mock = use_mock
         self._available: bool | None = None
+        self._available_checked_at: float | None = None
 
     async def is_available(self) -> bool:
-        """Check if Codex API is reachable."""
+        """Check if Codex API is reachable, cached for `AVAILABILITY_TTL_SECONDS`.
+
+        The verdict expires. It used to be cached for the life of the object,
+        which meant one throttled `/health` check left `is_available()` False
+        until the process restarted — and `sync_product_from_codex` reports an
+        unavailable Codex as `skipped`, not `failed`, so the sync looked clean.
+        """
         if self.use_mock:
             return True
-        
-        if self._available is not None:
-            return self._available
-        
+
+        if self._available is not None and self._available_checked_at is not None:
+            if time.monotonic() - self._available_checked_at < AVAILABILITY_TTL_SECONDS:
+                return self._available
+
         try:
             async with httpx.AsyncClient(timeout=5.0) as client:
                 response = await client.get(f"{self.base_url}/health")
                 self._available = response.status_code == 200
         except Exception:
             self._available = False
-        
+
+        self._available_checked_at = time.monotonic()
         return self._available
 
     async def identify_by_hash(self, file_hash: str) -> CodexMatch | None:
@@ -472,7 +488,20 @@ def get_codex_client(
         api_key: Override API key (e.g. from database settings).
     """
     global _codex_client
-    if _codex_client is None or refresh or api_key:
+
+    # Rebuild only when the configuration actually changed. This used to read
+    # `or api_key`, which rebuilt on every call that passed a key — and
+    # `sync_product_from_codex` passes one per product, so each product got a
+    # client with a cold availability cache and paid for its own `/health`
+    # call. Comparing against the live client keeps a changed key taking
+    # effect without a restart, which is the behaviour that guard was for.
+    stale = (
+        _codex_client is None
+        or refresh
+        or (api_key is not None and api_key != _codex_client.api_key)
+        or (use_mock is not None and use_mock != _codex_client.use_mock)
+    )
+    if stale:
         _codex_client = CodexClient(use_mock=use_mock, api_key=api_key)
     return _codex_client
 
