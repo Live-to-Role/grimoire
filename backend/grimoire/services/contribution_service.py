@@ -14,6 +14,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from grimoire.models import ContributionQueue, ContributionStatus, Product
+from grimoire.services.codex_eligibility import is_codex_eligible
 from grimoire.services.codex import (
     CodexClient,
     CodexLookupError,
@@ -102,6 +103,14 @@ def get_cover_image_base64(product: Product, max_size_bytes: int = MAX_COVER_SIZ
         return None
 
 
+class CodexIneligibleError(Exception):
+    """This product may not be shared with Codex. Carries the rule that said so."""
+
+    def __init__(self, reason: str):
+        self.reason = reason
+        super().__init__(reason)
+
+
 async def queue_contribution(
     db: AsyncSession,
     product_id: int,
@@ -111,7 +120,24 @@ async def queue_contribution(
     """
     Queue a contribution for submission to Codex.
     Used when offline or when user wants to review before submitting.
+
+    ⚠️ This is the backstop, and it is a real one rather than belt-and-braces.
+    `ContributionQueue` is constructed in exactly one place — here — and every
+    route into the queue passes through it: `sync_service` twice and the
+    manual API route. The check in `should_contribute` is skippable by an
+    existing parameter (`skip_no_change_check=True`), so a guard placed only
+    there is bypassable by design.
     """
+    # The predicate takes a Product and this takes an id, so load the row.
+    # Deliberately not pushed up to the three callers: being the one place
+    # they all pass through is the entire reason this is the backstop.
+    product = await db.get(Product, product_id)
+    if product is not None:
+        eligible, reason = is_codex_eligible(product)
+        if not eligible:
+            logger.info(f"Refusing to queue product {product_id} for Codex: {reason}")
+            raise CodexIneligibleError(reason)
+
     contribution = ContributionQueue(
         product_id=product_id,
         contribution_data=json.dumps(contribution_data),

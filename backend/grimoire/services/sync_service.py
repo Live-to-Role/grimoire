@@ -19,7 +19,12 @@ from grimoire.services.codex import (
     IdentificationSource,
     MatchType,
 )
-from grimoire.services.contribution_service import queue_contribution, submit_all_pending
+from grimoire.services.codex_eligibility import is_codex_eligible
+from grimoire.services.contribution_service import (
+    CodexIneligibleError,
+    queue_contribution,
+    submit_all_pending,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -139,7 +144,14 @@ async def should_contribute(
         Tuple of (should_contribute: bool, reason: str)
     """
     from grimoire.services.contribution_service import get_cover_image_base64
-    
+
+    # Checked before the lookup, so an ineligible product never costs a round
+    # trip. This is the convenient place, not the safe one — see
+    # queue_contribution for the guard that cannot be bypassed.
+    eligible, reason = is_codex_eligible(product)
+    if not eligible:
+        return False, reason
+
     # Try to find existing product in Codex by hash
     try:
         match = await codex_client.identify_by_hash(product.file_hash)
@@ -653,13 +665,23 @@ async def queue_product_for_contribution(
                 "contribution_id": rejected.id,
             }
 
-    # Queue the contribution
-    contribution = await queue_contribution(
-        db=db,
-        product_id=product.id,
-        contribution_data=contribution_data,
-        file_hash=product.file_hash,
-    )
+    # Queue the contribution. The eligibility guard lives inside
+    # queue_contribution rather than here, so that `skip_no_change_check=True`
+    # cannot get an ineligible product past it — this call site only has to
+    # turn the refusal into a result.
+    try:
+        contribution = await queue_contribution(
+            db=db,
+            product_id=product.id,
+            contribution_data=contribution_data,
+            file_hash=product.file_hash,
+        )
+    except CodexIneligibleError as e:
+        return {
+            "success": False,
+            "reason": e.reason,
+            "message": "This product is not eligible to be shared with Codex",
+        }
     
     result = {
         "success": True,
