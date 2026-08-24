@@ -48,6 +48,11 @@ class IdentificationSource(str, Enum):
 #: than an empty one.
 AUTHOR_CREDIT_ROLES = frozenset({"author", "co_author"})
 
+#: Codex `error` codes that arrive as 4xx but describe an ordinary outcome
+#: rather than a fault. Recording these as failures made benign results look
+#: permanent, and discarded the ids they carry.
+BENIGN_CONTRIBUTION_ERRORS = frozenset({"duplicate_pending"})
+
 
 def _name_of(value: Any) -> str | None:
     """Codex now nests what it used to send flat. Accept both."""
@@ -232,6 +237,19 @@ class ContributionResult:
     message: str | None = None
     reason: str | None = None  # Error reason if success=False
 
+    #: Codex's machine-readable `error` key, for outcomes that are ordinary
+    #: rather than exceptional — `duplicate_pending` chief among them.
+    error_code: str | None = None
+    #: Fields Codex's merge guard declined to overwrite. The response still
+    #: reads "applied", so this is the only evidence it wrote less than it was
+    #: sent — "a refusal nobody can see is its own bug", in Codex's words.
+    warnings: list[str] = field(default_factory=list)
+    #: The Codex product a `no_change` names — a free link between the local
+    #: product and the Codex one, previously discarded.
+    existing_product_id: str | None = None
+    #: The queued contribution a `duplicate_pending` names.
+    existing_contribution_id: str | None = None
+
     @classmethod
     def from_response(cls, data: dict[str, Any]) -> "ContributionResult":
         """Create from Codex API response."""
@@ -242,6 +260,9 @@ class ContributionResult:
             product_slug=data.get("product_slug"),
             contribution_id=data.get("contribution_id"),
             message=data.get("message"),
+            warnings=list(data.get("warnings") or []),
+            existing_product_id=data.get("existing_product_id"),
+            existing_contribution_id=data.get("existing_contribution_id"),
         )
 
     @classmethod
@@ -487,6 +508,26 @@ class CodexClient:
                 return result
                 
         except httpx.HTTPStatusError as e:
+            # Some of Codex's 400s are ordinary outcomes rather than errors.
+            # `duplicate_pending` just means this file hash is already queued,
+            # and it carries the existing contribution's id — which the old
+            # code flattened into a message string and lost.
+            try:
+                body = e.response.json()
+            except Exception:
+                body = {}
+            error_code = body.get("error")
+            if error_code in BENIGN_CONTRIBUTION_ERRORS:
+                logger.info(f"Codex contribution outcome: {error_code}")
+                return ContributionResult(
+                    success=False,
+                    error_code=error_code,
+                    reason=error_code,
+                    message=body.get("message"),
+                    existing_product_id=body.get("existing_product_id"),
+                    existing_contribution_id=body.get("existing_contribution_id"),
+                )
+
             error_detail = e.response.text[:200] if e.response.text else "No details"
             logger.warning(f"Codex contribution failed: {e.response.status_code} - {error_detail}")
             return ContributionResult.failure(f"http_error_{e.response.status_code}: {error_detail}")

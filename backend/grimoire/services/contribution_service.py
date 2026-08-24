@@ -1,6 +1,7 @@
 """Service for managing Codex contribution queue."""
 
 import base64
+import hashlib
 import json
 import logging
 from datetime import datetime, UTC
@@ -145,11 +146,49 @@ async def submit_contribution(
     
     try:
         data = json.loads(contribution.contribution_data)
+        # Fingerprint what we actually sent, so a later rejection can be told
+        # apart from a payload the user has since changed.
+        contribution.payload_hash = hashlib.sha256(
+            json.dumps(data, sort_keys=True).encode("utf-8")
+        ).hexdigest()
+
         result = await codex.contribute(data, contribution.file_hash)
-        
-        if result.success:
+
+        if result.warnings:
+            contribution.warnings = json.dumps(result.warnings)
+
+        # A benign 4xx: ordinary outcome, not a fault. Keep the id it carries.
+        if result.error_code == "duplicate_pending":
+            contribution.status = ContributionStatus.DUPLICATE_PENDING
+            contribution.error_message = None
+            contribution.codex_contribution_id = (
+                result.existing_contribution_id or contribution.codex_contribution_id
+            )
+            logger.info(
+                f"Contribution {contribution.id} is already queued on Codex as "
+                f"{contribution.codex_contribution_id}"
+            )
+        elif result.success and result.status == "no_change":
+            # A 200 that submitted nothing. Recording it as SUBMITTED made the
+            # queue claim work it had not done.
+            contribution.status = ContributionStatus.NO_CHANGE
+            contribution.error_message = None
+            contribution.codex_product_id = (
+                result.existing_product_id or contribution.codex_product_id
+            )
+            logger.info(
+                f"Contribution {contribution.id} added nothing Codex did not have "
+                f"(product {contribution.codex_product_id})"
+            )
+        elif result.success:
             contribution.status = ContributionStatus.SUBMITTED
             contribution.error_message = None
+            contribution.codex_contribution_id = (
+                result.contribution_id or contribution.codex_contribution_id
+            )
+            contribution.codex_product_id = (
+                result.product_id or contribution.codex_product_id
+            )
             logger.info(
                 f"Successfully submitted contribution {contribution.id}: "
                 f"status={result.status}, product_id={result.product_id or result.contribution_id}"
@@ -158,7 +197,7 @@ async def submit_contribution(
             contribution.status = ContributionStatus.FAILED
             contribution.error_message = result.reason or "Submission failed"
             logger.warning(f"Failed to submit contribution {contribution.id}: {result.reason}")
-        
+
         await db.commit()
         return result.success
         
@@ -210,14 +249,8 @@ async def get_contribution_stats(db: AsyncSession) -> dict[str, int]:
     result = await db.execute(query)
     contributions = list(result.scalars().all())
     
-    stats = {
-        "pending": 0,
-        "submitted": 0,
-        "accepted": 0,
-        "rejected": 0,
-        "failed": 0,
-        "total": len(contributions),
-    }
+    stats = {status.value: 0 for status in ContributionStatus}
+    stats["total"] = len(contributions)
     
     for c in contributions:
         stats[c.status.value] = stats.get(c.status.value, 0) + 1
