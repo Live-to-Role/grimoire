@@ -9,7 +9,8 @@ and optionally contributes new identifications back to Codex.
 import hashlib
 import logging
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from datetime import date
 from enum import Enum
 from pathlib import Path
 from typing import Any
@@ -40,6 +41,89 @@ class IdentificationSource(str, Enum):
     MANUAL = "manual"
 
 
+#: Credit roles that mean "wrote it". Codex models credits as structured
+#: roles (author, co_author, artist, cartographer, editor, layout, ...) while
+#: Grimoire has a single `author` string, so the flattening has to choose.
+#: Only writing roles qualify — a cartographer in the author field is worse
+#: than an empty one.
+AUTHOR_CREDIT_ROLES = frozenset({"author", "co_author"})
+
+
+def _name_of(value: Any) -> str | None:
+    """Codex now nests what it used to send flat. Accept both."""
+    if isinstance(value, dict):
+        return value.get("name") or None
+    return value or None
+
+
+def _resolve_game_system(data: dict[str, Any]) -> tuple[str | None, str | None]:
+    """The primary system's name and slug, or `(None, None)` if ambiguous.
+
+    `/identify` sends `game_system` as an object, and as `null` whenever no
+    link has been nominated primary — even when `game_systems` is populated.
+    A lone candidate is unambiguous and worth using; several are a guess, so
+    they are left unset rather than picked between. The captured fixture is
+    exactly that case: two systems, neither primary.
+    """
+    system = data.get("game_system")
+    if isinstance(system, dict):
+        return system.get("name") or None, system.get("slug") or None
+    if isinstance(system, str) and system:
+        return system, data.get("game_system_slug")
+
+    candidates = data.get("game_systems") or []
+    primary = [s for s in candidates if s.get("is_primary")]
+    chosen = primary if len(primary) == 1 else candidates
+    if len(chosen) == 1:
+        return chosen[0].get("name") or None, chosen[0].get("slug") or None
+    return None, data.get("game_system_slug")
+
+
+def _resolve_publication_year(data: dict[str, Any]) -> int | None:
+    """Codex replaced `publication_year` with an ISO `publication_date`."""
+    year = data.get("publication_year")
+    if year:
+        try:
+            return int(year)
+        except (TypeError, ValueError):
+            pass
+    raw = data.get("publication_date")
+    if raw:
+        try:
+            return date.fromisoformat(raw).year
+        except (TypeError, ValueError):
+            return None
+    return None
+
+
+def _resolve_author(data: dict[str, Any]) -> str | None:
+    """Flatten `credits` into Grimoire's single comma-separated author string."""
+    author = data.get("author")
+    if isinstance(author, str) and author:
+        return author
+
+    names: list[str] = []
+    for credit in data.get("credits") or []:
+        if (credit.get("role") or "").lower() not in AUTHOR_CREDIT_ROLES:
+            continue
+        name = _name_of(credit.get("author"))
+        if name and name not in names:
+            names.append(name)
+    return ", ".join(names) or None
+
+
+def _resolve_dtrpg_url(data: dict[str, Any]) -> str | None:
+    """The `dtrpg_url` column is gone from Codex; `links` carries it now."""
+    url = data.get("dtrpg_url")
+    if url:
+        return url
+    for link in data.get("links") or []:
+        href = link.get("url") or ""
+        if (link.get("label") or "").lower() == "drivethrurpg" or "drivethrurpg.com" in href:
+            return href or None
+    return None
+
+
 @dataclass
 class CodexProduct:
     """Product data from Codex API."""
@@ -61,20 +145,32 @@ class CodexProduct:
     description: str | None = None
     cover_url: str | None = None
     dtrpg_url: str | None = None
+    dtrpg_id: str | None = None
+    links: list[dict] = field(default_factory=list)
     tags: list[str] | None = None
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "CodexProduct":
+        """Build from an `/identify` payload, in either the flat or nested shape.
+
+        ⚠️ Every field here must come out a scalar. `sync_product_from_codex`
+        maps them straight onto `Product` columns, so a `dict` reaching
+        `publisher` raises `sqlite3.ProgrammingError` mid-commit and poisons
+        the session for every product after it. `genre` has no source in the
+        current payload — Codex replaced it with `themes`/`tags`, which are
+        not the same thing — so it stays unset rather than being guessed at.
+        """
+        game_system, game_system_slug = _resolve_game_system(data)
         return cls(
             id=data.get("id", ""),
             title=data.get("title", ""),
-            publisher=data.get("publisher"),
-            author=data.get("author"),
-            game_system=data.get("game_system"),
-            game_system_slug=data.get("game_system_slug"),
+            publisher=_name_of(data.get("publisher")),
+            author=_resolve_author(data),
+            game_system=game_system,
+            game_system_slug=game_system_slug,
             genre=data.get("genre"),
             product_type=data.get("product_type"),
-            publication_year=data.get("publication_year"),
+            publication_year=_resolve_publication_year(data),
             page_count=data.get("page_count"),
             level_range_min=data.get("level_range_min"),
             level_range_max=data.get("level_range_max"),
@@ -83,7 +179,9 @@ class CodexProduct:
             estimated_runtime=data.get("estimated_runtime"),
             description=data.get("description"),
             cover_url=data.get("cover_url"),
-            dtrpg_url=data.get("dtrpg_url"),
+            dtrpg_url=_resolve_dtrpg_url(data),
+            dtrpg_id=data.get("dtrpg_id") or None,
+            links=data.get("links") or [],
             tags=data.get("tags"),
         )
 
@@ -107,6 +205,8 @@ class CodexProduct:
             "description": self.description,
             "cover_url": self.cover_url,
             "dtrpg_url": self.dtrpg_url,
+            "dtrpg_id": self.dtrpg_id,
+            "links": self.links,
             "tags": self.tags,
         }
 

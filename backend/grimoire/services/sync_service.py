@@ -272,9 +272,22 @@ async def sync_product_from_codex(
     for field_name, codex_value in field_mappings:
         if codex_value is None:
             continue
-        
+
+        # Backstop, not the fix. `from_dict` is what flattens Codex's nested
+        # objects; this catches the *next* field Codex nests before it reaches
+        # a scalar column. Binding a dict raises inside `db.commit()`, which
+        # leaves the session inactive and fails every product behind this one
+        # — so a reshape should cost one field, not the whole run.
+        if not isinstance(codex_value, (str, int, float, bool)):
+            logger.warning(
+                f"Codex sent a {type(codex_value).__name__} for {field_name!r}; "
+                f"skipping it rather than binding it to a scalar column. "
+                f"CodexProduct.from_dict probably needs to flatten this field."
+            )
+            continue
+
         current_value = getattr(product, field_name, None)
-        
+
         if overwrite_existing or not current_value:
             setattr(product, field_name, codex_value)
             if current_value != codex_value:
@@ -326,7 +339,14 @@ async def sync_all_products(
             "skipped": 0,
         }
 
-    query = select(Product).where(
+    # Ids, not instances. `db.rollback()` in the error handler below expires
+    # every object in the session — including the products not yet visited —
+    # and reloading an expired attribute needs an await that attribute access
+    # cannot make, so holding instances across a rollback turns the next
+    # product into a MissingGreenlet. Loading each one inside the loop gets a
+    # fresh, awaited read whatever happened to the product before it, and
+    # keeps a 19,301-product run from holding the whole library in memory.
+    query = select(Product.id).where(
         Product.is_duplicate == False,
         Product.is_missing == False,
         Product.is_superseded == False,
@@ -335,14 +355,18 @@ async def sync_all_products(
         query = query.where(Product.ai_identified == False)
 
     result = await db.execute(query)
-    products = list(result.scalars().all())
+    product_ids = list(result.scalars().all())
     
     synced = 0
     failed = 0
     skipped = 0
     results = []
     
-    for product in products:
+    for product_id in product_ids:
+        product = await db.get(Product, product_id)
+        if product is None:  # deleted between the id query and now
+            skipped += 1
+            continue
         try:
             sync_result = await sync_product_from_codex(
                 db=db,
@@ -357,15 +381,23 @@ async def sync_all_products(
                 skipped += 1
                 
         except Exception as e:
-            logger.error(f"Error syncing product {product.id}: {e}")
             failed += 1
+            # ⚠️ Roll back BEFORE touching `product` again. A failure inside
+            # commit() leaves the session inactive: it then refuses lazy
+            # loads, so even reading `product.id` for the log message raises
+            # PendingRollbackError — out of the `except`, past the loop, and
+            # the whole run dies on the first bad row. That ordering is the
+            # entire fix; a rollback placed after the logging call does
+            # nothing, because it never runs.
+            await db.rollback()
+            logger.error(f"Error syncing product {product_id}: {e}")
     
     return {
         "success": True,
         "synced": synced,
         "failed": failed,
         "skipped": skipped,
-        "total": len(products),
+        "total": len(product_ids),
         "results": results[:20],  # Limit detailed results
     }
 
