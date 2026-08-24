@@ -23,6 +23,22 @@ class CodexStatusResponse(BaseModel):
     has_api_key: bool
 
 
+def _decode(value: str):
+    """Decode a stored setting, tolerating one that was not written as JSON.
+
+    Every writer here stores JSON, but `Setting` is a plain key/value table
+    that anything can write to, and the queue worker's heartbeat stored a bare
+    ISO timestamp for a while. Decoding the whole table eagerly meant one such
+    row raised `JSONDecodeError` and took down this endpoint - and with it
+    every save the Settings page made, since the write paths return this
+    response. One unreadable row should cost its own value, not the request.
+    """
+    try:
+        return json.loads(value)
+    except (json.JSONDecodeError, TypeError):
+        return value
+
+
 @router.get("")
 async def get_settings(db: DbSession) -> dict:
     """Get all settings."""
@@ -30,7 +46,7 @@ async def get_settings(db: DbSession) -> dict:
     result = await db.execute(query)
     settings = result.scalars().all()
 
-    return {s.key: json.loads(s.value) for s in settings}
+    return {s.key: _decode(s.value) for s in settings}
 
 
 @router.patch("")
@@ -83,7 +99,7 @@ async def get_setting(db: DbSession, key: str) -> dict:
     if not setting:
         raise HTTPException(status_code=404, detail="Setting not found")
 
-    return {key: json.loads(setting.value)}
+    return {key: _decode(setting.value)}
 
 
 @router.put("/{key}")
@@ -101,7 +117,7 @@ async def set_setting(db: DbSession, key: str, value: dict) -> dict:
 
     await db.commit()
 
-    return {key: json.loads(setting.value)}
+    return {key: _decode(setting.value)}
 
 
 @router.delete("/{key}", status_code=204)
