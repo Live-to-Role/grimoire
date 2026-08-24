@@ -401,13 +401,35 @@ later phase tests against. This is the step that turns Finding 1 from
 "the serializer says so" into a fact, and it costs one session at the home
 machine.
 
-### Phase 1 — Fix the read path **[dev]**, verify **[home]**
+### Phase 1 — Fix the read path **[dev]**, verify **[home]** — ✅ DONE
 
-- **A confidence floor, in the same commit as the `from_dict` change.** See
-  Finding 1b: the dict crash is currently the only thing stopping a fuzzy
-  match from overwriting a product with a different product's metadata, so
-  fixing `from_dict` without this converts a loud failure into silent
-  corruption. Test that a low-confidence fuzzy match writes nothing.
+*Landed `fac7445`, `09bd6d0`, `9050a0a`. Verified on the home machine against
+the live API: five products, isolated database copy, `failed: 0`, three exact
+matches enriched, the two Zombie Reign products skipped as fuzzy and left
+untouched, one `/health` call for the run.*
+
+Two things this phase learned that the bullets below did not anticipate:
+
+- **Open question 2 is resolved.** `credits` flatten to `author` using the
+  `author` / `co_author` roles only. Codex's role vocabulary also contains
+  `artist`, `cartographer`, `cover_artist`, `editor`, `layout`, `developer`
+  and `playtester`, so joining every credit puts the cartographer in the
+  author field. A blank author beats a wrong one.
+- **`db.rollback()` alone does not fix the session poisoning**, and a patch
+  that adds only that line looks right while changing nothing. The handler's
+  own log line reads `product.id`, which a failed session refuses to lazy
+  load, so the handler raised before reaching the rollback. Rolling back
+  first is still not enough: rollback expires *every* instance in the
+  session, including products not yet visited, and reloading an expired
+  attribute needs an await that attribute access cannot make. The loop has to
+  walk ids and load each product inside it.
+
+- ~~A confidence floor~~ **— superseded. Only an exact match auto-applies**
+  (`fac7445`). A floor was the wrong instrument: the observed bad match scored
+  0.818, so any floor loose enough to admit real matches admits that one too.
+  The match *type* is the honest signal. A fuzzy match now returns
+  `reason="fuzzy_match_not_applied"` with the suggested title, and writes
+  nothing.
 - **Cache the `/health` verdict.** *(done — `09bd6d0`.)* `get_codex_client`
   rebuilt its singleton on every call that passed an `api_key`, so each
   product paid for its own `/health`; the verdict is now reused for
@@ -599,9 +621,14 @@ machine.
    also the only spelling that cannot disturb a declaration made on Codex.
    If it is ever wanted, it must arrive as a field the user sets themselves,
    never as anything inferred.
-2. **`credits` → `author`.** Codex models credits as structured roles.
-   Flattening them into Grimoire's single `author` string loses the role.
-   Take the first credit, join them, or add a Grimoire-side credits table?
-3. **Is the deployed Codex actually current with `main`?** Phase 0 answers
-   this, and if the deployment is behind, Phase 1's compatibility shims are
-   load-bearing rather than defensive.
+2. *(resolved 2026-08-24)* **`credits` → `author` uses writing roles only.**
+   Codex's vocabulary is `author`, `co_author`, `artist`, `cartographer`,
+   `cover_artist`, `editor`, `layout`, `developer`, `playtester`, `other`.
+   Grimoire joins the `author` and `co_author` names with `", "`, matching how
+   its own multi-author values are already stored, and ignores the rest — a
+   cartographer in the author field is worse than a blank one. A Grimoire-side
+   credits table remains the better answer if roles ever need preserving; this
+   is the lossy-but-honest version.
+3. *(resolved 2026-08-24)* **The deployed Codex is current with `main`.**
+   Phase 0 confirmed the nested payload against the live API, so Phase 1's
+   flat-shape handling is defensive rather than load-bearing.
