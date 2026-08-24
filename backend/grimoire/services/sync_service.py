@@ -10,7 +10,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from grimoire.config import settings
 from grimoire.models import Product, ContributionQueue, ContributionStatus, Setting
-from grimoire.services.codex import CodexClient, CodexProduct, get_codex_client, IdentificationSource
+from grimoire.services.codex import (
+    CodexClient,
+    CodexProduct,
+    get_codex_client,
+    IdentificationSource,
+    MatchType,
+)
 from grimoire.services.contribution_service import queue_contribution, submit_all_pending
 
 logger = logging.getLogger(__name__)
@@ -222,7 +228,29 @@ async def sync_product_from_codex(
     
     if not match or not match.product:
         return {"synced": False, "reason": "No match found in Codex"}
-    
+
+    # ⚠️ Only an exact match auto-applies. A fuzzy match is a guess, and
+    # applying one overwrites a real product with a different product's
+    # metadata: local "Zombie Reign" (Angry Engine Games) matched Codex's
+    # "SoRoPlay GamTools Zine: Zombie Ref" (Ken Wickham) at 0.818 and was
+    # about to be renamed to it.
+    #
+    # No confidence floor would be safe here instead. 0.818 is not a low
+    # score, and the title fallback is the *normal* path rather than the
+    # exceptional one - Codex's catalogue carries almost no file_hashes, so
+    # hash lookup misses and nearly every product reaches this branch.
+    # Returned as a suggestion so a caller can offer it; never written.
+    if match.match_type != MatchType.EXACT:
+        return {
+            "synced": False,
+            "reason": "fuzzy_match_not_applied",
+            "product_id": product.id,
+            "codex_id": match.product.id,
+            "match_type": match.match_type.value,
+            "confidence": match.confidence,
+            "suggested_title": match.product.title,
+        }
+
     codex_product = match.product
     updated_fields = []
     
