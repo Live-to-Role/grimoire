@@ -8,11 +8,26 @@ Blocks: `2026-08-23-multi-format-scanning-design.md` (Codex eligibility work)
 
 **Outbound contributions are still compatible. Inbound enrichment is broken.**
 
-Every field Grimoire's `build_contribution_data` sends is in Codex's
-`ALLOWED_PRODUCT_FIELDS`, and the envelope Grimoire's client posts
+Every field Grimoire's `build_contribution_data` sends is either in Codex's
+`EDITABLE_FIELDS` (`catalog/contributions.py:55`) or handled by the apply path
+as a composite/derived field, and the envelope Grimoire's client posts
 (`contribution_type`, `data`, `file_hash`, `source: "grimoire"`,
 `Authorization: Token`) is exactly what `ContributionCreateSerializer`
 expects. That path works and needs no emergency fix.
+
+⚠️ An earlier draft credited this to a constant named `ALLOWED_PRODUCT_FIELDS`,
+which does not exist in Codex — the same phantom-symbol mistake this plan
+catches elsewhere with `LEGACY_SIZE_MIN_PATTERN`. The conclusion survives the
+correction but the reasoning needed redoing, because `EDITABLE_FIELDS` is
+*narrower* than the name it replaced suggests: it does **not** contain `author`,
+`genre`, `publisher`, `game_system`, `series`, `series_order` or
+`publication_year`, all of which Grimoire sends. Each is handled separately and
+deliberately — `author`/`authors` and `genre`/`genres` are normalised to lists
+and merged (`contributions.py:305-309`, `:414-425`), `series` resolves through
+`_resolve_series` (`:112`, `:318`, `:433`), and `publication_year` is coerced by
+`_coerce_publication_date` (`:86-99`), which reads `publication_date` first and
+falls back to the year. Verified field by field against Codex `main`; nothing
+Grimoire sends is silently dropped.
 
 The read path does not. Codex's `/identify` now returns
 `ProductDetailSerializer`, which **no longer has `author`, `genre`,
@@ -25,7 +40,7 @@ of those as flat values.
 
 ## Finding 1 — Codex enrichment writes a dict into a string column (severity: high)
 
-`sync_product_from_codex` (`services/sync_service.py:228`) maps
+`sync_product_from_codex` (`services/sync_service.py:230`) maps
 `codex_product.publisher` straight onto `Product.publisher`, which is
 `String(255)`:
 
@@ -39,7 +54,7 @@ field_mappings = [
 ```
 
 The loop skips a `None` and only writes when `overwrite_existing or not
-current_value` (`:243-252`), so the precise trigger is *a matched product
+current_value` (`:244-253`), so the precise trigger is *a matched product
 whose local field is blank* — which, under `sync_all_products`' default
 `only_unidentified=True`, is very nearly all of them. There, `publisher` and
 `game_system` bind a `dict` to a VARCHAR parameter. Under aiosqlite that is an
@@ -48,7 +63,7 @@ raises, and it raises only for products Codex *does* know, which are the
 ones the feature exists to serve.
 
 ⚠️ **And it takes the rest of the run with it.** `sync_all_products` catches
-per product and continues (`:329-332`) but never calls `db.rollback()`. The
+per product and continues (`:329-331`) but never calls `db.rollback()`. The
 `InterfaceError` surfaces inside `await db.commit()`, which leaves the
 `AsyncSession` inactive; every subsequent statement raises
 `PendingRollbackError`. So the first matched product does not fail alone — it
@@ -65,6 +80,22 @@ Fields that silently became no-ops, because Codex no longer sends the key:
 | `publication_year` | `publication_date` (ISO string) |
 | `dtrpg_url` | `dtrpg_id` + `links[]` |
 | `game_system_slug` | inside the nested `game_system` object |
+
+⚠️ **`sync_product_from_codex` is not the only reader, and the second one is
+easy to miss.** `check_for_updates` (`services/sync_service.py:344`) builds its
+own `field_mappings` at `:368` — `title`, `publisher`, `game_system`,
+`product_type`, `publication_year` — and compares `current_value !=
+codex_value` without ever writing. No commit, so no `InterfaceError`; instead
+**every matched product now reports `publisher` and `game_system` as
+differing**, with a nested dict rendered as the "Codex" side of the diff in the
+update-check UI. Quieter than Finding 1's failure and longer-lived, because
+nothing raises.
+
+This decides *where* the Phase 1 fix goes. That phase currently offers two
+remedies — reshape `CodexProduct.from_dict`, or add a type guard to
+`sync_product_from_codex`'s mapping loop. Only the first covers this site. **Do
+both, in that order of importance:** `from_dict` is the fix, and the type guard
+is a backstop against the next reshape, not an alternative to it.
 
 **This wants verifying against the live API before anything is rewritten** —
 the serializer is unambiguous, but a stale deployment would change the
@@ -156,17 +187,35 @@ it throttles anonymous callers and nobody else. `identify_by_hash` and
 `identify_by_title` (`services/codex.py:257`, `:294`) send no `Authorization`
 header, which is the entire reason the limit applies to us. `IdentifyView` is
 `AllowAny`, so adding the token we already hold removes the constraint outright.
-That is a decision to make deliberately rather than by omission — and it cuts
-both ways: if Phase 4's `dtrpg_id` work adds a token header for consistency,
-the backoff written in Phase 2 silently stops ever firing. Either authenticate
-identify and say so, or keep it anonymous and build the backoff, but do not do
-one while planning for the other.
+
+**Decided (2026-08-24): authenticate `/identify`, and pace the walk anyway.**
+Both halves, deliberately:
+
+- **Authenticate.** Send the token on `identify_by_hash` and
+  `identify_by_title`. The throttle stops applying, and Grimoire stops sharing
+  an IP-keyed bucket with every other anonymous caller behind the same address
+  — which was never a limit on *us* so much as a limit on our neighbours.
+- **Keep a modest client-side pace regardless.** Phase 5 walks the whole real
+  library in one pass; that it is now *permitted* to do so at full speed is not
+  a reason to. Pacing is a few lines, it is the difference between a good
+  neighbour and a self-inflicted incident on a service Michael also runs, and
+  it survives Codex changing its mind about throttling later.
+
+This closes the trap the earlier draft flagged — that Phase 4's `dtrpg_id` work
+might add a token header for consistency and silently disarm a backoff written
+in Phase 2. Both are now intentional and neither depends on the other.
+
+**The throttle was never the dangerous part, though.** See the swallowed-error
+bug immediately below: it is what turns a failed lookup into a duplicate
+contribution, and it must be fixed whether or not the ceiling can still be
+reached. Authenticating makes the trigger rarer; a timeout or a 500 pulls it
+just as hard.
 
 ⚠️ **A throttled lookup does not fail — it reports "new product".**
 `identify_by_hash` wraps `response.raise_for_status()` in
 `except Exception: return None` (`services/codex.py:246-272`), and
 `should_contribute` reads a `None` match as `return True, "new_product"`
-(`services/sync_service.py:135-138`). So hitting the ceiling mid-walk does not
+(`services/sync_service.py:138-140`). So hitting the ceiling mid-walk does not
 stall the sync; it converts every remaining product into a new-product
 contribution for things Codex already holds. That is precisely the failure
 Codex's own comment at `api/views_products.py:141-144` blames for 919
@@ -207,14 +256,31 @@ submissions should be processed like anyone else's. A Grimoire sync will
 queue regardless of privilege. That is a Codex-side change, planned in
 `codex/docs/GRIMOIRE_MODERATION_PARITY_PLAN.md`.
 
-⚠️ **That gate keys on the `source` label Grimoire itself sends.**
-`_effective_source` maps a token client to `API` unless it declares
-`grimoire`, and the parity plan leaves `API` on direct apply for the bulk
-importer's sake. So after parity, `API` is the *more* privileged label, and
-dropping one line from the payload (`services/codex.py:347`) would silently
-restore the bypass for a privileged account. Grimoire must keep sending
-`"source": "grimoire"` on every request, and a test should assert it —
-the correctness of the Codex-side rule now depends on this client's payload.
+⚠️ **An earlier draft of that gate keyed on the `source` label Grimoire itself
+sends** — and that was the wrong place to put it. `_effective_source` maps a
+token client to `API` unless it declares `grimoire`, and leaving `API` on
+direct apply for the bulk importer's sake would have made `API` the *more*
+privileged label: dropping one line from Grimoire's payload
+(`services/codex.py:347`) would silently restore the bypass for a privileged
+account. That inverts `_effective_source`'s own stated invariant — "a caller
+may always claim less trust, never more" — and it puts the correctness of a
+Codex authorization rule in the hands of this client's payload, where a
+routine Grimoire refactor could disarm it.
+
+**Decided (2026-08-24): the Codex gate keys on authentication, not on the
+label.** Any `HashedTokenAuthentication` request queues — a token client is a
+machine whatever it calls itself — and `scripts/dtrpg_library.py` gets an
+explicit exemption on its own token rather than inheriting one by saying less.
+The change is Codex-side and is written into
+`codex/docs/GRIMOIRE_MODERATION_PARITY_PLAN.md` Phase 1.
+
+**What that means for this plan: nothing Grimoire does can turn the gate off.**
+That is the point of the decision. Grimoire should still send
+`"source": "grimoire"` on every request and should still have a test asserting
+it — the label remains how a contribution is *attributed*, filtered
+(`?source=grimoire`) and merge-guarded (`GUARDED_SOURCES`) — but it is no
+longer what decides whether moderation applies. Keep the test; it now protects
+attribution rather than authorization.
 
 Two consequences land squarely on this plan:
 
@@ -245,7 +311,7 @@ submitted contribution. A contribution sits at `SUBMITTED` forever whether it
 was approved, rejected, or largely held back.
 
 That is not merely cosmetic, because `queue_product_for_contribution`
-(`services/sync_service.py:508`) refuses to re-contribute a product whose
+(`services/sync_service.py:467`) refuses to re-contribute a product whose
 contribution is `PENDING` or `SUBMITTED`:
 
 > **A rejected contribution permanently blocks that product from ever being
@@ -303,10 +369,19 @@ machine.
   `publication_year` from `publication_date`, reads `dtrpg_id` and `links`,
   and pulls `author` from `credits`.
 - `sync_product_from_codex` never assigns a non-scalar to a scalar column —
-  a type guard in the mapping loop, so a future Codex reshape degrades
-  instead of raising.
+  a type guard in the mapping loop, as a backstop so a future Codex reshape
+  degrades instead of raising. This is *in addition to* the `from_dict` fix
+  above, not instead of it: the guard protects one call site and `from_dict`
+  protects all of them.
+- **`check_for_updates` gets a regression test of its own**
+  (`services/sync_service.py:344`). It reads the same fields through a separate
+  mapping list at `:368` and reports differences rather than writing them, so
+  the type guard above never runs there. Assert that a product matching a Codex
+  record with a nested `publisher` reports *no* difference on that field —
+  which is the behaviour `from_dict` restores, and the thing that silently
+  breaks if someone later "simplifies" the fix down to the guard.
 - **`sync_all_products` rolls back before continuing.** Its per-product
-  `except` (`services/sync_service.py:329-332`) currently leaves the session
+  `except` (`services/sync_service.py:329-331`) currently leaves the session
   inactive after a failed commit, so one bad row fails every row after it.
   `await db.rollback()` in the handler, and a test that a product which raises
   on commit does not prevent the next one syncing.
@@ -319,12 +394,17 @@ machine.
 - Persist `existing_product_id` / `existing_contribution_id` rather than
   discarding them.
 - Surface `warnings` on the contribution record and in the UI.
-- Handle 429 with backoff in `submit_all_pending` and `sync_all_products`.
-  The bucket is per IP at 60/minute (Finding 5), so the backoff is shared
-  across the whole library walk rather than per product — **unless the
-  decision in Finding 5 is to authenticate `/identify`**, in which case the
-  throttle does not apply to us at all and this bullet is defensive only. Say
-  which, in this plan, before writing the backoff.
+- **Authenticate `/identify`** — add the `Authorization: Token` header to
+  `identify_by_hash` and `identify_by_title` (`services/codex.py:257`, `:294`),
+  per the decision in Finding 5. This removes the 60/minute ceiling rather than
+  working around it.
+- **Pace the library walk, and keep 429 handling as a backstop.** A shared
+  delay across `sync_all_products` and `submit_all_pending` rather than a
+  per-product one, since the bucket was per IP. With the header above the
+  throttle should never fire; handle it anyway, because "should never fire" is
+  what the swallowed-error bug below was also assumed to be. A 429 that *does*
+  arrive means an assumption broke and must be loud, not retried silently
+  forever.
 - **Distinguish "Codex has no match" from "Codex could not be asked."**
   `identify_by_hash` / `identify_by_title` currently return `None` for both,
   and `should_contribute` reads `None` as `new_product` — so a throttle, a
@@ -334,7 +414,7 @@ machine.
 - **Store the handle polling needs.** `ContributionQueue` has
   `codex_product_id` — which nothing ever writes — and **no column at all for
   Codex's contribution id**. `submit_contribution`
-  (`services/contribution_service.py:150`) logs `result.contribution_id` and
+  (`services/contribution_service.py:153`) logs `result.contribution_id` and
   discards it. Polling is impossible until a migration adds
   `codex_contribution_id`. This is a schema change and should be the first
   commit of the phase.
@@ -365,7 +445,7 @@ machine.
     `ACCEPTED`, not `APPROVED` (`models/contribution.py:16`). Map Codex
     `approved` → local `ACCEPTED`; do not add a fourth spelling.
   - **Unblocking must not become a resubmit loop.** `queue_product_for_contribution`
-    blocks only on `PENDING` / `SUBMITTED` (`services/sync_service.py:509`), so
+    blocks only on `PENDING` / `SUBMITTED` (`services/sync_service.py:510`), so
     the moment polling writes `REJECTED` the next sync re-queues the identical
     payload, Codex re-rejects it, and this repeats every sync forever — and
     each round leaves another rejected row in the moderation queue. A rejected
@@ -388,6 +468,21 @@ predicate to accept an id, or load once at the top of the function — but do
 not push the check up to its callers, since being the one place they all pass
 through (`sync_service.py:535`, `:600`, `api/routes/contributions.py:95`) is
 the entire reason it is the backstop.
+
+⚠️ **Do not put the predicate in `sync_service.py`, where the multi-format plan
+drafts it.** `sync_service` already imports `contribution_service` at module
+level (`sync_service.py:14`), and `contribution_service` imports nothing back —
+so a `contribution_service.queue_contribution` that reaches for
+`sync_service.is_codex_eligible` closes an import cycle. The codebase's habit
+of working around that with a function-local import (`should_contribute` does
+exactly this for `get_cover_image_base64`) is a bad home for a guard whose
+whole job is to be unbypassable: a deferred import is one refactor away from
+being deferred right past the call.
+
+Put it in `contribution_service.py`, or in a small module of its own that both
+import. Prefer the second — the predicate is about *what may be shared*, which
+is neither service's subject, and a file named for that is harder to
+accidentally dismantle than a helper sitting among sync internals.
 
 ⚠️ **Ships in two halves, and this phase is only the first.** The predicate as
 drafted in the multi-format plan opens with `product.file_type != "pdf"`, and

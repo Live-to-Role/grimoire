@@ -212,29 +212,39 @@ populated.
 ⚠️ **There is no precedent to copy here.** An earlier draft said to match how
 `LEGACY_SIZE_MIN_PATTERN` is migrated in `exclusion_service.py:135`. No such
 symbol exists anywhere in the repo, and the seeding function —
-`seed_default_rules`, at `exclusion_service.py:115`, not `:135` — opens with a
-blanket `if existing: return 0` over every `is_default` rule. So it has never
-added a rule to a populated table and there is no per-rule idempotency to
-follow. This is a migration to write from scratch, in `grimoire/migrations/`
-alongside the `add_*_columns.py` files: insert each new default only when no
-rule with that `rule_type` + `pattern` already exists, and leave a user's
-disabled or edited rules alone.
+`seed_default_rules`, at `exclusion_service.py:154` — opens with a blanket
+`if existing: return 0` over every `is_default` rule. So it has never added a
+rule to a populated table and there is no per-rule idempotency to follow. This
+is a migration to write from scratch, in `grimoire/migrations/` alongside the
+`add_*_columns.py` files: insert each new default only when no rule with that
+`rule_type` + `pattern` already exists, and leave a user's disabled or edited
+rules alone.
 
-⚠️ **The `size_min` floor is a live decision, not settled state.** An earlier
-draft said "the 1KB floor stays as-is". The shipped default is **10240**, not
-1024 — `models/exclusion.py:69`, described as "Files under 10KB (likely
-corrupt)" — and the local database still holds that value. The lowering to 1KB
-is deliberate and correct (a one-page dungeon is a legitimate product and a
-10KB floor silently swallows it), but **it has not shipped**, so it belongs in
-this plan's Phase 2 next to the other exclusion changes rather than being
-described as existing behaviour.
+⚠️ **The `size_min` floor has already been lowered — the gap is existing
+installs.** Two earlier drafts of this section were both wrong, in opposite
+directions, and the second was wrong for an instructive reason: it was written
+against `60d6e94`, two commits behind main, where `models/exclusion.py:69` did
+read `10240`. `834d4e8` ("stop skipping one-page PDFs") landed about ninety
+minutes before that draft and lowered the shipped default to **1024**
+(`models/exclusion.py:72`, with `tests/services/test_size_min_default_correction.py`
+covering it). So the lowering is done and is not this plan's work.
 
-That also sharpens the case for the filename rules above rather than weakening
-it. At 10KB the floor was incidentally catching most `readme.txt`; at 1KB it
-catches almost none of them, and every junk text file in a bundle is a Product
-with a placeholder cover. **Lowering the floor and enabling a flat-text format
-must not land in the same release without the filename rules in between** —
-that combination is the one that fills a library with `license.txt`.
+What is still open is the half the blanket `if existing: return 0` above
+guarantees: **a database seeded before `834d4e8` still holds a 10240 rule**,
+and nothing will ever update it. The code default and the deployed default
+disagree on every pre-existing install, including Michael's. That is the same
+stranding problem as the new filename rules, it wants the same idempotent
+migration, and it is a better argument for writing that migration than the one
+this section used to make.
+
+It also removes a sequencing option this plan thought it had. An earlier draft
+said "lowering the floor and enabling a flat-text format must not land in the
+same release without the filename rules in between", treating the floor as a
+lever to time. It is not a lever any more — in code the floor is already 1KB,
+so the moment a flat-text format can be enabled, `readme.txt` and `license.txt`
+are eligible on any install that has picked up the new default. **The filename
+rules are therefore a prerequisite of Phase 6, not a companion to it**, and
+they should land in Phase 2 as planned regardless of when TXT/MD/RTF arrives.
 
 ## Codex eligibility
 
@@ -242,10 +252,17 @@ that combination is the one that fills a library with `license.txt`.
 purchased somewhere else — adventures, sourcebooks, zines and other play aids.
 It is not for collections of images or maps.
 
-That purpose, not the file extension, is the actual rule. Contribution is
-**outbound-blocked** for anything that fails it; reading *from* Codex
+**Codex is PDF-only, and that is a standing rule rather than a starting
+position** (confirmed 2026-08-24). Nothing but a PDF is ever contributed
+upstream, in this release and every release after it — the multi-format work
+extends what Grimoire will *catalogue*, and changes nothing about what
+Grimoire will *share*. A later phase adding CBZ or RTF does not get to revisit
+this; it inherits it.
+
+Two independent rules, then, both outbound-only: the file must be a PDF, and
+its content must not be images or maps. Reading *from* Codex
 (`sync_product_from_codex`, enrichment, identification) stays enabled for
-every product, since it sends nothing upstream.
+every product regardless, since it sends nothing upstream.
 
 A single predicate, so the rule lives in one place:
 
@@ -280,7 +297,7 @@ Called from two places, because there are two ways into the queue:
 
 The second is a genuine backstop rather than belt-and-braces:
 `queue_product_for_contribution` takes `skip_no_change_check=True`
-(`sync_service.py:471`), which skips `should_contribute` altogether. A guard
+(`sync_service.py:467-471`), which skips `should_contribute` altogether. A guard
 placed only there is bypassable by an existing parameter. It is also a real
 choke point — `ContributionQueue` is constructed in exactly one place
 (`contribution_service.py:109`), reached from `sync_service.py:535`, `:600`
@@ -319,7 +336,7 @@ Four sites glob for PDFs and all must consult the registry:
 - `services/scanner.py:73` — `rglob("*.pdf")`
 - `services/batch_scanner.py:71` — `discover_files`
 - `services/watcher.py:62` — suffix check on filesystem events
-- `services/exclusion_service.py:229` — rule-preview walk
+- `services/exclusion_service.py:268` — rule-preview walk
 
 Replace with a single walk matching an extension set. **Performance
 constraint:** the current single-pattern `rglob` was chosen for large network
@@ -338,7 +355,7 @@ summary can report "412 PDF, 18 EPUB, 3 DOCX".
   products get a reader that renders the extracted markdown from the existing
   text endpoint — pageable using the synthetic `pages` array, so the same
   navigation UI works. Anything not yet text-extracted offers download only.
-- `GET /products/{id}/pdf` (`api/routes/products.py:517`) hardcodes
+- `GET /products/{id}/pdf` (`api/routes/products.py:560`) hardcodes
   `media_type="application/pdf"`. Either add a `/file` route that maps
   extension → media type, or generalise this one and keep `/pdf` as an alias
   so existing frontend calls and any bookmarks keep working.
@@ -365,9 +382,19 @@ toggle.** Still PDF-only in effect: default `["pdf"]` means no user sees a
 change. Per-format scan counts in the summary. **Also completes
 `is_codex_eligible`**: the `file_type != "pdf"` clause goes in with the column,
 since the realignment plan's Phase 3 could not carry it. **Also the exclusion
-work**: the five filename rules, the idempotent migration that puts them on
-existing installs, and the `size_min` lowering from 10240 to 1024 — all three
-together, for the reason given under [Opt-in per format](#opt-in-per-format).
+work**: the five filename rules and the idempotent migration that puts them —
+and the already-shipped 1024 `size_min` default — onto installs seeded before
+`834d4e8`. See [Opt-in per format](#opt-in-per-format).
+
+⚠️ **Commit order inside this phase is load-bearing.** The `file_type` clause
+of `is_codex_eligible` must land in the same commit as the column, or ahead of
+generalised discovery — never after it. The column is what makes a non-PDF
+`Product` expressible and discovery is what creates one; the instant both exist
+without the clause, a non-PDF product can reach the contribution queue. There
+is no window in which that is acceptable (see
+[Codex eligibility](#codex-eligibility)), and it is invisible in testing
+because the default `["pdf"]` means nobody has a non-PDF product to catch it
+with.
 
 **Phase 3 — EPUB.** Exercises the full happy path: real metadata, embedded
 cover, synthetic pagination, search, embeddings, bestiary.
@@ -383,6 +410,17 @@ these carry the highest junk-file risk and the least metadata.
 
 **Out of scope:** legacy `.doc` (needs LibreOffice/antiword shell-out), MOBI/AZW
 (DRM), CBZ/CBR, and any change to the PDF extraction quality path.
+
+**Also out of scope, and worth naming because it is adjacent enough to get
+confused with this work: archive bundles.** There are roughly 3,139 `.zip`
+files under the library that the scanner has never looked inside — it globs
+`*.pdf` and always has. This plan does not open them. It is tempting to treat
+"scan more formats" as covering it, but an archive is a container rather than a
+document: it needs a decision about whether one zip is one product or many,
+where extracted members live, and what happens on rescan. That is its own
+spec. The one thing this plan should not do is make it *harder* — `get_handler`
+dispatches on extension, so a future `ZipHandler` that yields inner documents
+fits the registry without reshaping it.
 
 ## Tests
 
