@@ -1,6 +1,9 @@
 """Gallery API endpoint - aggregates image-content products."""
 
+from datetime import datetime, UTC
+
 from fastapi import APIRouter, Query
+from pydantic import BaseModel
 from sqlalchemy import func, select
 
 from grimoire.api.deps import DbSession
@@ -19,9 +22,17 @@ async def list_gallery_products(
     sort: str = Query("created_at", description="Sort by: created_at, title, image_count"),
     order: str = Query("desc", description="Sort order: asc or desc"),
     search: str | None = Query(None, description="Search by title or filename"),
+    needs_review: bool = Query(
+        True,
+        description="Only products no human has judged yet. On by default so the "
+                    "review backlog visibly shrinks as it is worked through.",
+    ),
 ):
     """List image-content products for the gallery view."""
     conditions = [Product.is_image_content == True]
+
+    if needs_review:
+        conditions.append(Product.classification_reviewed_at.is_(None))
 
     if tag_id:
         conditions.append(
@@ -103,13 +114,55 @@ async def list_gallery_products(
             "page_count": p.page_count,
             "publisher": p.publisher,
             "created_at": p.created_at.isoformat() if p.created_at else None,
+            "classification_reviewed_at": (
+                p.classification_reviewed_at.isoformat()
+                if p.classification_reviewed_at else None
+            ),
             "tags": product_tags.get(p.id, []),
         })
+
+    # The GLOBAL backlog: every unreviewed image-content product, deliberately
+    # ignoring tag/collection/search. It is the number being burned down, not a
+    # count of what is on screen - so filtering by tag shows a count that does
+    # not match the grid, and that is intended.
+    needs_review_total = (await db.execute(
+        select(func.count()).select_from(Product).where(
+            Product.is_image_content == True,
+            Product.classification_reviewed_at.is_(None),
+        )
+    )).scalar_one()
 
     return {
         "items": items,
         "total": total,
+        "needs_review_total": needs_review_total,
         "page": page,
         "page_size": page_size,
         "total_pages": (total + page_size - 1) // page_size,
     }
+
+
+class ConfirmImagesRequest(BaseModel):
+    """Products the user has confirmed really are image content."""
+    product_ids: list[int]
+
+
+@router.post("/confirm-images")
+async def confirm_images(db: DbSession, request: ConfirmImagesRequest) -> dict:
+    """Record that a human judged these products correctly classified.
+
+    Deliberately changes nothing but the timestamp. Its whole purpose is to
+    remove a correctly-classified product from the needs-review queue - the
+    counterpart to marking a scan, and the reason that queue can ever empty.
+    """
+    result = await db.execute(
+        select(Product).where(Product.id.in_(request.product_ids))
+    )
+    products = list(result.scalars().all())
+
+    now = datetime.now(UTC)
+    for product in products:
+        product.classification_reviewed_at = now
+
+    await db.commit()
+    return {"reviewed": len(products)}
