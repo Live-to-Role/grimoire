@@ -83,5 +83,6 @@ pdfs/
 # Backup files
 *.bak
 
-# Design/planning docs
-docs/plans/
+# Design/planning docs are tracked deliberately - see docs/plans/README.md.
+# They were ignored here until 2026-08-24 while 13 of them were committed with
+# -f, so the rule and the practice had disagreed for months.
