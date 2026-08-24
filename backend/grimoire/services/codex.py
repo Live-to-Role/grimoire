@@ -565,6 +565,36 @@ class CodexClient:
             logger.warning(f"Codex contribution failed: {e}")
             return ContributionResult.failure(str(e))
 
+    async def get_contribution(self, contribution_id: str) -> dict[str, Any] | None:
+        """Read a submitted contribution back, for its status and review notes.
+
+        This is the only way Grimoire learns a contribution's fate. On the
+        queued path the apply runs at approval — long after the submission
+        response returned `pending` — so the held-back `warnings` never appear
+        inline; Codex stores them in `review_notes`.
+
+        ⚠️ `review_notes` is only trustworthy once Codex's parity plan Phase 1
+        lands. Today both API review paths assign the moderator's own notes
+        over whatever `approve_contribution` appended, so the warnings survive
+        only on the Django-admin route. Treat the field as present-if-present.
+        """
+        if self.use_mock or not self.api_key:
+            return None
+
+        try:
+            async with httpx.AsyncClient(timeout=self.timeout, follow_redirects=True) as client:
+                response = await client.get(
+                    f"{self.base_url}/contributions/{contribution_id}/",
+                    headers={"Authorization": f"Token {self.api_key}"},
+                )
+                if response.status_code == 404:
+                    return None
+                response.raise_for_status()
+                return response.json()
+        except Exception as e:
+            logger.warning(f"Could not read contribution {contribution_id}: {e}")
+            raise CodexLookupError(f"contribution read failed: {e}") from e
+
     async def search(
         self,
         query: str,

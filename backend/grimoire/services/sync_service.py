@@ -1,11 +1,12 @@
 """Service for syncing metadata with Codex."""
 
+import hashlib
 import json
 import logging
 from datetime import datetime, UTC
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import inspect as sa_inspect, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from grimoire.config import settings
@@ -527,8 +528,17 @@ def build_contribution_data(product: Product, include_cover: bool = True) -> dic
         "content_warnings": _parse_json_array(product.content_warnings),
     }
     
-    # Serialize tags to JSON array
-    if hasattr(product, 'product_tags') and product.product_tags:
+    # Serialize tags to JSON array.
+    #
+    # ⚠️ Only when the relationship is already loaded. `product_tags` is lazy,
+    # and a lazy load inside an async session raises MissingGreenlet — which
+    # `hasattr` does not catch, because it is not an AttributeError. So the
+    # old guard would have taken the whole contribution down rather than
+    # skipping the tags. Nothing noticed because no contribution has ever
+    # carried tags: of the 37 in the live queue, none has the key, though
+    # 1,079 products do have tags. To actually send them, the caller has to
+    # load the product with `selectinload(Product.product_tags)` first.
+    if "product_tags" not in sa_inspect(product).unloaded and product.product_tags:
         contribution_data["tags"] = [pt.tag.name for pt in product.product_tags]
     
     # Add cover image if available and requested
@@ -560,14 +570,14 @@ async def queue_product_for_contribution(
         Dict with queued status and contribution info
     """
     contribute_enabled, api_key = await get_codex_settings_from_db(db)
-    
+
     if not api_key:
         return {
             "success": False,
             "reason": "no_api_key",
             "message": "No Codex API key configured",
         }
-    
+
     # Check if contribution would add value (unless skipped)
     if not skip_no_change_check:
         codex = get_codex_client()
@@ -607,7 +617,42 @@ async def queue_product_for_contribution(
             "reason": "no_title",
             "message": "Product must have a title to contribute",
         }
-    
+
+    # ⚠️ Don't re-send a payload Codex has already rejected. Once polling can
+    # write REJECTED, nothing else stops the next sync queueing the identical
+    # data for Codex to reject again, every sync, forever — each round leaving
+    # another rejected row in somebody's moderation queue. Codex's own
+    # duplicate_pending cannot help here: a rejected contribution is no longer
+    # PENDING. A rejection is about the data, so changing the data clears it.
+    #
+    # Compared here rather than at the top of the function because the
+    # comparison has to hash the payload as actually built, and building it
+    # twice would mean touching `product.product_tags` twice — a lazy
+    # relationship load, which raises MissingGreenlet in an async session.
+    rejected = (await db.execute(
+        select(ContributionQueue)
+        .where(
+            ContributionQueue.product_id == product.id,
+            ContributionQueue.status == ContributionStatus.REJECTED,
+        )
+        .order_by(ContributionQueue.created_at.desc())
+    )).scalars().first()
+
+    if rejected and rejected.payload_hash:
+        current_hash = hashlib.sha256(
+            json.dumps(contribution_data, sort_keys=True).encode("utf-8")
+        ).hexdigest()
+        if current_hash == rejected.payload_hash:
+            return {
+                "success": False,
+                "reason": "rejected_unchanged",
+                "message": (
+                    "Codex rejected this contribution and the local data has not "
+                    "changed since. Edit the product to offer it again."
+                ),
+                "contribution_id": rejected.id,
+            }
+
     # Queue the contribution
     contribution = await queue_contribution(
         db=db,

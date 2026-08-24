@@ -14,7 +14,12 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from grimoire.models import ContributionQueue, ContributionStatus, Product
-from grimoire.services.codex import CodexClient, ContributionResult, get_codex_client
+from grimoire.services.codex import (
+    CodexClient,
+    CodexLookupError,
+    ContributionResult,
+    get_codex_client,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -241,6 +246,74 @@ async def submit_all_pending(
         "skipped": skipped,
         "total": len(pending),
     }
+
+
+#: Codex's contribution states mapped onto Grimoire's. Codex says "approved";
+#: Grimoire's enum has said ACCEPTED since before this existed, and a fourth
+#: spelling of the same idea helps nobody.
+CODEX_STATUS_MAP = {
+    "approved": ContributionStatus.ACCEPTED,
+    "rejected": ContributionStatus.REJECTED,
+}
+
+
+async def poll_submitted_contributions(
+    db: AsyncSession,
+    api_key: str,
+) -> dict[str, int]:
+    """Resolve SUBMITTED contributions by reading them back from Codex.
+
+    Without this a contribution sits at SUBMITTED forever whatever happened to
+    it, and because `queue_product_for_contribution` refuses to re-contribute
+    a product with a PENDING or SUBMITTED row, a rejection blocks that product
+    permanently with nothing locally to say why.
+    """
+    codex = CodexClient(api_key=api_key, use_mock=False)
+
+    query = select(ContributionQueue).where(
+        ContributionQueue.status == ContributionStatus.SUBMITTED
+    )
+    result = await db.execute(query)
+    outstanding = list(result.scalars().all())
+
+    counts = {"checked": 0, "resolved": 0, "still_pending": 0, "unresolvable": 0}
+
+    for contribution in outstanding:
+        if not contribution.codex_contribution_id:
+            # Submitted before the id column existed. Nothing to ask about —
+            # every row in a library that predates this feature is here.
+            counts["unresolvable"] += 1
+            continue
+
+        counts["checked"] += 1
+        try:
+            remote = await codex.get_contribution(contribution.codex_contribution_id)
+        except CodexLookupError:
+            continue  # transient; try again next poll rather than guessing
+
+        if remote is None:
+            counts["unresolvable"] += 1
+            continue
+
+        notes = (remote.get("review_notes") or "").strip()
+        if notes:
+            contribution.warnings = notes
+
+        mapped = CODEX_STATUS_MAP.get((remote.get("status") or "").lower())
+        if mapped is None:
+            counts["still_pending"] += 1
+            continue
+
+        contribution.status = mapped
+        if mapped is ContributionStatus.REJECTED and notes:
+            contribution.error_message = notes[:500]
+        if remote.get("product"):
+            contribution.codex_product_id = str(remote["product"])
+        counts["resolved"] += 1
+
+    await db.commit()
+    logger.info(f"Polled Codex contributions: {counts}")
+    return counts
 
 
 async def get_contribution_stats(db: AsyncSession) -> dict[str, int]:
