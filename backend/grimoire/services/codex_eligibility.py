@@ -65,3 +65,15 @@ def is_codex_eligible(product: Product) -> tuple[bool, str]:
         return False, "image_content"
 
     return True, "eligible"
+
+
+def may_share_cover(product: Product) -> bool:
+    """Whether this product's cover image may be uploaded to Codex.
+
+    Separate from `is_codex_eligible`, which governs whether the product may
+    be contributed at all. A scanned book is perfectly contributable — its
+    title, publisher and year are facts about a published work — but its cover
+    is the publisher's artwork, and for scans of uncertain provenance that is
+    the part not to republish.
+    """
+    return not product.is_scanned

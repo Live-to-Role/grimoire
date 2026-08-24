@@ -14,12 +14,13 @@ from grimoire.models import Product, ContributionQueue, ContributionStatus, Sett
 from grimoire.services.codex import (
     CodexClient,
     CodexLookupError,
+    CodexMatch,
     CodexProduct,
     get_codex_client,
     IdentificationSource,
     MatchType,
 )
-from grimoire.services.codex_eligibility import is_codex_eligible
+from grimoire.services.codex_eligibility import is_codex_eligible, may_share_cover
 from grimoire.services.contribution_service import (
     CodexIneligibleError,
     queue_contribution,
@@ -126,9 +127,40 @@ def normalize_product_type(product_type: str | None) -> str | None:
     return "other"
 
 
+async def resolve_include_cover(
+    product: Product,
+    client: CodexClient,
+    match: "CodexMatch | None" = None,
+    match_known: bool = False,
+) -> bool:
+    """Whether this contribution should carry a cover image.
+
+    Two independent rules. `may_share_cover` keys on the product; the second
+    keys on Codex already having one, which cannot help for a new_product —
+    exactly where a scan's cover would be the first uploaded.
+
+    Pass `match_known=True` with an already-fetched `match` to reuse a lookup
+    the caller has made; otherwise this makes one. A scan short-circuits before
+    any lookup at all, since no answer would change the result.
+    """
+    if not may_share_cover(product):
+        return False
+
+    if not match_known:
+        try:
+            match = await client.identify_by_hash(product.file_hash)
+        except CodexLookupError:
+            # Could not ask. Withhold rather than guess — a cover not sent
+            # costs nothing, and one sent cannot be recalled.
+            return False
+
+    return not (match and match.product and match.product.cover_url)
+
+
 async def should_contribute(
     product: Product,
     codex_client: CodexClient,
+    on_match=None,
 ) -> tuple[bool, str]:
     """
     Check if this product's contribution would add value to Codex.
@@ -162,6 +194,12 @@ async def should_contribute(
         # remaining product in the walk.
         logger.warning(f"Skipping {product.id}: could not ask Codex ({e})")
         return False, "lookup_failed"
+
+    # Hand the lookup back so the caller need not repeat it. The cover rules
+    # want the same match, and a second /identify per contribution is real
+    # cost against an endpoint that throttles.
+    if on_match is not None:
+        on_match(match)
 
     if not match or not match.product:
         # New product - always contribute
@@ -591,10 +629,17 @@ async def queue_product_for_contribution(
         }
 
     # Check if contribution would add value (unless skipped)
+    seen_match = None
+    match_known = False
+
     if not skip_no_change_check:
         codex = get_codex_client()
         if await codex.is_available():
-            should, reason = await should_contribute(product, codex)
+            def _capture(m):
+                nonlocal seen_match, match_known
+                seen_match, match_known = m, True
+
+            should, reason = await should_contribute(product, codex, on_match=_capture)
             if not should:
                 logger.debug(f"Skipping contribution for product {product.id}: {reason}")
                 return {
@@ -621,7 +666,10 @@ async def queue_product_for_contribution(
         }
     
     # Build contribution data from product
-    contribution_data = build_contribution_data(product)
+    include_cover = await resolve_include_cover(
+        product, get_codex_client(api_key=api_key), seen_match, match_known
+    )
+    contribution_data = build_contribution_data(product, include_cover=include_cover)
     
     if not contribution_data.get("title"):
         return {
@@ -732,8 +780,12 @@ async def queue_local_edit_for_sync(
         logger.debug("No Codex API key configured, not queuing edit")
         return None
     
-    # Build contribution data from product + edits
-    contribution_data = build_contribution_data(product)
+    # Build contribution data from product + edits. Same cover rules as the
+    # queue path — a locally-edited scan must not upload its artwork either.
+    include_cover = await resolve_include_cover(
+        product, get_codex_client(api_key=api_key)
+    )
+    contribution_data = build_contribution_data(product, include_cover=include_cover)
     
     # Apply the edits
     contribution_data.update(edited_fields)
