@@ -360,6 +360,13 @@ together, since both go through this path."
 - Consumes: `Product.classification_reviewed_at` (Task 1).
 - Produces: `POST /api/v1/gallery/confirm-images` taking `{"product_ids": [int]}` and returning `{"reviewed": int}`.
 
+⚠️ **The gallery route has no existing tests at all** (`git ls-files tests/ |
+grep gallery` → nothing). Tasks 3 and 4 write the first, so no existing test
+will catch a routing or response-shape mistake — these carry the whole load.
+The router is mounted with `prefix="/gallery"` at
+`grimoire/api/routes/__init__.py:30`, so the full path is
+`/api/v1/gallery/confirm-images`.
+
 Confirming a pack is **not** a no-op — it is what removes a correctly-classified
 product from the review queue. Without it the needs-review filter never empties.
 
@@ -590,8 +597,11 @@ After the existing `conditions = [Product.is_image_content == True]` line:
 Before the `return` at the end of the function, add:
 
 ```python
-    # Always reported, so the UI can show remaining work even when the filter
-    # is off.
+    # The GLOBAL backlog: every unreviewed image-content product, deliberately
+    # ignoring tag/collection/search. It is the number being burned down, not a
+    # count of what is on screen — so filtering by tag shows a count that does
+    # not match the grid, and that is intended. Do not "fix" it to match the
+    # filters without deciding that on purpose.
     needs_review_total = (await db.execute(
         select(func.count()).select_from(Product).where(
             Product.is_image_content == True,
@@ -770,6 +780,51 @@ async def test_no_cover_is_sent_for_a_scan_codex_does_not_know(db, monkeypatch):
     payload = await _queue(db, _product(is_scanned=True), _Client(match=False), monkeypatch)
 
     assert "cover_image_base64" not in payload
+
+
+@pytest.mark.asyncio
+async def test_a_local_edit_also_withholds_a_scan_cover(db, monkeypatch):
+    """The second build site. Missed by the first draft of this plan: editing a
+    scanned product locally and syncing the edit would still have uploaded the
+    cover, with no test covering that path."""
+    import json
+
+    from sqlalchemy import select
+
+    from grimoire.models import ContributionQueue
+    from grimoire.services import contribution_service
+
+    monkeypatch.setattr(
+        contribution_service, "get_cover_image_base64", lambda product: "BASE64DATA"
+    )
+    monkeypatch.setattr(sync_service, "get_codex_client", lambda **kw: _Client(match=False))
+
+    product = _product(is_scanned=True)
+    db.add(Setting(key="codex_api_key", value='"test-key"'))
+    db.add(product)
+    await db.commit()
+
+    await sync_service.queue_local_edit_for_sync(
+        db=db, product=product, edited_fields={"publisher": "Fixed By Hand"}
+    )
+
+    row = (await db.execute(select(ContributionQueue))).scalars().one()
+    payload = json.loads(row.contribution_data)
+    assert payload["publisher"] == "Fixed By Hand"
+    assert "cover_image_base64" not in payload
+
+
+@pytest.mark.asyncio
+async def test_a_scan_costs_no_lookup(db, monkeypatch):
+    """`may_share_cover` short-circuits: no answer from Codex would change the
+    result, so a scan must not spend a round trip asking."""
+    from grimoire.services.sync_service import resolve_include_cover
+
+    class _Explodes:
+        async def identify_by_hash(self, file_hash):
+            raise AssertionError("a scan must not cost an /identify call")
+
+    assert await resolve_include_cover(_product(is_scanned=True), _Explodes()) is False
 ```
 
 - [ ] **Step 2: Run tests to verify they fail**
@@ -794,37 +849,124 @@ def may_share_cover(product: Product) -> bool:
     return not product.is_scanned
 ```
 
-- [ ] **Step 4: Apply both rules at the build site**
+- [ ] **Step 4: Add a shared helper that resolves the cover decision once**
 
-In `backend/grimoire/services/sync_service.py`, replace the
-`contribution_data = build_contribution_data(product)` line inside
-`queue_product_for_contribution` (currently `:624`) with:
+⚠️ **Amended after adversarial review (finding 3).** The first draft called
+`identify_by_hash` here unconditionally. On the default path
+(`skip_no_change_check=False`) `should_contribute` has *already* made that call
+and thrown the result away, so every contribution would cost two `/identify`
+round trips where one suffices. Phase 0 established that throttling is real.
+
+Add to `backend/grimoire/services/sync_service.py`, above
+`queue_product_for_contribution`:
 
 ```python
-    # Two independent reasons not to upload artwork. The Codex-already-has-one
-    # rule keys on the match, so it cannot cover a new_product — which is
-    # exactly where a scan's cover would be the first one uploaded.
-    include_cover = may_share_cover(product)
-    if include_cover:
+async def resolve_include_cover(
+    product: Product,
+    client: CodexClient,
+    match: "CodexMatch | None" = None,
+    match_known: bool = False,
+) -> bool:
+    """Whether this contribution should carry a cover image.
+
+    Two independent rules. `may_share_cover` keys on the product; the second
+    keys on Codex already having one, which cannot help for a new_product —
+    exactly where a scan's cover would be the first uploaded.
+
+    Pass `match_known=True` with an already-fetched `match` to reuse a lookup
+    the caller has made; otherwise this makes one. A scan short-circuits before
+    any lookup at all, since no answer would change the result.
+    """
+    if not may_share_cover(product):
+        return False
+
+    if not match_known:
         try:
-            codex_match = await get_codex_client(api_key=api_key).identify_by_hash(
-                product.file_hash
-            )
-            if codex_match and codex_match.product and codex_match.product.cover_url:
-                include_cover = False
+            match = await client.identify_by_hash(product.file_hash)
         except CodexLookupError:
             # Could not ask. Withhold rather than guess — a cover not sent
             # costs nothing, and one sent cannot be recalled.
-            include_cover = False
+            return False
 
-    contribution_data = build_contribution_data(product, include_cover=include_cover)
+    return not (match and match.product and match.product.cover_url)
 ```
 
-Add `may_share_cover` to the existing
-`from grimoire.services.codex_eligibility import is_codex_eligible` line:
+Add `CodexMatch` to the existing `from grimoire.services.codex import (...)`
+block, and `may_share_cover` to the eligibility import:
 
 ```python
 from grimoire.services.codex_eligibility import is_codex_eligible, may_share_cover
+```
+
+- [ ] **Step 5: Let `should_contribute` hand back the match it already fetched**
+
+Change its signature so a caller can both supply and receive the lookup.
+Backward compatible — existing callers and tests pass nothing:
+
+```python
+async def should_contribute(
+    product: Product,
+    codex_client: CodexClient,
+    on_match=None,
+) -> tuple[bool, str]:
+```
+
+Immediately after the successful `identify_by_hash` call inside it, add:
+
+```python
+    if on_match is not None:
+        on_match(match)
+```
+
+- [ ] **Step 6: Apply at both build sites**
+
+⚠️ **Amended after adversarial review (finding 1).** The first draft patched
+only `queue_product_for_contribution`. `queue_local_edit_for_sync` builds a
+payload too, so a locally-edited scan would still have uploaded its cover —
+a spec acceptance criterion silently unmet, with no test to catch it.
+
+In `queue_product_for_contribution`, capture the match from the eligibility
+check. Replace the `if not skip_no_change_check:` block's inner lines so the
+match is recorded:
+
+```python
+    seen_match = None
+    match_known = False
+
+    if not skip_no_change_check:
+        codex = get_codex_client()
+        if await codex.is_available():
+            def _capture(m):
+                nonlocal seen_match, match_known
+                seen_match, match_known = m, True
+
+            should, reason = await should_contribute(product, codex, on_match=_capture)
+            if not should:
+                logger.debug(f"Skipping contribution for product {product.id}: {reason}")
+                return {
+                    "success": False,
+                    "reason": "no_new_data",
+                    "message": "Product already has complete data in Codex",
+                }
+```
+
+Then replace `contribution_data = build_contribution_data(product)` (`:624`) with:
+
+```python
+    include_cover = await resolve_include_cover(
+        product, get_codex_client(api_key=api_key), seen_match, match_known
+    )
+    contribution_data = build_contribution_data(product, include_cover=include_cover)
+```
+
+And in `queue_local_edit_for_sync`, replace its
+`contribution_data = build_contribution_data(product)` (`:736`) with:
+
+```python
+    include_cover = await resolve_include_cover(
+        product, get_codex_client(api_key=api_key)
+    )
+    contribution_data = build_contribution_data(product, include_cover=include_cover)
 ```
 
 - [ ] **Step 5: Run tests to verify they pass**
@@ -881,10 +1023,24 @@ Add to `GalleryResponse`:
   needs_review_total: number;
 ```
 
-Add to `GalleryFilters` (the interface used by `listGalleryProducts`):
+Add to `GalleryFilters` (`gallery.ts:32`):
 
 ```typescript
   needs_review?: boolean;
+```
+
+⚠️ **Amended after adversarial review (finding 2). Adding the interface field
+is not enough, and getting this wrong fails silently.** `getGalleryProducts`
+(`gallery.ts:58`) builds its query string key by key, so an unlisted field is
+simply never sent — the checkbox would appear to work and change nothing, with
+`tsc` reporting no error. The obvious guard is also wrong: `if
+(filters.needs_review)` is falsy for `false`, which is the one value that has
+to be transmitted. Add to `getGalleryProducts`, beside the `search` line:
+
+```typescript
+  if (filters.needs_review !== undefined) {
+    params.set('needs_review', String(filters.needs_review));
+  }
 ```
 
 Add two functions:
@@ -1073,9 +1229,17 @@ Beside the existing tag/collection filter buttons:
               }))
             }
           />
-          Needs review{data ? ` (${data.needs_review_total})` : ''}
+          Needs review{gallery ? ` (${gallery.needs_review_total})` : ''}
         </label>
 ```
+
+⚠️ **Amended after adversarial review (finding 4).** The query result is
+destructured as `const { data: gallery, isLoading }` (`Gallery.tsx:15`), so it
+is `gallery`, not `data`. This one fails `tsc -b` loudly rather than silently,
+but it is still wrong.
+
+The query key is `['gallery', filters]`, so `invalidateQueries({ queryKey:
+['gallery'] })` in the mutation matches it by prefix.
 
 - [ ] **Step 5: Typecheck**
 
