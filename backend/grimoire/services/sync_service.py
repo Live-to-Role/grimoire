@@ -12,6 +12,7 @@ from grimoire.config import settings
 from grimoire.models import Product, ContributionQueue, ContributionStatus, Setting
 from grimoire.services.codex import (
     CodexClient,
+    CodexLookupError,
     CodexProduct,
     get_codex_client,
     IdentificationSource,
@@ -139,8 +140,16 @@ async def should_contribute(
     from grimoire.services.contribution_service import get_cover_image_base64
     
     # Try to find existing product in Codex by hash
-    match = await codex_client.identify_by_hash(product.file_hash)
-    
+    try:
+        match = await codex_client.identify_by_hash(product.file_hash)
+    except CodexLookupError as e:
+        # ⚠️ Never fall through to "new_product" here. A failed lookup is not
+        # evidence that Codex lacks this product, and treating it as such turns
+        # a throttle or a blip into a duplicate contribution for every
+        # remaining product in the walk.
+        logger.warning(f"Skipping {product.id}: could not ask Codex ({e})")
+        return False, "lookup_failed"
+
     if not match or not match.product:
         # New product - always contribute
         return True, "new_product"
@@ -216,16 +225,21 @@ async def sync_product_from_codex(
     if not await client.is_available():
         return {"synced": False, "reason": "Codex unavailable"}
     
-    # Try hash lookup first (most accurate)
-    match = await client.identify_by_hash(product.file_hash)
-    
-    if not match or not match.product:
-        # Fall back to title lookup
-        match = await client.identify_by_title(
-            title=product.title or product.file_name,
-            filename=product.file_name,
-        )
-    
+    # Try hash lookup first (most accurate), then fall back to title.
+    # A lookup that could not be made is reported as such rather than being
+    # read as "Codex does not have this" — see CodexLookupError.
+    try:
+        match = await client.identify_by_hash(product.file_hash)
+
+        if not match or not match.product:
+            match = await client.identify_by_title(
+                title=product.title or product.file_name,
+                filename=product.file_name,
+            )
+    except CodexLookupError as e:
+        return {"synced": False, "reason": "lookup_failed", "detail": str(e)}
+
+
     if not match or not match.product:
         return {"synced": False, "reason": "No match found in Codex"}
 
@@ -417,11 +431,14 @@ async def check_for_updates(
     if not await client.is_available():
         return None
 
-    match = await client.identify_by_hash(product.file_hash)
-    
+    try:
+        match = await client.identify_by_hash(product.file_hash)
+    except CodexLookupError:
+        return None  # "we could not check" reads the same as "nothing to report"
+
     if not match or not match.product:
         return None
-    
+
     codex_product = match.product
     differences = []
     

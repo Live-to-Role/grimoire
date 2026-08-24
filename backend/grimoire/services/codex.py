@@ -28,6 +28,19 @@ logger = logging.getLogger(__name__)
 AVAILABILITY_TTL_SECONDS = 60.0
 
 
+class CodexLookupError(Exception):
+    """Codex could not be asked — as distinct from Codex having no match.
+
+    ⚠️ These two must never collapse into one answer. `identify_by_hash` and
+    `identify_by_title` used to return `None` for both, and
+    `should_contribute` reads a `None` match as "new product, contribute it".
+    So a throttle, a timeout or a 500 mid-walk did not stall a sync: it turned
+    every remaining product into a new-product contribution for things Codex
+    already holds. Codex's own comment blames precisely that pattern for 919
+    duplicate products.
+    """
+
+
 class MatchType(str, Enum):
     EXACT = "exact"
     FUZZY = "fuzzy"
@@ -355,6 +368,19 @@ class CodexClient:
         self._available: bool | None = None
         self._available_checked_at: float | None = None
 
+    def _identify_headers(self) -> dict[str, str]:
+        """Authenticate `/identify` when we hold a token.
+
+        `IdentifyView` is `AllowAny`, so this is not required — but its
+        `IdentifyRateThrottle` subclasses `AnonRateThrottle`, whose
+        `get_cache_key` returns `None` for an authenticated request. The
+        60/minute ceiling therefore applies only because Grimoire was calling
+        anonymously, and it is keyed by IP, so it was shared with every other
+        anonymous caller behind the same address. Sending the token we already
+        hold removes the limit rather than working around it.
+        """
+        return {"Authorization": f"Token {self.api_key}"} if self.api_key else {}
+
     async def is_available(self) -> bool:
         """Check if Codex API is reachable, cached for `AVAILABILITY_TTL_SECONDS`.
 
@@ -393,10 +419,11 @@ class CodexClient:
                 response = await client.get(
                     f"{self.base_url}/identify",
                     params={"hash": file_hash},
+                    headers=self._identify_headers(),
                 )
                 response.raise_for_status()
                 data = response.json()
-                
+
                 if data["match"] == "exact":
                     return CodexMatch(
                         match_type=MatchType.EXACT,
@@ -406,8 +433,10 @@ class CodexClient:
                     )
                 return None
         except Exception as e:
+            # Raise, never return None: None means "Codex has no match", which
+            # callers act on by contributing a new product. See CodexLookupError.
             logger.warning(f"Codex hash lookup failed: {e}")
-            return None
+            raise CodexLookupError(f"hash lookup failed: {e}") from e
 
     async def identify_by_title(
         self,
@@ -430,10 +459,11 @@ class CodexClient:
                 response = await client.get(
                     f"{self.base_url}/identify",
                     params=params,
+                    headers=self._identify_headers(),
                 )
                 response.raise_for_status()
                 data = response.json()
-                
+
                 if data["match"] in ("exact", "fuzzy"):
                     return CodexMatch(
                         match_type=MatchType(data["match"]),
@@ -445,7 +475,7 @@ class CodexClient:
                 return None
         except Exception as e:
             logger.warning(f"Codex title lookup failed: {e}")
-            return None
+            raise CodexLookupError(f"title lookup failed: {e}") from e
 
     async def contribute(
         self,

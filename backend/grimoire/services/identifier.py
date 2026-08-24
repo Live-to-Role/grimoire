@@ -17,6 +17,7 @@ from typing import Any
 
 from grimoire.services.codex import (
     CodexClient,
+    CodexLookupError,
     CodexMatch,
     CodexProduct,
     IdentificationSource,
@@ -203,7 +204,13 @@ async def identify_product(
     
     # 1. Try Codex hash lookup (fastest, most accurate)
     if config.use_codex and file_hash:
-        match = await codex.identify_by_hash(file_hash)
+        # A lookup that could not be made falls through to the next strategy
+        # (title, then AI) rather than being read as "Codex has nothing".
+        try:
+            match = await codex.identify_by_hash(file_hash)
+        except CodexLookupError as e:
+            logger.warning(f"Codex hash lookup unavailable, continuing: {e}")
+            match = None
         if match and match.product:
             logger.info(f"Codex hash match: {match.product.title}")
             return IdentificationResult.from_codex_product(
@@ -217,7 +224,11 @@ async def identify_product(
     if config.use_codex:
         search_title = title_hint or filename
         if search_title:
-            match = await codex.identify_by_title(search_title, filename)
+            try:
+                match = await codex.identify_by_title(search_title, filename)
+            except CodexLookupError as e:
+                logger.warning(f"Codex title lookup unavailable, continuing: {e}")
+                match = None
             if match and match.product:
                 needs_confirmation = match.confidence < config.confidence_threshold
                 logger.info(
