@@ -35,7 +35,7 @@
 - Consumes: nothing.
 - Produces: `Product.is_scanned: bool` (default `False`), `Product.classification_reviewed_at: datetime | None`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `backend/tests/models/test_scan_columns.py`:
 
@@ -93,12 +93,12 @@ async def test_a_product_can_be_scanned_without_being_image_content(db):
     assert stored.classification_reviewed_at is not None
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `cd backend && python -m pytest tests/models/test_scan_columns.py -q`
 Expected: FAIL with `TypeError: 'is_scanned' is an invalid keyword argument for Product`
 
-- [ ] **Step 3: Add the columns to the model**
+- [x] **Step 3: Add the columns to the model**
 
 In `backend/grimoire/models/product.py`, after the `image_count` line (currently `:102`):
 
@@ -122,7 +122,7 @@ Confirm `datetime` and `DateTime` are already imported in that file; if not, add
 `from datetime import datetime` and include `DateTime` in the existing
 `from sqlalchemy import ...` line.
 
-- [ ] **Step 4: Add the columns to `_ensure_columns`**
+- [x] **Step 4: Add the columns to `_ensure_columns`**
 
 In `backend/grimoire/database.py`, add to the `migrations` list (after the
 `product_embeddings` entries):
@@ -132,17 +132,17 @@ In `backend/grimoire/database.py`, add to the `migrations` list (after the
         ("products", "classification_reviewed_at", "DATETIME"),
 ```
 
-- [ ] **Step 5: Run tests to verify they pass**
+- [x] **Step 5: Run tests to verify they pass**
 
 Run: `cd backend && python -m pytest tests/models/test_scan_columns.py -q`
 Expected: 2 passed
 
-- [ ] **Step 6: Run the full suite**
+- [x] **Step 6: Run the full suite**
 
 Run: `cd backend && python -m pytest tests/ -q`
 Expected: 588 passed, 1 failed (the known `test_browse` failure)
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add backend/grimoire/models/product.py backend/grimoire/database.py backend/tests/models/test_scan_columns.py
@@ -173,7 +173,7 @@ tell reviewed from unreviewed."
 This is the fix that makes everything else worth doing: today un-flagging deletes
 the extracted images and never gets you the text.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `backend/tests/api/test_bulk_unflag_queues_ocr.py`:
 
@@ -280,7 +280,7 @@ async def test_a_rescued_scan_becomes_codex_eligible(client, db, flagged):
     assert is_codex_eligible(flagged) == (True, "eligible")
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `cd backend && python -m pytest tests/api/test_bulk_unflag_queues_ocr.py -q`
 Expected: 3 FAIL (`assert [] == ['ocr_text']`, `assert False is True`, and the
@@ -289,7 +289,7 @@ what the predicate reads first), 1 PASS
 (`test_unflagging_still_clears_the_existing_fields` — that behaviour already
 exists and is a guard rail proving this change does not alter it)
 
-- [ ] **Step 3: Extend the un-flag branch**
+- [x] **Step 3: Extend the un-flag branch**
 
 In `backend/grimoire/api/routes/bulk.py`, replace the loop body in the
 `is_image_content is False` branch (currently `:288-297`):
@@ -322,17 +322,17 @@ In `backend/grimoire/api/routes/bulk.py`, replace the loop body in the
         filter_fields_updated = True
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `cd backend && python -m pytest tests/api/test_bulk_unflag_queues_ocr.py -q`
 Expected: 4 passed
 
-- [ ] **Step 5: Run the full suite**
+- [x] **Step 5: Run the full suite**
 
 Run: `cd backend && python -m pytest tests/ -q`
 Expected: 592 passed, 1 failed (known)
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add backend/grimoire/api/routes/bulk.py backend/tests/api/test_bulk_unflag_queues_ocr.py
@@ -370,7 +370,7 @@ The router is mounted with `prefix="/gallery"` at
 Confirming a pack is **not** a no-op — it is what removes a correctly-classified
 product from the review queue. Without it the needs-review filter never empties.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `backend/tests/api/test_gallery_review.py`:
 
@@ -441,12 +441,12 @@ async def test_confirming_changes_nothing_else(client, db, pack):
     assert pack.image_count == 201
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `cd backend && python -m pytest tests/api/test_gallery_review.py -q`
 Expected: FAIL with 404 (route does not exist), so `assert response.status_code == 200` fails
 
-- [ ] **Step 3: Add the endpoint**
+- [x] **Step 3: Add the endpoint**
 
 Append to `backend/grimoire/api/routes/gallery.py`:
 
@@ -485,17 +485,17 @@ from datetime import datetime, UTC
 from pydantic import BaseModel
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `cd backend && python -m pytest tests/api/test_gallery_review.py -q`
 Expected: 2 passed
 
-- [ ] **Step 5: Run the full suite**
+- [x] **Step 5: Run the full suite**
 
 Run: `cd backend && python -m pytest tests/ -q`
 Expected: 594 passed, 1 failed (known)
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add backend/grimoire/api/routes/gallery.py backend/tests/api/test_gallery_review.py
@@ -519,7 +519,7 @@ an edit."
 - Consumes: `Product.classification_reviewed_at` (Task 1).
 - Produces: `GET /api/v1/gallery?needs_review=true|false`, defaulting to `true`; each item gains `"classification_reviewed_at": str | None`; the response gains `"needs_review_total": int`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Append to `backend/tests/api/test_gallery_review.py`:
 
@@ -568,12 +568,12 @@ async def test_gallery_reports_how_many_are_left(client, one_reviewed_one_not):
     assert body["needs_review_total"] == 1
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `cd backend && python -m pytest tests/api/test_gallery_review.py -q`
 Expected: 3 FAIL — the default returns both titles, and `needs_review_total` raises `KeyError`
 
-- [ ] **Step 3: Add the parameter and the condition**
+- [x] **Step 3: Add the parameter and the condition**
 
 In `list_gallery_products`, add a parameter after `search`:
 
@@ -592,7 +592,7 @@ After the existing `conditions = [Product.is_image_content == True]` line:
         conditions.append(Product.classification_reviewed_at.is_(None))
 ```
 
-- [ ] **Step 4: Add the count and the per-item field**
+- [x] **Step 4: Add the count and the per-item field**
 
 Before the `return` at the end of the function, add:
 
@@ -625,17 +625,17 @@ Add to the returned dict:
         "needs_review_total": needs_review_total,
 ```
 
-- [ ] **Step 5: Run tests to verify they pass**
+- [x] **Step 5: Run tests to verify they pass**
 
 Run: `cd backend && python -m pytest tests/api/test_gallery_review.py -q`
 Expected: 5 passed
 
-- [ ] **Step 6: Run the full suite**
+- [x] **Step 6: Run the full suite**
 
 Run: `cd backend && python -m pytest tests/ -q`
 Expected: 597 passed, 1 failed (known)
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add backend/grimoire/api/routes/gallery.py backend/tests/api/test_gallery_review.py
@@ -660,7 +660,7 @@ the filter off."
 - Consumes: `Product.is_scanned` (Task 1); existing `is_codex_eligible(product) -> tuple[bool, str]`.
 - Produces: `may_share_cover(product: Product) -> bool` in `codex_eligibility.py`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `backend/tests/services/test_cover_sharing.py`:
 
@@ -827,12 +827,12 @@ async def test_a_scan_costs_no_lookup(db, monkeypatch):
     assert await resolve_include_cover(_product(is_scanned=True), _Explodes()) is False
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `cd backend && python -m pytest tests/services/test_cover_sharing.py -q`
 Expected: FAIL with `ImportError: cannot import name 'may_share_cover'`
 
-- [ ] **Step 3: Add the predicate**
+- [x] **Step 3: Add the predicate**
 
 Append to `backend/grimoire/services/codex_eligibility.py`:
 
@@ -849,7 +849,7 @@ def may_share_cover(product: Product) -> bool:
     return not product.is_scanned
 ```
 
-- [ ] **Step 4: Add a shared helper that resolves the cover decision once**
+- [x] **Step 4: Add a shared helper that resolves the cover decision once**
 
 ⚠️ **Amended after adversarial review (finding 3).** The first draft called
 `identify_by_hash` here unconditionally. On the default path
@@ -898,7 +898,7 @@ block, and `may_share_cover` to the eligibility import:
 from grimoire.services.codex_eligibility import is_codex_eligible, may_share_cover
 ```
 
-- [ ] **Step 5: Let `should_contribute` hand back the match it already fetched**
+- [x] **Step 5: Let `should_contribute` hand back the match it already fetched**
 
 Change its signature so a caller can both supply and receive the lookup.
 Backward compatible — existing callers and tests pass nothing:
@@ -918,7 +918,7 @@ Immediately after the successful `identify_by_hash` call inside it, add:
         on_match(match)
 ```
 
-- [ ] **Step 6: Apply at both build sites**
+- [x] **Step 6: Apply at both build sites**
 
 ⚠️ **Amended after adversarial review (finding 1).** The first draft patched
 only `queue_product_for_contribution`. `queue_local_edit_for_sync` builds a
@@ -969,17 +969,17 @@ And in `queue_local_edit_for_sync`, replace its
     contribution_data = build_contribution_data(product, include_cover=include_cover)
 ```
 
-- [ ] **Step 5: Run tests to verify they pass**
+- [x] **Step 5: Run tests to verify they pass**
 
 Run: `cd backend && python -m pytest tests/services/test_cover_sharing.py -q`
 Expected: 5 passed
 
-- [ ] **Step 6: Run the full suite**
+- [x] **Step 6: Run the full suite**
 
 Run: `cd backend && python -m pytest tests/ -q`
 Expected: 601 passed, 1 failed (known)
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add backend/grimoire/services/codex_eligibility.py backend/grimoire/services/sync_service.py backend/tests/services/test_cover_sharing.py
@@ -1009,7 +1009,7 @@ Metadata still contributes in full; only the image is dropped."
 - Consumes: `POST /api/v1/gallery/confirm-images` (Task 3), `GET /api/v1/gallery?needs_review=` and `needs_review_total` (Task 4), `POST /api/v1/bulk/update` with `{product_ids, is_image_content: false}` (Task 2).
 - Produces: nothing consumed by later tasks.
 
-- [ ] **Step 1: Extend the API client**
+- [x] **Step 1: Extend the API client**
 
 In `frontend/src/api/gallery.ts`, add to `GalleryProduct`:
 
@@ -1059,7 +1059,7 @@ export async function confirmAsImages(productIds: number[]): Promise<{ reviewed:
 }
 ```
 
-- [ ] **Step 2: Add selection state and the action bar**
+- [x] **Step 2: Add selection state and the action bar**
 
 In `frontend/src/pages/Gallery.tsx`, add beside the existing `useState` calls:
 
@@ -1134,7 +1134,7 @@ Import `useMutation` and `useQueryClient` from `@tanstack/react-query` if not
 already imported, and `markAsScans`/`confirmAsImages` from `../api/gallery`.
 Add `const queryClient = useQueryClient();` beside the other hooks.
 
-- [ ] **Step 3: Add the checkbox and the pages/images hint to the card**
+- [x] **Step 3: Add the checkbox and the pages/images hint to the card**
 
 Change the `GalleryCard` signature and body. The outer element must become a
 `div` — a checkbox inside a `<button>` is invalid HTML and swallows the click:
@@ -1209,7 +1209,7 @@ Update the call site in the grid to pass the new props:
                 />
 ```
 
-- [ ] **Step 4: Add the needs-review toggle**
+- [x] **Step 4: Add the needs-review toggle**
 
 Beside the existing tag/collection filter buttons:
 
@@ -1241,12 +1241,12 @@ but it is still wrong.
 The query key is `['gallery', filters]`, so `invalidateQueries({ queryKey:
 ['gallery'] })` in the mutation matches it by prefix.
 
-- [ ] **Step 5: Typecheck**
+- [x] **Step 5: Typecheck**
 
 Run: `cd frontend && npx tsc -b`
 Expected: no errors
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add frontend/src/api/gallery.ts frontend/src/pages/Gallery.tsx
