@@ -4,10 +4,10 @@ import json
 import logging
 from pathlib import Path
 
-from sqlalchemy import text
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from grimoire.models import Product
+from grimoire.models import Product, ProductEmbedding
 
 logger = logging.getLogger(__name__)
 
@@ -300,3 +300,66 @@ async def check_fts_available(db: AsyncSession) -> bool:
     except Exception:
         _fts_available_cache = False
         return False
+
+
+async def clear_product_chunk_index(db: AsyncSession, product_id: int) -> None:
+    """Remove a product's rows from the body index.
+
+    ⚠️ Must run BEFORE the product's product_embeddings rows are deleted. The
+    FTS rowid is the embedding id, so this resolves rowids through
+    product_embeddings; once those rows are gone it matches nothing and leaves
+    orphans behind. prune_orphaned_chunk_index() is the safety net.
+
+    Deleting by rowid rather than by product_id is not a micro-optimisation:
+    product_id is UNINDEXED, so filtering on it scans every row in a 3.3M-row
+    table.
+    """
+    await db.execute(
+        text("""
+            DELETE FROM product_chunks_fts
+            WHERE rowid IN (
+                SELECT id FROM product_embeddings WHERE product_id = :product_id
+            )
+        """),
+        {"product_id": product_id},
+    )
+
+
+async def index_product_chunks(db: AsyncSession, product_id: int) -> int:
+    """Mirror a product's chunk text into the body index. Returns rows written.
+
+    Deliberately not a database trigger. Trigger-maintained indexing is what
+    produced dc377a7: the trigger drifted from the schema it served, blanked
+    2,800 products' text, and went unnoticed for months because nothing
+    errored. An explicit write path is testable.
+    """
+    rows = (await db.execute(
+        select(
+            ProductEmbedding.id,
+            ProductEmbedding.chunk_index,
+            ProductEmbedding.chunk_text,
+            ProductEmbedding.page_start,
+            ProductEmbedding.page_end,
+        )
+        .where(ProductEmbedding.product_id == product_id)
+        .order_by(ProductEmbedding.chunk_index)
+    )).all()
+
+    for row_id, chunk_index, chunk_text, page_start, page_end in rows:
+        await db.execute(
+            text("""
+                INSERT INTO product_chunks_fts(
+                    rowid, chunk_text, product_id, chunk_index, page_start, page_end
+                ) VALUES (:rowid, :chunk_text, :product_id, :chunk_index, :page_start, :page_end)
+            """),
+            {
+                "rowid": row_id,
+                "chunk_text": chunk_text,
+                "product_id": product_id,
+                "chunk_index": chunk_index,
+                "page_start": page_start,
+                "page_end": page_end,
+            },
+        )
+
+    return len(rows)
