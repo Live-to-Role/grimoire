@@ -907,32 +907,50 @@ Expected: 634 passed, 1 failed (pre-existing).
 The spec requires a real measurement before committing to 3.3M chunks, because
 FTS5 overhead scales with vocabulary and OCR noise inflates vocabulary badly.
 
-Run from `backend/` against a **copy** of the live database, never the live one:
+⚠️ Do **not** copy `grimoire.db` to measure this — it is 16 GB. Save the script
+below as `backend/scripts/probe_index_size.py` and run it from `backend/`. It
+ATTACHes a fresh empty database, builds the probe index there, reports, and
+deletes it. The live database is only ever read.
 
-```bash
-cp data/grimoire.db /tmp/size-probe.db
-C:/Users/mkemi/miniconda3/python.exe -c "
-import sqlite3, os
-db = '/tmp/size-probe.db'
-before = os.path.getsize(db)
-c = sqlite3.connect(db)
-c.execute('''CREATE VIRTUAL TABLE IF NOT EXISTS probe_fts USING fts5(
-    chunk_text, product_id UNINDEXED, chunk_index UNINDEXED,
-    page_start UNINDEXED, page_end UNINDEXED)''')
-rows = c.execute('''SELECT id, chunk_text, product_id, chunk_index, page_start, page_end
-                    FROM product_embeddings LIMIT 200000''').fetchall()
-c.executemany('INSERT INTO probe_fts(rowid, chunk_text, product_id, chunk_index, page_start, page_end)'
-              ' VALUES (?,?,?,?,?,?)', rows)
-c.commit()
-total = c.execute('SELECT count(*) FROM product_embeddings').fetchone()[0]
-c.close()
-after = os.path.getsize(db)
-grew = after - before
-print('indexed %d of %d chunks' % (len(rows), total))
-print('grew %.2f GB -> full index projects to %.2f GB' % (grew/1e9, grew/len(rows)*total/1e9))
-"
-rm -f /tmp/size-probe.db
+```python
+"""Throwaway probe: project full body-index size from a subset."""
+import os
+import sqlite3
+
+PROBE = "probe-index.db"
+SAMPLE = 200_000
+
+if os.path.exists(PROBE):
+    os.remove(PROBE)
+
+conn = sqlite3.connect("data/grimoire.db")
+conn.execute("ATTACH DATABASE ? AS probe", (PROBE,))
+conn.execute(
+    "CREATE VIRTUAL TABLE probe.probe_fts USING fts5("
+    " chunk_text, product_id UNINDEXED, chunk_index UNINDEXED,"
+    " page_start UNINDEXED, page_end UNINDEXED)"
+)
+conn.execute(
+    "INSERT INTO probe.probe_fts("
+    " rowid, chunk_text, product_id, chunk_index, page_start, page_end)"
+    " SELECT id, chunk_text, product_id, chunk_index, page_start, page_end"
+    " FROM product_embeddings LIMIT ?",
+    (SAMPLE,),
+)
+conn.commit()
+sampled = conn.execute("SELECT count(*) FROM probe.probe_fts").fetchone()[0]
+total = conn.execute("SELECT count(*) FROM product_embeddings").fetchone()[0]
+conn.execute("DETACH DATABASE probe")
+conn.close()
+
+size = os.path.getsize(PROBE)
+os.remove(PROBE)
+
+print("indexed %d of %d chunks -> %.2f GB" % (sampled, total, size / 1e9))
+print("full index projects to %.2f GB" % (size / sampled * total / 1e9))
 ```
+
+Run: `C:/Users/mkemi/miniconda3/python.exe scripts/probe_index_size.py`
 
 Record the projection. The spec estimates ~1.5 GB of text plus ~1–1.5 GB of
 index. If the projection lands far above that, stop and report before Task 9's
