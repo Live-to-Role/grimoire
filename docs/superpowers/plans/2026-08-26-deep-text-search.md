@@ -983,6 +983,34 @@ index. If the projection lands far above that, stop and report before Task 9's
 full backfill — it is an argument for normalizing indexed text, which is out
 of scope here and needs its own decision.
 
+#### Measured index size (2026-08-26)
+
+`scripts/probe_index_size.py`, 200,000 chunks (6.0% of 3,319,560):
+
+| | |
+|---|---|
+| Sampled text | 0.09 GB |
+| Probe file (text + index + overhead) | 0.15 GB |
+| Overhead | **1.64x the text it indexes** |
+| **Full index projects to** | **2.50 GB** |
+
+That lands inside the spec's ~1.5 GB text + ~1-1.5 GB index estimate, so the
+full backfill in Task 9 is safe to run.
+
+The spec's specific worry — that OCR noise inflates FTS vocabulary and blows
+the estimate — was checked separately rather than assumed away, because the
+sample above is the *first* 200,000 chunks by rowid and therefore the oldest
+products, while the OCR'd books are the newest:
+
+| Corpus | Chunks | Overhead |
+|---|---|---|
+| OCR'd scans (`is_scanned = 1`) | 43,266 | 1.73x |
+| Rest of the library | 200,000 | 1.64x |
+
+OCR text costs **1.05x** what ordinary text costs to index. The effect is real
+but small enough to ignore; it does not justify normalizing indexed text, and
+that stays out of scope.
+
 - [ ] **Step 9: Commit**
 
 ```bash

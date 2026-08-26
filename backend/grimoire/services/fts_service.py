@@ -363,3 +363,24 @@ async def index_product_chunks(db: AsyncSession, product_id: int) -> int:
         )
 
     return len(rows)
+
+
+async def prune_orphaned_chunk_index(db: AsyncSession) -> int:
+    """Drop body-index rows whose chunk no longer exists. Returns rows removed.
+
+    Products are deleted from four call sites, and their product_embeddings go
+    with them by ORM delete-orphan. A virtual table has no relationship to
+    ride, and SQLite foreign keys are off, so nothing removes these rows
+    automatically. Sweeping is deliberate: hooking every delete site is the
+    fragility that produced dc377a7, and a fifth site added later would leak
+    silently.
+
+    This is a full scan of the index. It is a maintenance operation, not
+    something to call per request.
+    """
+    result = await db.execute(text("""
+        DELETE FROM product_chunks_fts
+        WHERE rowid NOT IN (SELECT id FROM product_embeddings)
+    """))
+    await db.commit()
+    return result.rowcount or 0

@@ -611,6 +611,48 @@ async def rebuild_fts_index(
     }
 
 
+@router.post("/fts/rebuild-chunks")
+async def rebuild_chunk_fts_index(db: DbSession) -> dict:
+    """Queue every product that has chunks for body indexing."""
+    from grimoire.models import ProductEmbedding
+
+    product_ids = (await db.execute(
+        select(ProductEmbedding.product_id).distinct()
+    )).scalars().all()
+
+    created = 0
+    skipped = 0
+
+    for product_id in product_ids:
+        existing = await db.execute(
+            select(ProcessingQueue).where(
+                ProcessingQueue.product_id == product_id,
+                ProcessingQueue.task_type == "chunk_fts_index",
+                ProcessingQueue.status.in_(["pending", "processing"]),
+            )
+        )
+        if existing.scalar_one_or_none():
+            skipped += 1
+            continue
+
+        db.add(ProcessingQueue(
+            product_id=product_id,
+            task_type="chunk_fts_index",
+            priority=8,
+            status="pending",
+        ))
+        created += 1
+
+    await db.commit()
+
+    return {
+        "message": f"Queued {created} products for body indexing",
+        "created": created,
+        "skipped": skipped,
+        "total": len(product_ids),
+    }
+
+
 @router.get("/fts/stats")
 async def get_fts_stats(db: DbSession) -> dict:
     """Get FTS indexing statistics and diagnose issues."""

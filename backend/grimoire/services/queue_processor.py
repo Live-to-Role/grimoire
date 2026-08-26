@@ -553,6 +553,25 @@ async def handle_fts_index_task(db: AsyncSession, product: Product) -> bool:
     return True
 
 
+@register_handler("chunk_fts_index")
+async def handle_chunk_fts_index_task(db: AsyncSession, product: Product) -> bool:
+    """Rebuild one product's rows in the body index."""
+    from grimoire.services.fts_service import (
+        clear_product_chunk_index,
+        index_product_chunks,
+    )
+
+    await clear_product_chunk_index(db, product.id)
+    written = await index_product_chunks(db, product.id)
+    await db.commit()
+
+    # Zero is legitimate: a product with no chunks has nothing to index. It is
+    # not an error, and raising here would fail thousands of image-only
+    # products during the backfill.
+    logger.info(f"Chunk FTS index rebuilt for product {product.id}: {written} rows")
+    return True
+
+
 @register_handler("embed")
 async def handle_embed_task(db: AsyncSession, product: Product) -> bool:
     """Handle embedding generation task for semantic search."""
