@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Image, Search, X, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
+import { Image, Search, X, ChevronLeft, ChevronRight, Loader2, FolderOpen } from 'lucide-react';
 import {
   getGalleryProducts,
   getProductImages,
@@ -10,7 +10,7 @@ import {
 } from '../api/gallery';
 import { getTags } from '../api/tags';
 import { getCollections } from '../api/collections';
-import { getThumbnailUrl } from '../api/products';
+import { getThumbnailUrl, openProductFolder } from '../api/products';
 import type { GalleryFilters, GalleryProduct, ProductImage } from '../api/gallery';
 
 export function Gallery() {
@@ -395,6 +395,20 @@ function GalleryCard({
 
 
 function ProductImageModal({ product, onClose }: { product: GalleryProduct; onClose: () => void }) {
+  const [folderError, setFolderError] = useState<string | null>(null);
+
+  // ProductDetail swallows this failure. Here it is worth showing: a missing
+  // folder means the file moved and this row is now orphaned, which is the one
+  // thing looking at the gallery cannot otherwise tell you.
+  const revealFolder = async () => {
+    setFolderError(null);
+    try {
+      await openProductFolder(product.id);
+    } catch {
+      setFolderError('Folder not found on disk');
+    }
+  };
+
   const { data: imagesData, isLoading } = useQuery({
     queryKey: ['product-images', product.id],
     queryFn: () => getProductImages(product.id),
@@ -415,13 +429,31 @@ function ProductImageModal({ product, onClose }: { product: GalleryProduct; onCl
               <p className="text-sm" style={{ color: 'var(--color-text-secondary)' }}>{product.publisher}</p>
             )}
           </div>
-          <button
-            onClick={onClose}
-            className="rounded p-1 transition-colors"
-            style={{ color: 'var(--color-text-secondary)' }}
-          >
-            <X className="h-5 w-5" />
-          </button>
+          <div className="flex items-center gap-3">
+            {folderError && (
+              <span className="text-sm" style={{ color: 'var(--color-text-secondary)' }}>
+                {folderError}
+              </span>
+            )}
+            <button
+              onClick={revealFolder}
+              className="flex items-center gap-1.5 rounded border px-2.5 py-1.5 text-sm transition-colors"
+              style={{
+                borderColor: 'var(--color-border)',
+                color: 'var(--color-text-primary)',
+              }}
+            >
+              <FolderOpen className="h-4 w-4" />
+              Open folder
+            </button>
+            <button
+              onClick={onClose}
+              className="rounded p-1 transition-colors"
+              style={{ color: 'var(--color-text-secondary)' }}
+            >
+              <X className="h-5 w-5" />
+            </button>
+          </div>
         </div>
 
         {/* Images grid */}
