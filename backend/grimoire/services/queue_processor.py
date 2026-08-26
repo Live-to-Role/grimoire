@@ -599,7 +599,16 @@ async def handle_embed_task(db: AsyncSession, product: Product) -> bool:
     # transaction open during the slow Ollama/OpenAI call.
     embeddings = await generate_embeddings([c for c, _, _ in chunk_tuples])
 
-    # Now do all DB writes quickly
+    # Now do all DB writes quickly.
+    # ⚠️ The body index is cleared FIRST. Its rowids are embedding ids, so once
+    # the rows below are deleted there is nothing left to resolve them from and
+    # the old text would stay findable forever.
+    from grimoire.services.fts_service import (
+        clear_product_chunk_index,
+        index_product_chunks,
+    )
+
+    await clear_product_chunk_index(db, product.id)
     await db.execute(
         delete(ProductEmbedding).where(ProductEmbedding.product_id == product.id)
     )
@@ -639,6 +648,10 @@ async def handle_embed_task(db: AsyncSession, product: Product) -> bool:
         )
         sv.set_vector(avg_vector)
         db.add(sv)
+
+    # Flush so the new embedding rows have ids; the body index keys on them.
+    await db.flush()
+    await index_product_chunks(db, product.id)
 
     await db.commit()
     invalidate_vector_cache()
