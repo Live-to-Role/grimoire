@@ -3,7 +3,7 @@
 import asyncio
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
-from grimoire.database import Base
+from grimoire.database import Base, _ensure_fts_table
 import grimoire.models  # noqa: F401 — registers all models with Base.metadata
 from tests.pdf_fixtures import (  # noqa: F401
     art_front_matter_pdf,
@@ -35,6 +35,12 @@ async def engine():
     engine = create_async_engine("sqlite+aiosqlite:///:memory:", echo=False)
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        # create_all does not know about the FTS5 virtual tables or their
+        # triggers — those are declared in _ensure_fts_table, which production
+        # runs at startup. Without them the test schema silently diverges from
+        # the real one, and any code that maintains a search index blows up on
+        # a missing table only once a test happens to exercise it.
+        await _ensure_fts_table(conn)
     yield engine
     await engine.dispose()
 
