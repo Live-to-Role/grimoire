@@ -76,6 +76,32 @@ Expected: each query well under a second. Record the numbers. If any query takes
 Run: `ls -l backend/data/grimoire.db`
 Record the byte count. Task 5 compares against it to extrapolate index growth.
 
+#### Recorded baseline (2026-08-26)
+
+Search quality, `runs/deep-text-baseline.json`:
+
+| Metric | Value |
+|---|---|
+| SPECIFIC hit@k | **5/10 (50%)** |
+| SPECIFIC MRR | **0.450** |
+| TOPICAL mean precision@k | **44%** |
+
+Query latency via `fts_candidates` (limit 150):
+
+| Query | Time | Hits |
+|---|---|---|
+| `dungeon` | 0.030 s | 150 |
+| `Kurabanda` | 0.002 s | 4 |
+| `wizard spell cards` | 0.052 s | 150 |
+
+Database: **16,504,020,992 bytes (16.50 GB)**.
+
+Note the eval numbers sit below the figures recorded for the 2026-07-21
+search-accuracy work (hit@k 60%, MRR 0.394). Do not treat that as a
+regression caused by anything here — the corpus has grown by thousands of
+products since, and these are the numbers measured today, which is exactly why
+the plan forbids quoting historical ones.
+
 - [ ] **Step 5: Commit**
 
 ```bash
