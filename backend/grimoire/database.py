@@ -117,11 +117,26 @@ async def _ensure_fts_table(conn) -> None:
             VALUES (new.id, new.title, new.file_name, new.publisher, new.game_system, new.product_type, new.description);
         END
     """))
+    # ⚠️ Dropped and recreated unconditionally, not CREATE IF NOT EXISTS: existing
+    # databases carry the old version of this trigger and would never be fixed.
+    #
+    # That old version rewrote the whole row with a 6-column INSERT into a
+    # 7-column table, so every UPDATE of a product silently blanked
+    # products_fts.extracted_text and left the book searchable by title alone.
+    # update_search_vector tripped it itself - it sets deep_indexed = True and
+    # commits right after writing the body, wiping what it had just written.
+    # Updating only the metadata columns leaves the indexed body untouched.
+    await conn.execute(text("DROP TRIGGER IF EXISTS products_fts_update"))
     await conn.execute(text("""
-        CREATE TRIGGER IF NOT EXISTS products_fts_update AFTER UPDATE ON products BEGIN
-            DELETE FROM products_fts WHERE rowid = old.id;
-            INSERT INTO products_fts(rowid, title, file_name, publisher, game_system, product_type, description)
-            VALUES (new.id, new.title, new.file_name, new.publisher, new.game_system, new.product_type, new.description);
+        CREATE TRIGGER products_fts_update AFTER UPDATE ON products BEGIN
+            UPDATE products_fts SET
+                title = new.title,
+                file_name = new.file_name,
+                publisher = new.publisher,
+                game_system = new.game_system,
+                product_type = new.product_type,
+                description = new.description
+            WHERE rowid = old.id;
         END
     """))
     await conn.execute(text("""
