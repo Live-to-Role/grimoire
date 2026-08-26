@@ -89,6 +89,87 @@ async def fts_candidates(
         return []
 
 
+async def chunk_candidates(
+    db: AsyncSession,
+    query: str,
+    *,
+    game_system: str | None = None,
+    product_type: str | None = None,
+    limit: int = 150,
+) -> list[tuple[int, float, str, int | None]]:
+    """Candidate products from the body index, best chunk each.
+
+    Returns (product_id, score, snippet, page_start) sorted by score
+    descending. A product is scored by its single best chunk, matching
+    TOP_K_CHUNKS = 1 on the semantic side.
+
+    This is the half of keyword search that sees past the first 50,000
+    characters — products_fts only ever held metadata plus a truncated body,
+    so a term deep in a large book could never nominate it.
+    """
+    match = build_fts_match(query)
+    if match is None:
+        return []
+
+    # The unary + on the boolean columns is load-bearing: without it SQLite
+    # drives the join from ix_products_is_duplicate and re-runs the FTS MATCH
+    # once per product. + disqualifies those indexes so the MATCH drives. Same
+    # reasoning as fts_candidates above. Do not remove.
+    #
+    # bm25() cannot be wrapped in an aggregate — it is an FTS5 auxiliary
+    # function and only works directly against the MATCH query ("unable to use
+    # function bm25 in the requested context"). So the inner query scores
+    # chunks and the outer one reduces them to the best chunk per product.
+    # MIN() works there because rank is an ordinary column by that point, and
+    # snippet/page_start ride along by SQLite's bare-column rule, which pairs
+    # them with the row MIN() chose.
+    #
+    # The inner LIMIT bounds the work: a common term matches far more chunks
+    # than there are products worth returning, and without it every match is
+    # materialised before grouping. Taking the globally best-scoring chunks
+    # first can in principle drop a product whose best chunk ranks below all
+    # of them, but such a product is by construction not in the top `limit`.
+    sql = text("""
+        SELECT product_id, MIN(rank) AS rank, snippet, page_start
+        FROM (
+            SELECT
+                f.product_id AS product_id,
+                bm25(product_chunks_fts) AS rank,
+                snippet(product_chunks_fts, 0, '<mark>', '</mark>', '...', 32) AS snippet,
+                f.page_start AS page_start
+            FROM product_chunks_fts f
+            JOIN products p ON p.id = f.product_id
+            WHERE product_chunks_fts MATCH :query
+            AND +p.is_duplicate = 0
+            AND +p.is_missing = 0
+            AND (:game_system IS NULL OR p.game_system = :game_system)
+            AND (:product_type IS NULL OR p.product_type = :product_type)
+            ORDER BY rank
+            LIMIT :inner_limit
+        )
+        GROUP BY product_id
+        ORDER BY rank
+        LIMIT :limit
+    """)
+
+    try:
+        result = await db.execute(sql, {
+            "query": match,
+            "game_system": game_system,
+            "product_type": product_type,
+            "limit": limit,
+            "inner_limit": limit * 20,
+        })
+        # bm25 is negative (more negative = better); callers expect a magnitude.
+        return [
+            (row[0], abs(row[1]), row[2] or "", row[3])
+            for row in result.fetchall()
+        ]
+    except Exception as e:
+        logger.warning(f"Chunk FTS candidate search failed: {e}")
+        return []
+
+
 async def update_search_vector(db: AsyncSession, product: Product) -> bool:
     """
     Update the FTS5 index for a product based on extracted text.
