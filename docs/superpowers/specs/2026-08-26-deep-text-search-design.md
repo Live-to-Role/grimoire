@@ -103,7 +103,7 @@ exists for. Semantic similarity does not reliably recover them.
 ## Root cause is shared ownership, not the constant
 
 The cap is the second symptom of one design flaw. The first was fixed in
-`038731f`: `products_fts.extracted_text` was written by `update_search_vector`
+`dc377a7`: `products_fts.extracted_text` was written by `update_search_vector`
 and silently blanked by the `products_fts_update` trigger, because **two
 writers shared one table**. Raising the constant would leave that shared
 ownership in place.
@@ -190,7 +190,7 @@ Chunk rows are written in one place. The chunk index is written there too, in
 the same task — **not by a database trigger.**
 
 This deviates from how `products_fts` is currently kept in sync, deliberately.
-Trigger-based sync is what produced `038731f`: the trigger drifted from the
+Trigger-based sync is what produced `dc377a7`: the trigger drifted from the
 schema it served, blanked 2,800 products' indexed text, and went unnoticed for
 months because nothing errored. An explicit write path is testable; a trigger
 is not.
@@ -198,7 +198,7 @@ is not.
 ### Migration
 
 1. Create `product_chunks_fts` in `_ensure_fts_table`, which already owns FTS
-   schema (and, since `87f5039`, is the single source of truth that
+   schema (and, since `67b8d78`, is the single source of truth that
    `POST /queue/fts/recreate` defers to).
 2. Rebuild `products_fts` without `extracted_text`.
 3. Backfill the chunk index from `product_embeddings` as queued work, reusing
@@ -215,7 +215,7 @@ snippets rather than an error.
 `update_search_vector` exists to write the body into `products_fts`. With the
 body moved out, and metadata already maintained by the insert/update triggers,
 its remaining job may be nothing at all. The implementation should verify this
-and delete it if so — it is the function that caused `038731f`.
+and delete it if so — it is the function that caused `dc377a7`.
 
 ## Testing and success criteria
 

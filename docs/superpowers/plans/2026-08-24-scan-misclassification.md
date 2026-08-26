@@ -1355,7 +1355,7 @@ Steps 2-6 all passed against the live library.
   `update_search_vector` tripped it itself by setting `deep_indexed = True`
   immediately after writing the body, so it could not index a book even once.
   All 15 finished scans were affected, plus ~13% of the whole library (2,800
-  products) - this predates the scan work entirely. Fixed in `038731f`; the
+  products) - this predates the scan work entirely. Fixed in `dc377a7`; the
   trigger now updates only the metadata columns it owns. All 2,800 were
   re-indexed with zero failures, leaving 3 products with genuinely empty text
   (two zero-char maps, one missing file). `extracted_text:Kurabanda` now
