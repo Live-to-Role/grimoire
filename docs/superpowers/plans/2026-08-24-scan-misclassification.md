@@ -1275,18 +1275,18 @@ The five products the user reported are the acceptance test. There is no
 automated coverage for "OCR actually ran against the real library", and the
 frontend has no test harness, so this step is where those claims get earned.
 
-- [ ] **Step 1: Start the app**
+- [x] **Step 1: Start the app**
 
 Run `start.bat` from the repo root, in an interactive terminal.
 ⚠️ `start.bat` ends in `pause`; it cannot be launched headlessly — run where
 stdin is a real console, or it exits immediately and kills what it started.
 
-- [ ] **Step 2: Confirm the backlog count**
+- [x] **Step 2: Confirm the backlog count**
 
 Open the Gallery. The "Needs review" checkbox should be checked, and its count
 should read close to 1,710 (every flagged product starts unreviewed).
 
-- [ ] **Step 3: Mark the reported products as scans**
+- [x] **Step 3: Mark the reported products as scans**
 
 Search for `Volturnus`. Select *SF1 Volturnus Planet of Mystery*, *SFKH4 The War
 Machine*, *SF4 Mision to Alcazzar*, then search for and select *Children of the
@@ -1294,7 +1294,7 @@ Night - Werebeasts* and *On Hallowed Ground*. Click **Mark as scans**.
 
 Expected: they disappear from the grid, and the needs-review count falls by five.
 
-- [ ] **Step 4: Confirm OCR runs**
+- [x] **Step 4: Confirm OCR runs**
 
 The queue worker must be unpaused ("Grimoire Working"). Wait for the five
 `ocr_text` tasks to complete — *On Hallowed Ground* is 195 pages and will take
@@ -1317,22 +1317,62 @@ for r in c.execute('''select title, is_scanned, is_image_content, text_extracted
 Expected: `is_scanned=1`, `is_image_content=0`, `text_extracted=1`,
 `text_unextractable=0`.
 
-- [ ] **Step 5: Confirm the text is searchable**
+- [x] **Step 5: Confirm the text is searchable**
 
 Search the Library for `Kurabanda` (a creature named on page 6 of SF1 Volturnus,
 confirmed present by OCR during the spec work). Expected: SF1 Volturnus is a hit.
 
-- [ ] **Step 6: Confirm a pack stays a pack**
+- [x] **Step 6: Confirm a pack stays a pack**
 
 Find *Fantasy Art Subscription* in the Gallery, select it, click **Confirm as
 images**. Expected: it leaves the needs-review grid; unchecking "Needs review"
 shows it still present, still image content, still with its images.
 
-- [ ] **Step 7: Record the outcome**
+- [x] **Step 7: Record the outcome**
 
 Report which of steps 2–6 passed. If OCR returned nothing for any product, note
 whether it was marked `text_unextractable` — that is the designed safety net and
 means the system behaved correctly on a bad call, not that the task failed.
+
+
+### Outcome (2026-08-25)
+
+Steps 2-6 all passed against the live library.
+
+- **Step 2** - backlog read 1,711, matching the plan's estimate.
+- **Step 3** - the five reported products were marked as scans and left the
+  grid. The run was carried well past them: **107 products** rescued in total,
+  backlog down to 1,463.
+- **Step 4** - OCR ran on all 107 and every one produced text. Quality is real,
+  not just present: SF1 Volturnus yielded 55,684 words at a 31% common-word
+  ratio. None were marked `text_unextractable`; the 5 failed `ocr_text` tasks
+  were pre-existing and unrelated (4 oversized-guard rejections over 250 MB,
+  1 genuinely blank handout).
+- **Step 5** - **failed first, and uncovered a separate long-standing bug.**
+  The OCR'd text was not searchable: `products_fts_update` rewrote the row with
+  a six-column INSERT into a seven-column table, blanking
+  `products_fts.extracted_text` on *every* product UPDATE.
+  `update_search_vector` tripped it itself by setting `deep_indexed = True`
+  immediately after writing the body, so it could not index a book even once.
+  All 15 finished scans were affected, plus ~13% of the whole library (2,800
+  products) - this predates the scan work entirely. Fixed in `038731f`; the
+  trigger now updates only the metadata columns it owns. All 2,800 were
+  re-indexed with zero failures, leaving 3 products with genuinely empty text
+  (two zero-char maps, one missing file). `extracted_text:Kurabanda` now
+  matches SF1 Volturnus, the exact query that failed.
+- **Step 6** - packs stayed packs. *CR1 Wizard Spell Cards* (854pg) is still
+  image content, as are the map and card-deck products. Zero products carry
+  both `is_scanned` and `is_image_content`.
+
+**Known limitation, not a defect of this work.** `update_search_vector`
+truncates the indexed body at 50,000 characters (`fts_service.py:113`), so only
+the first ~30% of a large scan is searchable - *SF4 Mision to Alcazzar* indexes
+50,000 of its 117,897 characters. Worth its own spec.
+
+**Booby trap found nearby.** `POST /queue/fts/recreate` is the obvious-looking
+repair endpoint, but it recreates `products_fts` with a six-column schema that
+omits `description`, which would corrupt the index and wipe every indexed body.
+The backfill used `POST /queue/fts/rebuild-all` instead. Left unfixed.
 
 ---
 
