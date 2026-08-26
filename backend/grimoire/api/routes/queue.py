@@ -671,36 +671,44 @@ async def get_fts_stats(db: DbSession) -> dict:
 
 @router.post("/fts/recreate")
 async def recreate_fts_table(db: DbSession) -> dict:
-    """Recreate the FTS5 table with correct schema including extracted_text column."""
+    """Drop and rebuild the FTS5 table, then queue everything for re-indexing.
+
+    ⚠️ The schema and the triggers are NOT written out here. This endpoint used
+    to keep its own copy of both, and both had drifted: the table was built with
+    six columns, omitting `description`, and all three sync triggers were
+    dropped and never recreated. Reaching for this to repair a search problem
+    made it permanent. `_ensure_fts_table` is the single source of truth - it
+    creates the table, the triggers, and backfills the metadata.
+
+    The body text lives on disk rather than in the products table, so the
+    backfill cannot restore it. That is what resetting `deep_indexed` is for:
+    POST /queue/fts/rebuild-all afterwards to re-index the bodies.
+    """
     from sqlalchemy import text
-    
+
+    from grimoire.database import _ensure_fts_table
+
     try:
-        # Drop existing table and triggers
         await db.execute(text("DROP TRIGGER IF EXISTS products_fts_insert"))
         await db.execute(text("DROP TRIGGER IF EXISTS products_fts_update"))
         await db.execute(text("DROP TRIGGER IF EXISTS products_fts_delete"))
         await db.execute(text("DROP TABLE IF EXISTS products_fts"))
-        
-        # Create with correct schema
-        await db.execute(text("""
-            CREATE VIRTUAL TABLE products_fts USING fts5(
-                title,
-                file_name,
-                publisher,
-                game_system,
-                product_type,
-                extracted_text
-            )
-        """))
-        
-        # Reset deep_indexed flag so items can be reprocessed
+
+        await _ensure_fts_table(await db.connection())
+
+        # The bodies are gone with the old table; mark every product for a
+        # re-index pass so rebuild-all can put them back.
         await db.execute(text("UPDATE products SET deep_indexed = 0"))
-        
+
         await db.commit()
-        
+
         return {
             "success": True,
-            "message": "FTS5 table recreated with extracted_text column. All products marked for re-indexing.",
+            "message": (
+                "FTS5 table and triggers recreated. All products marked for "
+                "re-indexing - run POST /queue/fts/rebuild-all to restore the "
+                "indexed text."
+            ),
         }
     except Exception as e:
         return {
