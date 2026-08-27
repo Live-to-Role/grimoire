@@ -144,7 +144,9 @@ async def generate_embeddings(
 
     Args:
         texts: List of text strings to embed
-        provider: "openai", "ollama", or "local" (None for auto-detect)
+        provider: "openai", "ollama", or "local". None means use the configured
+            provider (the `semantic_search_provider` setting), falling back to
+            Ollama.
         model: Specific model to use
 
     Returns:
@@ -157,16 +159,19 @@ async def generate_embeddings(
         openai_key = await get_setting_from_db("openai_api_key") or ""
     ollama_url = await get_ollama_url()
 
-    # Auto-detect provider
     if provider is None:
-        if openai_key:
-            provider = "openai"
-        elif ollama_url:
+        # What the user configured, not what happens to be available. This used
+        # to prefer OpenAI whenever a key existed, which silently redirected
+        # embedding to a paid API against the user's stated choice — and, since
+        # the query side resolves its provider separately, could leave query
+        # vectors and document vectors coming from different models.
+        provider = await get_setting_from_db("semantic_search_provider") or ""
+
+        # "none" means semantic search is switched off, not "choose for me".
+        # Ollama is the fallback either way: local, free, and the default this
+        # application is built around.
+        if provider in ("", "none"):
             provider = "ollama"
-        elif SENTENCE_TRANSFORMERS_AVAILABLE:
-            provider = "local"
-        else:
-            raise ValueError("No embedding provider available")
 
     if provider == "openai":
         if not openai_key:
