@@ -1,0 +1,187 @@
+{
+  "rows": [
+    {
+      "mode": "specific",
+      "query": "a descent into hell aboard a train",
+      "hit": true,
+      "rank": 1,
+      "rr": 1.0,
+      "top": [
+        "Hell Train",
+        "Last Stop, Perdition!",
+        "Hell Train"
+      ]
+    },
+    {
+      "mode": "specific",
+      "query": "dungeon crawl classics funnel for level 0 characters",
+      "hit": false,
+      "rank": null,
+      "rr": 0.0,
+      "top": [
+        "Aufgebl\u00e4ht or Bust",
+        "Mothership Funnel Rules Sheet",
+        "Alternate Occupations"
+      ]
+    },
+    {
+      "mode": "specific",
+      "query": "desert oasis mirage",
+      "hit": false,
+      "rank": null,
+      "rr": 0.0,
+      "top": [
+        "The Kingdom of Keshanar",
+        "Pond of Spirits",
+        "Pond of Spirits"
+      ]
+    },
+    {
+      "mode": "specific",
+      "query": "hunting a dragon",
+      "hit": false,
+      "rank": null,
+      "rr": 0.0,
+      "top": [
+        "A Natural History of the Fantastic",
+        "Exploration Expanded: Hunting",
+        "A Hand-book for Overland Expeditions"
+      ]
+    },
+    {
+      "mode": "specific",
+      "query": "pathfinder dragon adventure",
+      "hit": false,
+      "rank": null,
+      "rr": 0.0,
+      "top": [
+        "Pathways #47",
+        "Cyclopean Deeps Volume I",
+        "Kingdoms of Legend: World Map Poster"
+      ]
+    },
+    {
+      "mode": "specific",
+      "query": "old-school essentials cave crawl with orcs",
+      "hit": true,
+      "rank": 1,
+      "rr": 1.0,
+      "top": [
+        "Orc Caves",
+        "Orc Blood",
+        "Orcs of the Flayed Skull"
+      ]
+    },
+    {
+      "mode": "specific",
+      "query": "expedition through a dangerous jungle",
+      "hit": true,
+      "rank": 1,
+      "rr": 1.0,
+      "top": [
+        "Jungle Treks",
+        "Lost Temple of Ibholtheg",
+        "The Eye of Kilquato"
+      ]
+    },
+    {
+      "mode": "specific",
+      "query": "caverns full of giant fungus",
+      "hit": true,
+      "rank": 2,
+      "rr": 0.5,
+      "top": [
+        "The Pod-Caverns of the Sinister Shroom",
+        "The Fungus Forest",
+        "The_Fungus_Forest_OSE_Rewrite"
+      ]
+    },
+    {
+      "mode": "specific",
+      "query": "pirate adventure on the high seas",
+      "hit": true,
+      "rank": 1,
+      "rr": 1.0,
+      "top": [
+        "Pirates!",
+        "Conan the Pirate",
+        "Wreckage of The Crimson Cove"
+      ]
+    },
+    {
+      "mode": "specific",
+      "query": "frozen winter wilderness survival",
+      "hit": false,
+      "rank": null,
+      "rr": 0.0,
+      "top": [
+        "Dark of the Moon",
+        "The Pearls of Pohjola",
+        "Horrors of the North"
+      ]
+    },
+    {
+      "mode": "topical",
+      "query": "undead adventure",
+      "precision": 0.6,
+      "matched": 6,
+      "returned": 10,
+      "off_topic": [
+        "Dyson's Dodecahedron Issue 3",
+        "Morts",
+        "Grim Harvest Trilogy 3 - Requiem Boxed Set"
+      ]
+    },
+    {
+      "mode": "topical",
+      "query": "cave adventure",
+      "precision": 0.5,
+      "matched": 5,
+      "returned": 10,
+      "off_topic": [
+        "Forstal's Final Rest",
+        "Caver and Cube",
+        "Sanguine Sacrament"
+      ]
+    },
+    {
+      "mode": "topical",
+      "query": "haunted house horror",
+      "precision": 0.5,
+      "matched": 5,
+      "returned": 10,
+      "off_topic": [
+        "Scary Stories",
+        "GM's Monthly Miscellany: September 2014",
+        "GM's Monthly Miscellany: September 2014"
+      ]
+    },
+    {
+      "mode": "topical",
+      "query": "temple of a dark cult",
+      "precision": 0.5,
+      "matched": 5,
+      "returned": 10,
+      "off_topic": [
+        "GM's Miscellany: Alternate Dungeons",
+        "GM's Miscellany: Alternate Dungeons",
+        "GM's Monthly Miscellany: May 2015"
+      ]
+    },
+    {
+      "mode": "topical",
+      "query": "swamp horror",
+      "precision": 0.1,
+      "matched": 1,
+      "returned": 10,
+      "off_topic": [
+        "Stolen for Stitches",
+        "The Ooze Pits of Jonas Gralk",
+        "SH_Playtest_Packet#2_Creatures1"
+      ]
+    }
+  ],
+  "hit_rate": 0.5,
+  "mrr": 0.45,
+  "mean_precision": 0.44000000000000006
+}

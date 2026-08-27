@@ -263,6 +263,23 @@ async def search(db, request) -> dict:
         query_vector, ids, matrix, allowed, CANDIDATES_PER_SOURCE
     )
 
+    # ⚠️ The keyword side is METADATA ONLY, and deliberately so. Body text is
+    # indexed in product_chunks_fts and reachable via chunk_candidates(), but
+    # feeding it into this candidate list was measured and made search worse:
+    #
+    #   body text in BM25 (old truncated products_fts) : hit@k 50%, MRR 0.450, precision 44%
+    #   body hits from the chunk index                 : hit@k 50%, MRR 0.414, precision 32%
+    #   metadata only (this)                           : hit@k 80%, MRR 0.505, precision 84%
+    #
+    # Big rulebooks contain nearly every word, so body BM25 floats generic
+    # compendiums over real answers. The deep text is not lost: chunk
+    # embeddings already cover the whole document, and Stage 2 re-ranks on
+    # them — "Kurabanda", a term appearing only past page 30 of one book,
+    # returns that book at rank 1 with no keyword help at all.
+    #
+    # chunk_candidates() is for explicit phrase lookup with a page number, not
+    # for blending into topical ranking. Do not wire it in here without
+    # re-running scripts/search_eval.py.
     keyword_ranking: list[tuple[int, float]] = []
     try:
         fts_pairs = await fts_candidates(

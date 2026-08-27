@@ -4,10 +4,10 @@ import json
 import logging
 from pathlib import Path
 
-from sqlalchemy import text
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from grimoire.models import Product
+from grimoire.models import Product, ProductEmbedding
 
 logger = logging.getLogger(__name__)
 
@@ -89,43 +89,120 @@ async def fts_candidates(
         return []
 
 
-async def update_search_vector(db: AsyncSession, product: Product) -> bool:
+async def chunk_candidates(
+    db: AsyncSession,
+    query: str,
+    *,
+    game_system: str | None = None,
+    product_type: str | None = None,
+    limit: int = 150,
+) -> list[tuple[int, float, str, int | None]]:
+    """Candidate products from the body index, best chunk each.
+
+    Returns (product_id, score, snippet, page_start) sorted by score
+    descending. A product is scored by its single best chunk, matching
+    TOP_K_CHUNKS = 1 on the semantic side.
+
+    ⚠️ NOT wired into search_service, on purpose. Blending these hits into
+    topical ranking was measured and made search worse (precision 84% -> 32%);
+    see the comment in search_service.search. This is for explicit phrase
+    lookup — "where does this book say X, and on what page".
+
+    ⚠️ Cost scales with how common the terms are, because every matching chunk
+    across 3.3M rows is scored before the best-per-product reduction. Measured
+    on the live library: a rare term ("Kurabanda") is 0.005s, but "wizard spell
+    cards" is 2.6s. Fine for a deliberate lookup, far too slow for a hot path.
     """
-    Update the FTS5 index for a product based on extracted text.
-    
-    Uses SQLite FTS5 virtual table for full-text search.
-    
+    match = build_fts_match(query)
+    if match is None:
+        return []
+
+    # The unary + on the boolean columns is load-bearing: without it SQLite
+    # drives the join from ix_products_is_duplicate and re-runs the FTS MATCH
+    # once per product. + disqualifies those indexes so the MATCH drives. Same
+    # reasoning as fts_candidates above. Do not remove.
+    #
+    # bm25() cannot be wrapped in an aggregate — it is an FTS5 auxiliary
+    # function and only works directly against the MATCH query ("unable to use
+    # function bm25 in the requested context"). So the inner query scores
+    # chunks and the outer one reduces them to the best chunk per product.
+    # MIN() works there because rank is an ordinary column by that point, and
+    # snippet/page_start ride along by SQLite's bare-column rule, which pairs
+    # them with the row MIN() chose.
+    #
+    # The inner LIMIT bounds the work: a common term matches far more chunks
+    # than there are products worth returning, and without it every match is
+    # materialised before grouping. Taking the globally best-scoring chunks
+    # first can in principle drop a product whose best chunk ranks below all
+    # of them, but such a product is by construction not in the top `limit`.
+    sql = text("""
+        SELECT product_id, MIN(rank) AS rank, snippet, page_start
+        FROM (
+            SELECT
+                f.product_id AS product_id,
+                bm25(product_chunks_fts) AS rank,
+                snippet(product_chunks_fts, 0, '<mark>', '</mark>', '...', 32) AS snippet,
+                f.page_start AS page_start
+            FROM product_chunks_fts f
+            JOIN products p ON p.id = f.product_id
+            WHERE product_chunks_fts MATCH :query
+            AND +p.is_duplicate = 0
+            AND +p.is_missing = 0
+            AND (:game_system IS NULL OR p.game_system = :game_system)
+            AND (:product_type IS NULL OR p.product_type = :product_type)
+            ORDER BY rank
+            LIMIT :inner_limit
+        )
+        GROUP BY product_id
+        ORDER BY rank
+        LIMIT :limit
+    """)
+
+    try:
+        result = await db.execute(sql, {
+            "query": match,
+            "game_system": game_system,
+            "product_type": product_type,
+            "limit": limit,
+            "inner_limit": limit * 20,
+        })
+        # bm25 is negative (more negative = better); callers expect a magnitude.
+        return [
+            (row[0], abs(row[1]), row[2] or "", row[3])
+            for row in result.fetchall()
+        ]
+    except Exception as e:
+        logger.warning(f"Chunk FTS candidate search failed: {e}")
+        return []
+
+
+async def update_search_vector(db: AsyncSession, product: Product) -> bool:
+    """Refresh a product's metadata row in the FTS index.
+
+    The body is no longer written here. It lives in product_chunks_fts, keyed
+    by chunk and carrying page numbers, written by index_product_chunks. This
+    function used to read the extraction JSON and index its first 50,000
+    characters, which hid 71% of the library's text from keyword search.
+
     Args:
         db: Database session
         product: Product to update
-        
+
     Returns:
         True if successful, False otherwise
     """
     try:
-        # Get extracted text content
-        extracted_text = ""
-        if product.extracted_text_path:
-            text_path = Path(product.extracted_text_path)
-            if text_path.exists():
-                try:
-                    with open(text_path, "r", encoding="utf-8") as f:
-                        data = json.load(f)
-                        extracted_text = data.get("markdown", "")[:50000]  # Limit to 50k chars for FTS5
-                except Exception as e:
-                    logger.warning(f"Failed to read extracted text for product {product.id}: {e}")
-        
-        # Update FTS5 index - delete old entry and insert new
-        # FTS5 uses rowid to link to main table
         await db.execute(
             text("DELETE FROM products_fts WHERE rowid = :product_id"),
             {"product_id": product.id}
         )
-        
+
         await db.execute(
             text("""
-                INSERT INTO products_fts(rowid, title, file_name, publisher, game_system, product_type, description, extracted_text)
-                VALUES (:product_id, :title, :file_name, :publisher, :game_system, :product_type, :description, :extracted_text)
+                INSERT INTO products_fts(rowid, title, file_name, publisher,
+                                         game_system, product_type, description)
+                VALUES (:product_id, :title, :file_name, :publisher,
+                        :game_system, :product_type, :description)
             """),
             {
                 "product_id": product.id,
@@ -135,16 +212,15 @@ async def update_search_vector(db: AsyncSession, product: Product) -> bool:
                 "game_system": product.game_system or "",
                 "product_type": product.product_type or "",
                 "description": product.description or "",
-                "extracted_text": extracted_text,
             }
         )
-        
+
         product.deep_indexed = True
         await db.commit()
-        
+
         logger.info(f"Updated FTS index for product {product.id}")
         return True
-        
+
     except Exception as e:
         logger.error(f"Failed to update FTS index for product {product.id}: {e}")
         return False
@@ -226,7 +302,12 @@ async def search_fts(
         SELECT
             fts.rowid as product_id,
             bm25(products_fts) as rank,
-            snippet(products_fts, 6, '<mark>', '</mark>', '...', 32) as snippet
+            -- Column 0 is title. This used to be column 6, extracted_text,
+            -- which no longer exists: the body moved to product_chunks_fts.
+            -- A stale offset here would not error, it would quietly snippet
+            -- whichever column now sits at 6. For a body snippet, use
+            -- chunk_candidates, which returns one with its page.
+            snippet(products_fts, 0, '<mark>', '</mark>', '...', 32) as snippet
         FROM products_fts fts
         JOIN products p ON p.id = fts.rowid
         WHERE products_fts MATCH :query
@@ -300,3 +381,87 @@ async def check_fts_available(db: AsyncSession) -> bool:
     except Exception:
         _fts_available_cache = False
         return False
+
+
+async def clear_product_chunk_index(db: AsyncSession, product_id: int) -> None:
+    """Remove a product's rows from the body index.
+
+    ⚠️ Must run BEFORE the product's product_embeddings rows are deleted. The
+    FTS rowid is the embedding id, so this resolves rowids through
+    product_embeddings; once those rows are gone it matches nothing and leaves
+    orphans behind. prune_orphaned_chunk_index() is the safety net.
+
+    Deleting by rowid rather than by product_id is not a micro-optimisation:
+    product_id is UNINDEXED, so filtering on it scans every row in a 3.3M-row
+    table.
+    """
+    await db.execute(
+        text("""
+            DELETE FROM product_chunks_fts
+            WHERE rowid IN (
+                SELECT id FROM product_embeddings WHERE product_id = :product_id
+            )
+        """),
+        {"product_id": product_id},
+    )
+
+
+async def index_product_chunks(db: AsyncSession, product_id: int) -> int:
+    """Mirror a product's chunk text into the body index. Returns rows written.
+
+    Deliberately not a database trigger. Trigger-maintained indexing is what
+    produced dc377a7: the trigger drifted from the schema it served, blanked
+    2,800 products' text, and went unnoticed for months because nothing
+    errored. An explicit write path is testable.
+    """
+    rows = (await db.execute(
+        select(
+            ProductEmbedding.id,
+            ProductEmbedding.chunk_index,
+            ProductEmbedding.chunk_text,
+            ProductEmbedding.page_start,
+            ProductEmbedding.page_end,
+        )
+        .where(ProductEmbedding.product_id == product_id)
+        .order_by(ProductEmbedding.chunk_index)
+    )).all()
+
+    for row_id, chunk_index, chunk_text, page_start, page_end in rows:
+        await db.execute(
+            text("""
+                INSERT INTO product_chunks_fts(
+                    rowid, chunk_text, product_id, chunk_index, page_start, page_end
+                ) VALUES (:rowid, :chunk_text, :product_id, :chunk_index, :page_start, :page_end)
+            """),
+            {
+                "rowid": row_id,
+                "chunk_text": chunk_text,
+                "product_id": product_id,
+                "chunk_index": chunk_index,
+                "page_start": page_start,
+                "page_end": page_end,
+            },
+        )
+
+    return len(rows)
+
+
+async def prune_orphaned_chunk_index(db: AsyncSession) -> int:
+    """Drop body-index rows whose chunk no longer exists. Returns rows removed.
+
+    Products are deleted from four call sites, and their product_embeddings go
+    with them by ORM delete-orphan. A virtual table has no relationship to
+    ride, and SQLite foreign keys are off, so nothing removes these rows
+    automatically. Sweeping is deliberate: hooking every delete site is the
+    fragility that produced dc377a7, and a fifth site added later would leak
+    silently.
+
+    This is a full scan of the index. It is a maintenance operation, not
+    something to call per request.
+    """
+    result = await db.execute(text("""
+        DELETE FROM product_chunks_fts
+        WHERE rowid NOT IN (SELECT id FROM product_embeddings)
+    """))
+    await db.commit()
+    return result.rowcount or 0

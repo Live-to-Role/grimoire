@@ -553,6 +553,25 @@ async def handle_fts_index_task(db: AsyncSession, product: Product) -> bool:
     return True
 
 
+@register_handler("chunk_fts_index")
+async def handle_chunk_fts_index_task(db: AsyncSession, product: Product) -> bool:
+    """Rebuild one product's rows in the body index."""
+    from grimoire.services.fts_service import (
+        clear_product_chunk_index,
+        index_product_chunks,
+    )
+
+    await clear_product_chunk_index(db, product.id)
+    written = await index_product_chunks(db, product.id)
+    await db.commit()
+
+    # Zero is legitimate: a product with no chunks has nothing to index. It is
+    # not an error, and raising here would fail thousands of image-only
+    # products during the backfill.
+    logger.info(f"Chunk FTS index rebuilt for product {product.id}: {written} rows")
+    return True
+
+
 @register_handler("embed")
 async def handle_embed_task(db: AsyncSession, product: Product) -> bool:
     """Handle embedding generation task for semantic search."""
@@ -599,7 +618,16 @@ async def handle_embed_task(db: AsyncSession, product: Product) -> bool:
     # transaction open during the slow Ollama/OpenAI call.
     embeddings = await generate_embeddings([c for c, _, _ in chunk_tuples])
 
-    # Now do all DB writes quickly
+    # Now do all DB writes quickly.
+    # ⚠️ The body index is cleared FIRST. Its rowids are embedding ids, so once
+    # the rows below are deleted there is nothing left to resolve them from and
+    # the old text would stay findable forever.
+    from grimoire.services.fts_service import (
+        clear_product_chunk_index,
+        index_product_chunks,
+    )
+
+    await clear_product_chunk_index(db, product.id)
     await db.execute(
         delete(ProductEmbedding).where(ProductEmbedding.product_id == product.id)
     )
@@ -639,6 +667,10 @@ async def handle_embed_task(db: AsyncSession, product: Product) -> bool:
         )
         sv.set_vector(avg_vector)
         db.add(sv)
+
+    # Flush so the new embedding rows have ids; the body index keys on them.
+    await db.flush()
+    await index_product_chunks(db, product.id)
 
     await db.commit()
     invalidate_vector_cache()
