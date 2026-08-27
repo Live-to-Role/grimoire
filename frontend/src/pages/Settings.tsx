@@ -20,7 +20,9 @@ interface AIProviders {
 interface SettingsData {
   codex_api_key?: string;
   codex_contribute_enabled?: boolean;
-  default_ai_provider?: string;
+  // The key the backend actually reads (queue_processor.get_setting).
+  // This used to be `default_ai_provider`, which nothing anywhere read.
+  auto_identify_provider?: string;
   openai_api_key?: string;
   anthropic_api_key?: string;
   ollama_base_url?: string;
@@ -120,10 +122,16 @@ export function Settings() {
   const [settings, setSettings] = useState<SettingsData>({
     codex_api_key: '',
     codex_contribute_enabled: false,
-    default_ai_provider: 'anthropic',
+    // 'ollama' matches the backend's own default, so saving an untouched
+    // form is a no-op rather than a silent switch to a paid provider.
+    auto_identify_provider: 'ollama',
     openai_api_key: '',
     anthropic_api_key: '',
-    ollama_base_url: 'http://localhost:11434',
+    // Deliberately blank. Pre-filling localhost meant that saving this form
+    // for any reason wrote it to the database, where it overrides
+    // OLLAMA_BASE_URL from the environment. In Docker that address points
+    // at the container itself, so it silently broke every Ollama call.
+    ollama_base_url: '',
   });
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [newFolderPath, setNewFolderPath] = useState('');
@@ -706,9 +714,9 @@ export function Settings() {
                   Default Provider
                 </label>
                 <select
-                  value={settings.default_ai_provider || 'anthropic'}
+                  value={settings.auto_identify_provider || 'ollama'}
                   onChange={(e) =>
-                    setSettings({ ...settings, default_ai_provider: e.target.value })
+                    setSettings({ ...settings, auto_identify_provider: e.target.value })
                   }
                   className="input mt-1 w-full rounded-lg px-3"
                   style={{ height: '48px', fontSize: '18px', backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-border)', color: 'var(--color-text-primary)' }}
@@ -757,10 +765,16 @@ export function Settings() {
                   type="text"
                   value={settings.ollama_base_url || ''}
                   onChange={(e) => setSettings({ ...settings, ollama_base_url: e.target.value })}
-                  placeholder="http://localhost:11434"
+                  placeholder="Leave blank to use the server's configured address"
                   className="input mt-1 w-full rounded-lg px-3"
                   style={{ height: '48px', fontSize: '18px', backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-border)', color: 'var(--color-text-primary)' }}
                 />
+                <p className="mt-1 text-sm" style={{ color: 'var(--color-text-secondary)' }}>
+                  Only set this to override where Ollama is running. Anything
+                  entered here wins over the server's own configuration &mdash; in
+                  Docker, a <code>localhost</code> address points at the container
+                  rather than your machine.
+                </p>
               </div>
             </div>
           </section>
