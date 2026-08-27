@@ -1822,3 +1822,86 @@ books; the single miss was in a 1.66M-character book and is consistent with a
 term split across a boundary. This is a known characteristic, not a defect to
 chase — but if a specific search misses a term that is demonstrably in the
 document, that is the first thing to check.
+
+---
+
+## Outcome (2026-08-26)
+
+**The plan achieved its goal by the opposite mechanism to the one it
+described, and its central premise was wrong.**
+
+### What was measured
+
+| Configuration | hit@k | MRR | precision@k |
+|---|---|---|---|
+| Baseline — body text in `products_fts`, 50k cap | 50% | 0.450 | 44% |
+| Tasks 2–8 as planned — body hits fed into candidates | 50% | 0.414 | **32%** |
+| **Shipped** — body hits reverted, metadata-only keyword | **80%** | **0.505** | **84%** |
+
+The shipped configuration is the best this project has measured.
+
+### The premise was wrong
+
+The spec argued that a rare proper noun past character 50,000 "can never
+nominate its book via BM25 — and rare proper nouns are precisely what keyword
+search exists for. Semantic similarity does not reliably recover them."
+
+Semantic recovers them fine. With the keyword body path disabled entirely,
+`Kurabanda` and `Edestekai` — terms appearing only past page 30 of *SF1
+Volturnus* — both return that book at **rank 1**. Chunk embeddings already
+covered the whole document and Stage 2 always re-ranked on them; only the
+keyword path was ever blind, and it turned out not to matter.
+
+This was never verified before writing the spec. The user noticing that
+semantic search already handled "Kurabanda" is what exposed it.
+
+### Where the win actually came from
+
+Task 8 — *removing* truncated body text from `products_fts` — not Task 7,
+which added the full body back. Big rulebooks contain nearly every word, so
+body BM25 floats generic compendiums over real answers; the eval shows *"GM's
+Miscellany: Alternate Dungeons"* crowding out actual matches. Adding more body
+text made it worse than the truncated version it replaced.
+
+In hindsight the codebase already said so: `KEYWORD_RRF_WEIGHT = 0.75` is
+commented "trust the semantic side more than noisy BM25".
+
+**Caveat:** this is one 10-query specific and 5-query topical set. The deltas
+are large and it is the agreed gate, but it is not a large sample.
+
+### Backfill
+
+- **3,319,560 of 3,319,560** chunks indexed across **19,163 of 19,163**
+  products. Zero failures across 19,163 queued tasks.
+- Database grew **0.91 GB** (16.50 → 17.41), well under the 2.50 GB
+  projection — retiring the old body index freed pages the new one reused.
+- Orphan sweep after backfill: **0 rows**. Nothing leaked.
+
+### Latency
+
+Metadata keyword search did not regress; it improved (`dungeon` 0.030s →
+0.016s, `wizard spell cards` 0.052s → 0.012s).
+
+`chunk_candidates` cost scales with term commonality, because every matching
+chunk across 3.3M rows is scored before the best-per-product reduction:
+`Kurabanda` 0.005s, `dungeon` 0.717s, `wizard spell cards` **2.570s**. Fine
+for deliberate lookup, far too slow for a hot path. Recorded in its docstring.
+
+### What shipped, and what it is for
+
+`product_chunks_fts`, its write path, its sync with re-embedding, its backfill
+endpoint and its orphan sweep all ship. `chunk_candidates()` gives exact
+phrase lookup with a page number — genuinely useful, and what the index is
+actually good at. It is deliberately **not** wired into topical ranking.
+
+### Corrections to earlier claims in this plan
+
+- The `+` trick was carried into the chunk query as instructed, but on a
+  400k-chunk probe the query plan was **identical with and without it** — the
+  inner `ORDER BY rank LIMIT` already forces MATCH to drive. It is kept
+  because it costs nothing, not because it was shown to matter here.
+- `bm25()` cannot be wrapped in an aggregate, so the planned
+  `MIN(bm25(...)) ... GROUP BY` does not run at all. The query became an inner
+  scoring pass and an outer grouping pass.
+- The `db` test fixture never created FTS tables, so the test schema diverged
+  from production. Fixed in `conftest.py`; the plan had not anticipated it.

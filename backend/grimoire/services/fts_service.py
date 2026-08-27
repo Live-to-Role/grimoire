@@ -103,9 +103,15 @@ async def chunk_candidates(
     descending. A product is scored by its single best chunk, matching
     TOP_K_CHUNKS = 1 on the semantic side.
 
-    This is the half of keyword search that sees past the first 50,000
-    characters — products_fts only ever held metadata plus a truncated body,
-    so a term deep in a large book could never nominate it.
+    ⚠️ NOT wired into search_service, on purpose. Blending these hits into
+    topical ranking was measured and made search worse (precision 84% -> 32%);
+    see the comment in search_service.search. This is for explicit phrase
+    lookup — "where does this book say X, and on what page".
+
+    ⚠️ Cost scales with how common the terms are, because every matching chunk
+    across 3.3M rows is scored before the best-per-product reduction. Measured
+    on the live library: a rare term ("Kurabanda") is 0.005s, but "wizard spell
+    cards" is 2.6s. Fine for a deliberate lookup, far too slow for a hot path.
     """
     match = build_fts_match(query)
     if match is None:
