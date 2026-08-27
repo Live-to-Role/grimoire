@@ -8,6 +8,7 @@ from sqlalchemy import select
 from grimoire.api.deps import DbSession
 from grimoire.models import ContributionQueue, ContributionStatus, Product
 from grimoire.services.contribution_service import (
+    CodexIneligibleError,
     queue_contribution,
     get_pending_contributions,
     submit_all_pending,
@@ -92,12 +93,23 @@ async def create_contribution(
     if not product:
         raise HTTPException(status_code=404, detail="Product not found")
     
-    contribution = await queue_contribution(
-        db=db,
-        product_id=request.product_id,
-        contribution_data=request.contribution_data,
-        file_hash=request.file_hash or product.file_hash,
-    )
+    try:
+        contribution = await queue_contribution(
+            db=db,
+            product_id=request.product_id,
+            contribution_data=request.contribution_data,
+            file_hash=request.file_hash or product.file_hash,
+        )
+    except CodexIneligibleError as e:
+        # Name the rule rather than succeeding silently, so the UI can say why
+        # and the user is not left guessing at a button that does nothing.
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "reason": e.reason,
+                "message": "This product is not eligible to be shared with Codex",
+            },
+        )
     
     return {
         "id": contribution.id,
@@ -147,7 +159,14 @@ async def contribute_product(
             raise HTTPException(status_code=400, detail="No Codex API key configured")
         elif result["reason"] == "no_title":
             raise HTTPException(status_code=400, detail="Product must have a title to contribute")
-    
+        elif result["reason"] == "image_content":
+            # Same refusal as the manual route, so the frontend has one shape
+            # to handle rather than a 422 here and a 200-with-success-false there.
+            raise HTTPException(
+                status_code=422,
+                detail={"reason": result["reason"], "message": result["message"]},
+            )
+
     return result
 
 

@@ -237,6 +237,53 @@ async def process_text_task(db: AsyncSession, product: Product, use_marker: bool
     return success
 
 
+#: Below this many characters per page, a product's text layer is not worth
+#: keeping and the file should be OCR'd instead.
+#:
+#: Per page rather than absolute: 800 characters is plenty for a two-page
+#: handout and nothing at all for a 200-page book. Measured across the
+#: image-flagged book-typed population — p5 = 83 chars/page, p10 = 126,
+#: p25 = 388, p50 = 1,162 — so 100 sits in the sparse gap between the
+#: text-less tail and real books rather than being fitted to noise.
+#:
+#: Distinct from `MIN_EXTRACTED_CHARS` in queue_processor, which asks whether
+#: an OCR *result* is empty. This asks whether an existing extraction is good
+#: enough that re-running OCR would be wasted.
+MIN_USABLE_CHARS_PER_PAGE = 100
+
+
+def has_usable_text(product: Product) -> bool:
+    """Whether this product already holds text worth keeping.
+
+    `text_extracted` alone cannot answer it: across the real library that flag
+    is True for products whose text layer holds zero characters. Used to
+    decide whether un-flagging an image-content product should queue OCR.
+
+    An unknown page count errs toward "no" — a wasted OCR pass is cheap and
+    flags itself through the `text_unextractable` disposition, while skipping
+    a needed one leaves the document unsearchable.
+    """
+    import json
+
+    if not product.text_extracted or not product.extracted_text_path:
+        return False
+
+    if not product.page_count:
+        return False
+
+    text_path = Path(product.extracted_text_path)
+    if not text_path.exists():
+        return False
+
+    try:
+        with open(text_path, "r", encoding="utf-8") as f:
+            char_count = json.load(f).get("char_count") or 0
+    except Exception:
+        return False
+
+    return (char_count / product.page_count) >= MIN_USABLE_CHARS_PER_PAGE
+
+
 def get_extracted_text(product: Product) -> str | None:
     """Get the extracted text for a product.
 

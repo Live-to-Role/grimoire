@@ -202,6 +202,11 @@ async def _ensure_columns(conn) -> None:
         ("products", "superseded_by_id", "INTEGER REFERENCES products(id)"),
         ("product_embeddings", "page_start", "INTEGER"),
         ("product_embeddings", "page_end", "INTEGER"),
+        ("products", "is_scanned", "BOOLEAN DEFAULT 0"),
+        ("products", "classification_reviewed_at", "DATETIME"),
+        ("contribution_queue", "codex_contribution_id", "VARCHAR(64)"),
+        ("contribution_queue", "warnings", "TEXT"),
+        ("contribution_queue", "payload_hash", "VARCHAR(64)"),
     ]
     for table, column, col_type in migrations:
         try:

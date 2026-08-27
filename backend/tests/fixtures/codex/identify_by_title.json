@@ -1,0 +1,88 @@
+{
+  "match": "exact",
+  "confidence": 0.9523809523809522,
+  "product": {
+    "id": "4d3d631e-4a9e-4fdc-8cc8-2b8b46a2d0cc",
+    "title": "0A The Tomb of Rakoss the Undying",
+    "slug": "0a-the-tomb-of-rakoss-the-undying",
+    "description": "Rakoss was a great wizard of ages past who served the Emperor of Maere. Tales tell of his prowess as a military\u00a0strategist, but they also tell of his fall. It is said that although he won campaign after campaign for his emperor,\u00a0just one failure brought about his doom. Defeated by the King of Cadarn, Rakoss was followed back to his refuge\u00a0where he, his generals, strategists and personal guard were entombed. Somewhere in the Ganlaw Mountains\u00a0they remain sealed in by powerful magic.\nWho knows...",
+    "publisher": {
+      "id": "682b6678-e560-4b73-84ac-13e2f512b3f0",
+      "name": "Fire Born Games",
+      "slug": "fire-born-games",
+      "logo_url": "",
+      "is_verified": true
+    },
+    "game_systems": [
+      {
+        "id": "21e7ed11-0541-42dc-8d3c-89c0ebb3dd60",
+        "name": "Classic D&D/AD&D",
+        "slug": "classic-d-d-ad-d",
+        "edition": "",
+        "logo_url": "",
+        "is_primary": false
+      },
+      {
+        "id": "90ed8981-5d41-4774-b293-d4ee2f68d315",
+        "name": "OSRIC",
+        "slug": "osric",
+        "edition": "",
+        "logo_url": "",
+        "is_primary": false
+      }
+    ],
+    "game_system": null,
+    "product_type": "adventure",
+    "product_type_display": "Adventure",
+    "publication_date": null,
+    "page_count": null,
+    "format": "pdf",
+    "format_display": "PDF",
+    "ai_disclosure": "",
+    "ai_disclosure_display": "Not declared",
+    "isbn": "978-1-62890-129-0",
+    "msrp": null,
+    "dtrpg_id": "119267",
+    "itch_id": "",
+    "links": [
+      {
+        "id": "25d85cc1-52e1-4161-9ed6-fb397c792441",
+        "url": "https://www.drivethrurpg.com/product/119267/f1-the-tomb-of-rakoss-the-undying",
+        "label": "DriveThruRPG",
+        "allow_affiliate": true,
+        "position": 0,
+        "click_count": 2
+      }
+    ],
+    "level_range_min": null,
+    "level_range_max": null,
+    "party_size_min": null,
+    "party_size_max": null,
+    "estimated_runtime": "",
+    "setting": "",
+    "tags": [],
+    "themes": [],
+    "content_warnings": [],
+    "cover_url": "https://images.livetorole.com/covers/0a-the-tomb-of-rakoss-the-undying-25b8c6a796a1.jpg",
+    "thumbnail_url": "https://images.livetorole.com/thumbnails/461d9b544d4b.jpg",
+    "status": "published",
+    "status_display": "Published",
+    "credits": [],
+    "file_hashes": [],
+    "created_by": {
+      "id": "d29d01ce-fd06-4716-8406-bf2a2d95f66e",
+      "public_name": "MagicalMishap",
+      "profile_slug": "d29d01ce-fd06-4716-8406-bf2a2d95f66e",
+      "avatar_url": "",
+      "contribution_count": 4,
+      "reputation": 20,
+      "is_moderator": true,
+      "is_publisher": true
+    },
+    "created_at": "2026-08-12T19:04:00.995064Z",
+    "updated_at": "2026-08-12T19:07:19.372353Z",
+    "want_to_play": null,
+    "want_to_run": null
+  },
+  "suggestions": []
+}

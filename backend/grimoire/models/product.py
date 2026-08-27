@@ -101,6 +101,20 @@ class Product(Base):
     images_extracted: Mapped[bool] = mapped_column(Boolean, default=False)
     image_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
+    # A document whose pages are images — a scan — as opposed to a collection
+    # of images. `is_image_content` conflated the two, so scanned books were
+    # routed to image extraction and never OCR'd. This survives the image flag
+    # being cleared, so it can drive the OCR route and gate cover sharing.
+    is_scanned: Mapped[bool] = mapped_column(Boolean, default=False)
+
+    # When a human last judged this product's classification, whichever way
+    # they judged it. Without this there is no way to tell reviewed products
+    # from unreviewed ones, and a ~971-product backlog cannot be worked
+    # through without re-covering ground.
+    classification_reviewed_at: Mapped[datetime | None] = mapped_column(
+        DateTime, nullable=True
+    )
+
     # Extraction disposition: set when a PDF is permanently unextractable
     # (encrypted/corrupt/no text after OCR). Excluded from re-queue paths.
     text_unextractable: Mapped[bool] = mapped_column(Boolean, default=False)

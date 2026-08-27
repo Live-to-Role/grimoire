@@ -286,13 +286,42 @@ async def bulk_update_products(db: DbSession, request: BulkUpdateRequest) -> Bul
         filter_fields_updated = True
 
     elif "is_image_content" in provided_fields and request.is_image_content is False:
+        # ⚠️ No local `import ProcessingQueue` here. It is imported at module
+        # level (:14) and used by the branch above; re-importing it inside this
+        # function makes it local to the whole function, so that earlier branch
+        # dies with UnboundLocalError before ever reaching this one.
+        from datetime import datetime, UTC
+
+        from grimoire.services.processor import has_usable_text
         from grimoire.services.tag_service import remove_content_type_tags
 
         for product in products:
+            # What the user asserts is "this is not a collection of images".
+            # Whether it also needs OCR is a fact the database already knows,
+            # so it is inferred rather than asked: of the 1,711 products the
+            # image flag blocks, only 156 have no text at all. Treating every
+            # un-flag as a scan would set is_scanned falsely on the other
+            # 1,555 and queue that many needless OCR passes.
+            needs_ocr = not has_usable_text(product)
+
             product.is_image_content = False
             product.product_type = None
             product.images_extracted = False
             product.image_count = None
+            product.classification_reviewed_at = datetime.now(UTC)
+
+            if needs_ocr:
+                # The point of un-flagging one of these is to get the text.
+                # This never queued anything, so the action deleted the images
+                # and gained nothing.
+                product.is_scanned = True
+                db.add(ProcessingQueue(
+                    product_id=product.id,
+                    task_type="ocr_text",
+                    priority=3,
+                    status="pending",
+                ))
+
             await remove_content_type_tags(db, product.id)
 
         affected = len(products)

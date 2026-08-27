@@ -138,6 +138,10 @@ export async function updateProductAndContribute(
   return response.data;
 }
 
+export async function openProductFolder(productId: number): Promise<void> {
+  await api.post(`/products/${productId}/open-folder`);
+}
+
 export async function pauseQueue(): Promise<{ paused: boolean }> {
   const response = await api.post<{ paused: boolean }>('/queue/pause');
   return response.data;

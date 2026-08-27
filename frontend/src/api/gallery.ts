@@ -18,12 +18,14 @@ export interface GalleryProduct {
   page_count: number | null;
   publisher: string | null;
   created_at: string | null;
+  classification_reviewed_at: string | null;
   tags: GalleryTag[];
 }
 
 export interface GalleryResponse {
   items: GalleryProduct[];
   total: number;
+  needs_review_total: number;
   page: number;
   page_size: number;
   total_pages: number;
@@ -37,6 +39,7 @@ export interface GalleryFilters {
   sort?: 'created_at' | 'title' | 'image_count';
   order?: 'asc' | 'desc';
   search?: string;
+  needs_review?: boolean;
 }
 
 export interface ProductImage {
@@ -64,8 +67,23 @@ export async function getGalleryProducts(filters: GalleryFilters = {}): Promise<
   if (filters.sort) params.set('sort', filters.sort);
   if (filters.order) params.set('order', filters.order);
   if (filters.search) params.set('search', filters.search);
+  if (filters.needs_review !== undefined) {
+    params.set('needs_review', String(filters.needs_review));
+  }
 
   const { data } = await client.get(`/gallery?${params.toString()}`);
+  return data;
+}
+
+export async function markAsScans(productIds: number[]): Promise<void> {
+  await client.post('/bulk/update', {
+    product_ids: productIds,
+    is_image_content: false,
+  });
+}
+
+export async function confirmAsImages(productIds: number[]): Promise<{ reviewed: number }> {
+  const { data } = await client.post('/gallery/confirm-images', { product_ids: productIds });
   return data;
 }
 

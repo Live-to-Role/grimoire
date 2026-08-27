@@ -215,6 +215,24 @@ async def get_codex_sync_status(db: DbSession) -> dict:
     return await get_sync_status(db)
 
 
+@router.post("/codex/poll-contributions")
+async def poll_codex_contributions(db: DbSession) -> dict:
+    """Resolve SUBMITTED contributions by reading them back from Codex.
+
+    The only way Grimoire learns whether a contribution was approved,
+    rejected, or applied with fields held back — and the only thing that
+    unblocks a product whose contribution was rejected.
+    """
+    from grimoire.services.contribution_service import poll_submitted_contributions
+    from grimoire.services.sync_service import get_codex_settings_from_db
+
+    _, api_key = await get_codex_settings_from_db(db)
+    if not api_key:
+        raise HTTPException(status_code=400, detail="No Codex API key configured")
+
+    return await poll_submitted_contributions(db, api_key=api_key)
+
+
 @router.post("/codex/sync-contributions")
 async def sync_pending_to_codex(db: DbSession) -> dict:
     """Sync all pending local edits to Codex."""

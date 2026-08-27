@@ -1,16 +1,44 @@
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { Image, Search, X, ChevronLeft, ChevronRight, Grid3X3, Loader2 } from 'lucide-react';
-import { getGalleryProducts, getProductImages, getImageUrl } from '../api/gallery';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Image, Search, X, ChevronLeft, ChevronRight, Loader2, FolderOpen } from 'lucide-react';
+import {
+  getGalleryProducts,
+  getProductImages,
+  getImageUrl,
+  markAsScans,
+  confirmAsImages,
+} from '../api/gallery';
 import { getTags } from '../api/tags';
 import { getCollections } from '../api/collections';
-import { getThumbnailUrl } from '../api/products';
+import { getThumbnailUrl, openProductFolder } from '../api/products';
 import type { GalleryFilters, GalleryProduct, ProductImage } from '../api/gallery';
 
 export function Gallery() {
   const [filters, setFilters] = useState<GalleryFilters>({ page: 1, page_size: 24 });
   const [searchInput, setSearchInput] = useState('');
   const [expandedProduct, setExpandedProduct] = useState<GalleryProduct | null>(null);
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+
+  const queryClient = useQueryClient();
+
+  const toggle = (id: number) =>
+    setSelected(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+
+  const reviewMutation = useMutation({
+    mutationFn: async (action: 'scans' | 'images') => {
+      const ids = [...selected];
+      if (action === 'scans') await markAsScans(ids);
+      else await confirmAsImages(ids);
+    },
+    onSuccess: () => {
+      setSelected(new Set());
+      queryClient.invalidateQueries({ queryKey: ['gallery'] });
+    },
+  });
 
   const { data: gallery, isLoading } = useQuery({
     queryKey: ['gallery', filters],
@@ -173,6 +201,27 @@ export function Gallery() {
             <option value="image_count-desc">Most Images</option>
           </select>
         </div>
+
+        {/* Review backlog. On by default so the count visibly burns down. */}
+        <div className="mt-6">
+          <label
+            className="flex items-center gap-2 text-sm"
+            style={{ color: 'var(--color-text-primary)' }}
+          >
+            <input
+              type="checkbox"
+              checked={filters.needs_review !== false}
+              onChange={e =>
+                setFilters(prev => ({
+                  ...prev,
+                  needs_review: e.target.checked ? undefined : false,
+                  page: 1,
+                }))
+              }
+            />
+            Needs review{gallery ? ` (${gallery.needs_review_total})` : ''}
+          </label>
+        </div>
       </div>
 
       {/* Main grid */}
@@ -189,6 +238,45 @@ export function Gallery() {
           </div>
         ) : (
           <>
+            {selected.size > 0 && (
+              <div
+                className="sticky top-0 z-10 mb-4 flex items-center gap-3 rounded-lg border p-3"
+                style={{
+                  borderColor: 'var(--color-border)',
+                  backgroundColor: 'var(--color-surface-raised)',
+                }}
+              >
+                <span style={{ color: 'var(--color-text-primary)' }}>
+                  {selected.size} selected
+                </span>
+                <button
+                  onClick={() => reviewMutation.mutate('scans')}
+                  disabled={reviewMutation.isPending}
+                  className="rounded px-3 py-1.5 text-sm"
+                  style={{ backgroundColor: 'var(--color-accent)', color: 'var(--color-accent-text)' }}
+                >
+                  Mark as scans
+                </button>
+                <button
+                  onClick={() => reviewMutation.mutate('images')}
+                  disabled={reviewMutation.isPending}
+                  className="rounded border px-3 py-1.5 text-sm"
+                  style={{
+                    borderColor: 'var(--color-border)',
+                    color: 'var(--color-text-primary)',
+                  }}
+                >
+                  Confirm as images
+                </button>
+                <button
+                  onClick={() => setSelected(new Set())}
+                  className="ml-auto text-sm"
+                  style={{ color: 'var(--color-text-secondary)' }}
+                >
+                  Clear
+                </button>
+              </div>
+            )}
             <div className="mb-4 text-sm" style={{ color: 'var(--color-text-secondary)' }}>
               {gallery.total} product{gallery.total !== 1 ? 's' : ''} found
             </div>
@@ -198,6 +286,8 @@ export function Gallery() {
                   key={product.id}
                   product={product}
                   onClick={() => setExpandedProduct(product)}
+                  selected={selected.has(product.id)}
+                  onToggle={() => toggle(product.id)}
                 />
               ))}
             </div>
@@ -241,56 +331,84 @@ export function Gallery() {
 }
 
 
-function GalleryCard({ product, onClick }: { product: GalleryProduct; onClick: () => void }) {
+function GalleryCard({
+  product, onClick, selected, onToggle,
+}: {
+  product: GalleryProduct;
+  onClick: () => void;
+  selected: boolean;
+  onToggle: () => void;
+}) {
   return (
-    <button
-      onClick={onClick}
-      className="group overflow-hidden rounded-lg border text-left transition-shadow hover:shadow-lg"
+    <div
+      className="group relative overflow-hidden rounded-lg border text-left transition-shadow hover:shadow-lg"
       style={{
-        borderColor: 'var(--color-border)',
+        borderColor: selected ? 'var(--color-accent)' : 'var(--color-border)',
         backgroundColor: 'var(--color-surface)',
       }}
     >
-      <div className="aspect-[3/4] overflow-hidden" style={{ backgroundColor: 'var(--color-surface-raised)' }}>
-        {product.cover_extracted ? (
-          <img
-            src={getThumbnailUrl(product.id)}
-            alt={product.title}
-            className="h-full w-full object-cover transition-transform group-hover:scale-105"
-            loading="lazy"
-          />
-        ) : (
-          <div className="flex h-full items-center justify-center">
-            <Image className="h-12 w-12" style={{ color: 'var(--color-text-secondary)' }} />
-          </div>
-        )}
-      </div>
-      <div className="p-2">
-        <p className="truncate text-sm font-medium" style={{ color: 'var(--color-text-primary)' }}>{product.title}</p>
-        <div className="mt-1 flex items-center gap-1">
-          {product.tags.slice(0, 2).map(tag => (
-            <span
-              key={tag.id}
-              className="rounded px-1.5 py-0.5 text-xs text-white"
-              style={{ backgroundColor: tag.color || '#888' }}
-            >
-              {tag.name}
-            </span>
-          ))}
-          {product.image_count > 0 && (
-            <span className="ml-auto flex items-center gap-0.5 text-xs" style={{ color: 'var(--color-text-secondary)' }}>
-              <Grid3X3 className="h-3 w-3" />
-              {product.image_count}
-            </span>
+      <input
+        type="checkbox"
+        checked={selected}
+        onChange={onToggle}
+        aria-label={`Select ${product.title}`}
+        className="absolute left-2 top-2 z-10 h-4 w-4 cursor-pointer"
+      />
+      <button onClick={onClick} className="w-full text-left">
+        <div className="aspect-[3/4] overflow-hidden" style={{ backgroundColor: 'var(--color-surface-raised)' }}>
+          {product.cover_extracted ? (
+            <img
+              src={getThumbnailUrl(product.id)}
+              alt={product.title}
+              className="h-full w-full object-cover transition-transform group-hover:scale-105"
+              loading="lazy"
+            />
+          ) : (
+            <div className="flex h-full items-center justify-center">
+              <Image className="h-12 w-12" style={{ color: 'var(--color-text-secondary)' }} />
+            </div>
           )}
         </div>
-      </div>
-    </button>
+        <div className="p-2">
+          <p className="truncate text-sm font-medium" style={{ color: 'var(--color-text-primary)' }}>{product.title}</p>
+          <div className="mt-1 flex items-center gap-1">
+            {product.tags.slice(0, 2).map(tag => (
+              <span
+                key={tag.id}
+                className="rounded px-1.5 py-0.5 text-xs text-white"
+                style={{ backgroundColor: tag.color || '#888' }}
+              >
+                {tag.name}
+              </span>
+            ))}
+            {product.image_count > 0 && (
+              <span className="ml-auto text-xs" style={{ color: 'var(--color-text-secondary)' }}>
+                {product.page_count ?? '?'}pg / {product.image_count}img
+              </span>
+            )}
+          </div>
+        </div>
+      </button>
+    </div>
   );
 }
 
 
 function ProductImageModal({ product, onClose }: { product: GalleryProduct; onClose: () => void }) {
+  const [folderError, setFolderError] = useState<string | null>(null);
+
+  // ProductDetail swallows this failure. Here it is worth showing: a missing
+  // folder means the file moved and this row is now orphaned, which is the one
+  // thing looking at the gallery cannot otherwise tell you.
+  const revealFolder = async () => {
+    setFolderError(null);
+    try {
+      await openProductFolder(product.id);
+    } catch {
+      setFolderError('Folder not found on disk');
+    }
+  };
+
   const { data: imagesData, isLoading } = useQuery({
     queryKey: ['product-images', product.id],
     queryFn: () => getProductImages(product.id),
@@ -311,13 +429,31 @@ function ProductImageModal({ product, onClose }: { product: GalleryProduct; onCl
               <p className="text-sm" style={{ color: 'var(--color-text-secondary)' }}>{product.publisher}</p>
             )}
           </div>
-          <button
-            onClick={onClose}
-            className="rounded p-1 transition-colors"
-            style={{ color: 'var(--color-text-secondary)' }}
-          >
-            <X className="h-5 w-5" />
-          </button>
+          <div className="flex items-center gap-3">
+            {folderError && (
+              <span className="text-sm" style={{ color: 'var(--color-text-secondary)' }}>
+                {folderError}
+              </span>
+            )}
+            <button
+              onClick={revealFolder}
+              className="flex items-center gap-1.5 rounded border px-2.5 py-1.5 text-sm transition-colors"
+              style={{
+                borderColor: 'var(--color-border)',
+                color: 'var(--color-text-primary)',
+              }}
+            >
+              <FolderOpen className="h-4 w-4" />
+              Open folder
+            </button>
+            <button
+              onClick={onClose}
+              className="rounded p-1 transition-colors"
+              style={{ color: 'var(--color-text-secondary)' }}
+            >
+              <X className="h-5 w-5" />
+            </button>
+          </div>
         </div>
 
         {/* Images grid */}

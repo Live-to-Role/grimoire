@@ -1,6 +1,7 @@
 """Service for managing Codex contribution queue."""
 
 import base64
+import hashlib
 import json
 import logging
 from datetime import datetime, UTC
@@ -13,7 +14,13 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from grimoire.models import ContributionQueue, ContributionStatus, Product
-from grimoire.services.codex import CodexClient, ContributionResult, get_codex_client
+from grimoire.services.codex_eligibility import is_codex_eligible
+from grimoire.services.codex import (
+    CodexClient,
+    CodexLookupError,
+    ContributionResult,
+    get_codex_client,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -96,6 +103,14 @@ def get_cover_image_base64(product: Product, max_size_bytes: int = MAX_COVER_SIZ
         return None
 
 
+class CodexIneligibleError(Exception):
+    """This product may not be shared with Codex. Carries the rule that said so."""
+
+    def __init__(self, reason: str):
+        self.reason = reason
+        super().__init__(reason)
+
+
 async def queue_contribution(
     db: AsyncSession,
     product_id: int,
@@ -105,7 +120,24 @@ async def queue_contribution(
     """
     Queue a contribution for submission to Codex.
     Used when offline or when user wants to review before submitting.
+
+    ⚠️ This is the backstop, and it is a real one rather than belt-and-braces.
+    `ContributionQueue` is constructed in exactly one place — here — and every
+    route into the queue passes through it: `sync_service` twice and the
+    manual API route. The check in `should_contribute` is skippable by an
+    existing parameter (`skip_no_change_check=True`), so a guard placed only
+    there is bypassable by design.
     """
+    # The predicate takes a Product and this takes an id, so load the row.
+    # Deliberately not pushed up to the three callers: being the one place
+    # they all pass through is the entire reason this is the backstop.
+    product = await db.get(Product, product_id)
+    if product is not None:
+        eligible, reason = is_codex_eligible(product)
+        if not eligible:
+            logger.info(f"Refusing to queue product {product_id} for Codex: {reason}")
+            raise CodexIneligibleError(reason)
+
     contribution = ContributionQueue(
         product_id=product_id,
         contribution_data=json.dumps(contribution_data),
@@ -145,11 +177,49 @@ async def submit_contribution(
     
     try:
         data = json.loads(contribution.contribution_data)
+        # Fingerprint what we actually sent, so a later rejection can be told
+        # apart from a payload the user has since changed.
+        contribution.payload_hash = hashlib.sha256(
+            json.dumps(data, sort_keys=True).encode("utf-8")
+        ).hexdigest()
+
         result = await codex.contribute(data, contribution.file_hash)
-        
-        if result.success:
+
+        if result.warnings:
+            contribution.warnings = json.dumps(result.warnings)
+
+        # A benign 4xx: ordinary outcome, not a fault. Keep the id it carries.
+        if result.error_code == "duplicate_pending":
+            contribution.status = ContributionStatus.DUPLICATE_PENDING
+            contribution.error_message = None
+            contribution.codex_contribution_id = (
+                result.existing_contribution_id or contribution.codex_contribution_id
+            )
+            logger.info(
+                f"Contribution {contribution.id} is already queued on Codex as "
+                f"{contribution.codex_contribution_id}"
+            )
+        elif result.success and result.status == "no_change":
+            # A 200 that submitted nothing. Recording it as SUBMITTED made the
+            # queue claim work it had not done.
+            contribution.status = ContributionStatus.NO_CHANGE
+            contribution.error_message = None
+            contribution.codex_product_id = (
+                result.existing_product_id or contribution.codex_product_id
+            )
+            logger.info(
+                f"Contribution {contribution.id} added nothing Codex did not have "
+                f"(product {contribution.codex_product_id})"
+            )
+        elif result.success:
             contribution.status = ContributionStatus.SUBMITTED
             contribution.error_message = None
+            contribution.codex_contribution_id = (
+                result.contribution_id or contribution.codex_contribution_id
+            )
+            contribution.codex_product_id = (
+                result.product_id or contribution.codex_product_id
+            )
             logger.info(
                 f"Successfully submitted contribution {contribution.id}: "
                 f"status={result.status}, product_id={result.product_id or result.contribution_id}"
@@ -158,7 +228,7 @@ async def submit_contribution(
             contribution.status = ContributionStatus.FAILED
             contribution.error_message = result.reason or "Submission failed"
             logger.warning(f"Failed to submit contribution {contribution.id}: {result.reason}")
-        
+
         await db.commit()
         return result.success
         
@@ -204,20 +274,82 @@ async def submit_all_pending(
     }
 
 
+#: Codex's contribution states mapped onto Grimoire's. Codex says "approved";
+#: Grimoire's enum has said ACCEPTED since before this existed, and a fourth
+#: spelling of the same idea helps nobody.
+CODEX_STATUS_MAP = {
+    "approved": ContributionStatus.ACCEPTED,
+    "rejected": ContributionStatus.REJECTED,
+}
+
+
+async def poll_submitted_contributions(
+    db: AsyncSession,
+    api_key: str,
+) -> dict[str, int]:
+    """Resolve SUBMITTED contributions by reading them back from Codex.
+
+    Without this a contribution sits at SUBMITTED forever whatever happened to
+    it, and because `queue_product_for_contribution` refuses to re-contribute
+    a product with a PENDING or SUBMITTED row, a rejection blocks that product
+    permanently with nothing locally to say why.
+    """
+    codex = CodexClient(api_key=api_key, use_mock=False)
+
+    query = select(ContributionQueue).where(
+        ContributionQueue.status == ContributionStatus.SUBMITTED
+    )
+    result = await db.execute(query)
+    outstanding = list(result.scalars().all())
+
+    counts = {"checked": 0, "resolved": 0, "still_pending": 0, "unresolvable": 0}
+
+    for contribution in outstanding:
+        if not contribution.codex_contribution_id:
+            # Submitted before the id column existed. Nothing to ask about —
+            # every row in a library that predates this feature is here.
+            counts["unresolvable"] += 1
+            continue
+
+        counts["checked"] += 1
+        try:
+            remote = await codex.get_contribution(contribution.codex_contribution_id)
+        except CodexLookupError:
+            continue  # transient; try again next poll rather than guessing
+
+        if remote is None:
+            counts["unresolvable"] += 1
+            continue
+
+        notes = (remote.get("review_notes") or "").strip()
+        if notes:
+            contribution.warnings = notes
+
+        mapped = CODEX_STATUS_MAP.get((remote.get("status") or "").lower())
+        if mapped is None:
+            counts["still_pending"] += 1
+            continue
+
+        contribution.status = mapped
+        if mapped is ContributionStatus.REJECTED and notes:
+            contribution.error_message = notes[:500]
+        if remote.get("product"):
+            contribution.codex_product_id = str(remote["product"])
+        counts["resolved"] += 1
+
+    await db.commit()
+    logger.info(f"Polled Codex contributions: {counts}")
+    return counts
+
+
 async def get_contribution_stats(db: AsyncSession) -> dict[str, int]:
     """Get contribution queue statistics."""
     query = select(ContributionQueue)
     result = await db.execute(query)
     contributions = list(result.scalars().all())
     
-    stats = {
-        "pending": 0,
-        "submitted": 0,
-        "accepted": 0,
-        "rejected": 0,
-        "failed": 0,
-        "total": len(contributions),
-    }
+    stats = {status.value: 0 for status in ContributionStatus}
+    stats["total"] = len(contributions)
     
     for c in contributions:
         stats[c.status.value] = stats.get(c.status.value, 0) + 1

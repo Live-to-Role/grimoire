@@ -209,16 +209,27 @@ New rules must be added idempotently to **existing** installs — a fresh
 `config/install`-style default is not enough when the table is already
 populated.
 
-⚠️ **There is no precedent to copy here.** An earlier draft said to match how
-`LEGACY_SIZE_MIN_PATTERN` is migrated in `exclusion_service.py:135`. No such
-symbol exists anywhere in the repo, and the seeding function —
-`seed_default_rules`, at `exclusion_service.py:154` — opens with a blanket
-`if existing: return 0` over every `is_default` rule. So it has never added a
-rule to a populated table and there is no per-rule idempotency to follow. This
-is a migration to write from scratch, in `grimoire/migrations/` alongside the
-`add_*_columns.py` files: insert each new default only when no rule with that
-`rule_type` + `pattern` already exists, and leave a user's disabled or edited
-rules alone.
+✅ **There is a precedent, and it is a good one.**
+`correct_legacy_size_min_default` (`exclusion_service.py:123`) does exactly
+this job for the `size_min` rule: it targets one rule, changes it only while
+it is still *exactly* what Grimoire shipped (`is_default`, old pattern), and
+leaves a threshold or an enabled/disabled state the user chose alone. It runs
+from `init_db` (`database.py:197`) on every start, so it is idempotent by
+construction. Copy its shape for the filename rules.
+
+This corrects two earlier drafts of this paragraph, both wrong. The first
+pointed at `LEGACY_SIZE_MIN_PATTERN` in `exclusion_service.py:135`; the second
+declared the symbol nonexistent and the migration unprecedented. The symbol
+**does** exist — `834d4e8` added it along with the correction function, and
+the branch this plan was written on predated that commit. Only the line
+number was ever wrong.
+
+What still holds: `seed_default_rules` (`:154`) opens with a blanket
+`if existing: return 0` over every `is_default` rule, so *it* will never add a
+new rule to a populated table. The filename rules therefore need their own
+correction function alongside `correct_legacy_size_min_default` rather than an
+entry in the seed list — insert each only when no rule with that `rule_type` +
+`pattern` exists, and leave the user's edits alone.
 
 ⚠️ **The `size_min` floor has already been lowered — the gap is existing
 installs.** Two earlier drafts of this section were both wrong, in opposite
@@ -229,13 +240,12 @@ minutes before that draft and lowered the shipped default to **1024**
 (`models/exclusion.py:72`, with `tests/services/test_size_min_default_correction.py`
 covering it). So the lowering is done and is not this plan's work.
 
-What is still open is the half the blanket `if existing: return 0` above
-guarantees: **a database seeded before `834d4e8` still holds a 10240 rule**,
-and nothing will ever update it. The code default and the deployed default
-disagree on every pre-existing install, including Michael's. That is the same
-stranding problem as the new filename rules, it wants the same idempotent
-migration, and it is a better argument for writing that migration than the one
-this section used to make.
+Nor are existing installs stranded, which a third draft of this paragraph
+claimed. `834d4e8` shipped `correct_legacy_size_min_default` alongside the new
+default precisely to carry pre-existing databases over, and it has already
+run: the live library's `size_min` rule reads `1024` (verified 2026-08-24).
+There is nothing left to do here — the floor is done, in code and in the
+database.
 
 It also removes a sequencing option this plan thought it had. An earlier draft
 said "lowering the floor and enabling a flat-text format must not land in the

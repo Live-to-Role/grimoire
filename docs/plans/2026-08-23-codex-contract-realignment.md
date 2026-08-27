@@ -97,9 +97,48 @@ remedies — reshape `CodexProduct.from_dict`, or add a type guard to
 both, in that order of importance:** `from_dict` is the fix, and the type guard
 is a backstop against the next reshape, not an alternative to it.
 
-**This wants verifying against the live API before anything is rewritten** —
-the serializer is unambiguous, but a stale deployment would change the
-priority. See Phase 0.
+**Confirmed against the live API 2026-08-24** (Phase 0; fixtures and full
+record in `backend/tests/fixtures/codex/`). The deployment is current with
+`main`, so the compatibility shims below are defensive rather than
+load-bearing. Two corrections from the observed run: the exception is
+`sqlite3.ProgrammingError` — *"type 'dict' is not supported"* — not
+`InterfaceError`, so tests should match on behaviour rather than the class
+name; and the session poisoning is real, with a five-product sync making only
+two `/identify` calls because everything after the first failure died before
+reaching the network.
+
+## Finding 1b — the title fallback has no confidence floor (severity: high)
+
+Found while confirming Finding 1, and it is the more dangerous of the two
+because it fails *quietly*.
+
+`sync_product_from_codex` tries hash first and falls back to title
+(`sync_service.py:213-221`). Phase 0 established that Codex's catalogue
+carries almost no `file_hashes`, so **the title fallback is the normal path**,
+not the exceptional one.
+
+Nothing gates what comes back:
+
+- `identify_by_title`'s docstring says "Returns matches above confidence
+  threshold" (`codex.py:298`). **The real path has no threshold** — it accepts
+  any `match` of `exact` *or* `fuzzy` (`:315`). The only `0.5` gate (`:448`)
+  lives in `_mock_identify_by_title` and never runs against the live API.
+- `sync_product_from_codex` writes `match.confidence` onto the product
+  (`:257`) but never gates on it, and never looks at `match_type`.
+
+Observed: local **"Zombie Reign" by Angry Engine Games** matched Codex's
+**"SoRoPlay GamTools Zine: Zombie Ref" by Ken Wickham** at `fuzzy` / 0.818,
+and the `UPDATE` was about to rename the local product to it.
+
+⚠️ **This inverts the Phase 1 ordering.** Right now the only thing preventing
+that write is Finding 1's dict crash — the corruption is being held off by a
+bug. Fix `from_dict` so `publisher` is a string and the `UPDATE` succeeds,
+turning a loud failure into silent metadata corruption across the library.
+**The confidence floor must land in the same commit as the `from_dict` fix**,
+with a test that a low-confidence fuzzy match writes nothing. Deciding the
+floor is a judgement call — 0.818 was wrong here, so it is not low — and
+`match_type == "fuzzy"` may deserve a stricter bar than `exact`, or no
+automatic apply at all.
 
 ## Finding 2 — benign Codex outcomes are recorded as permanent failures
 
@@ -362,8 +401,39 @@ later phase tests against. This is the step that turns Finding 1 from
 "the serializer says so" into a fact, and it costs one session at the home
 machine.
 
-### Phase 1 — Fix the read path **[dev]**, verify **[home]**
+### Phase 1 — Fix the read path **[dev]**, verify **[home]** — ✅ DONE
 
+*Landed `fac7445`, `09bd6d0`, `9050a0a`. Verified on the home machine against
+the live API: five products, isolated database copy, `failed: 0`, three exact
+matches enriched, the two Zombie Reign products skipped as fuzzy and left
+untouched, one `/health` call for the run.*
+
+Two things this phase learned that the bullets below did not anticipate:
+
+- **Open question 2 is resolved.** `credits` flatten to `author` using the
+  `author` / `co_author` roles only. Codex's role vocabulary also contains
+  `artist`, `cartographer`, `cover_artist`, `editor`, `layout`, `developer`
+  and `playtester`, so joining every credit puts the cartographer in the
+  author field. A blank author beats a wrong one.
+- **`db.rollback()` alone does not fix the session poisoning**, and a patch
+  that adds only that line looks right while changing nothing. The handler's
+  own log line reads `product.id`, which a failed session refuses to lazy
+  load, so the handler raised before reaching the rollback. Rolling back
+  first is still not enough: rollback expires *every* instance in the
+  session, including products not yet visited, and reloading an expired
+  attribute needs an await that attribute access cannot make. The loop has to
+  walk ids and load each product inside it.
+
+- ~~A confidence floor~~ **— superseded. Only an exact match auto-applies**
+  (`fac7445`). A floor was the wrong instrument: the observed bad match scored
+  0.818, so any floor loose enough to admit real matches admits that one too.
+  The match *type* is the honest signal. A fuzzy match now returns
+  `reason="fuzzy_match_not_applied"` with the suggested title, and writes
+  nothing.
+- **Cache the `/health` verdict.** *(done — `09bd6d0`.)* `get_codex_client`
+  rebuilt its singleton on every call that passed an `api_key`, so each
+  product paid for its own `/health`; the verdict is now reused for
+  `AVAILABILITY_TTL_SECONDS`. Left here because Phase 5 depends on it.
 - `CodexProduct.from_dict` accepts nested `publisher` / `game_system`
   (object *or* string, so an older deployment keeps working), derives
   `publication_year` from `publication_date`, reads `dtrpg_id` and `links`,
@@ -551,9 +621,14 @@ machine.
    also the only spelling that cannot disturb a declaration made on Codex.
    If it is ever wanted, it must arrive as a field the user sets themselves,
    never as anything inferred.
-2. **`credits` → `author`.** Codex models credits as structured roles.
-   Flattening them into Grimoire's single `author` string loses the role.
-   Take the first credit, join them, or add a Grimoire-side credits table?
-3. **Is the deployed Codex actually current with `main`?** Phase 0 answers
-   this, and if the deployment is behind, Phase 1's compatibility shims are
-   load-bearing rather than defensive.
+2. *(resolved 2026-08-24)* **`credits` → `author` uses writing roles only.**
+   Codex's vocabulary is `author`, `co_author`, `artist`, `cartographer`,
+   `cover_artist`, `editor`, `layout`, `developer`, `playtester`, `other`.
+   Grimoire joins the `author` and `co_author` names with `", "`, matching how
+   its own multi-author values are already stored, and ignores the rest — a
+   cartographer in the author field is worse than a blank one. A Grimoire-side
+   credits table remains the better answer if roles ever need preserving; this
+   is the lossy-but-honest version.
+3. *(resolved 2026-08-24)* **The deployed Codex is current with `main`.**
+   Phase 0 confirmed the nested payload against the live API, so Phase 1's
+   flat-shape handling is defensive rather than load-bearing.
