@@ -271,18 +271,30 @@ async def search_fts(
     product_type: str | None = None,
     limit: int = 20,
 ) -> list[dict]:
-    """
-    Perform full-text search using SQLite FTS5.
-    
+    """Keyword search over product metadata AND document body text.
+
+    Backs the Library's "search content" toggle
+    (`/search?search_content=true`). Metadata comes from products_fts; the body
+    comes from product_chunks_fts, which is the whole document rather than the
+    first 50,000 characters products_fts used to hold.
+
+    ⚠️ Cost scales with how common the query terms are, because every matching
+    chunk across 3.3M rows is scored before the best-per-product reduction.
+    Measured on the live library at limit=20, steady state: "Kurabanda" 0.004s,
+    "dungeon" 0.67s, "wizard spell cards" 2.5s. The toggle is opt-in and off by
+    default, so this is paid only when asked for — but it is slower than the
+    old truncated-body search, which only had 19k rows to look at.
+
     Args:
         db: Database session
         query: Search query string
         game_system: Optional filter by game system
         product_type: Optional filter by product type
         limit: Maximum results
-        
+
     Returns:
-        List of matching products with relevance scores
+        List of matching products with relevance scores. Body matches also
+        carry `snippet` and `matched_page`.
     """
     from sqlalchemy import select
     from sqlalchemy.orm import selectinload
@@ -329,15 +341,41 @@ async def search_fts(
         rows = result.fetchall()
     except Exception as e:
         logger.warning(f"FTS5 search failed: {e}")
+        rows = []
+
+    # This function backs the Library's "search content" toggle, so the body
+    # is a first-class source here — unlike search_service, where blending
+    # body hits into topical ranking was measured and made results worse.
+    # There is no semantic ranking to pollute on this path: the user typed a
+    # term and asked which documents contain it.
+    body_hits = await chunk_candidates(
+        db, query,
+        game_system=game_system,
+        product_type=product_type,
+        limit=limit,
+    )
+
+    # (score, snippet, page) per product. bm25 magnitudes from the two tables
+    # are not on the same scale, so ordering between a title-only and a
+    # body-only match is approximate. Both are real matches; which of them
+    # sorts first is a weaker claim than that they both appear.
+    merged: dict[int, tuple[float, str | None, int | None]] = {}
+    for row in rows:
+        merged[row[0]] = (abs(row[1]), row[2] if len(row) > 2 else None, None)
+    for pid, score, snippet, page in body_hits:
+        prev_score = merged[pid][0] if pid in merged else 0.0
+        # The body snippet wins: on this path it is the thing being searched
+        # for, and it is the only one that can carry a page.
+        merged[pid] = (max(prev_score, score), snippet or None, page)
+
+    if not merged:
         return []
-    
-    if not rows:
-        return []
-    
-    # Fetch full product data
-    product_ids = [row[0] for row in rows]
-    rank_map = {row[0]: (abs(row[1]), row[2] if len(row) > 2 else None) for row in rows}
-    
+
+    product_ids = [
+        pid for pid, _ in sorted(merged.items(), key=lambda kv: -kv[1][0])
+    ][:limit]
+    rank_map = {pid: merged[pid] for pid in product_ids}
+
     products_query = (
         select(Product)
         .where(Product.id.in_(product_ids))
@@ -355,11 +393,15 @@ async def search_fts(
         if not product:
             continue
         
-        rank, snippet = rank_map.get(product_id, (0, None))
+        rank, snippet, page = rank_map.get(product_id, (0, None, None))
         item = product_to_response(product).model_dump()
         item["relevance_score"] = float(rank)
         if snippet:
             item["snippet"] = snippet
+        if page is not None:
+            # Same field the semantic path uses, so the Library renders these
+            # the same way ("p. 32: ...").
+            item["matched_page"] = page
         results.append(item)
     
     return results
