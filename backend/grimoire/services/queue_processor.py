@@ -130,7 +130,11 @@ async def touch_worker_heartbeat(session_maker=None) -> None:
     from grimoire.models import Setting
 
     maker = session_maker or async_session_maker
-    value = datetime.now(UTC).isoformat()
+    # JSON, like every other Setting value. Storing the bare ISO string made
+    # this row undecodable by `api/routes/settings.py`, which json.loads()
+    # every row to build its response - so one heartbeat 500'd GET /settings
+    # and, through it, every save the Settings page attempted.
+    value = json.dumps(datetime.now(UTC).isoformat())
     try:
         async with maker() as session:
             result = await session.execute(
@@ -151,6 +155,14 @@ def parse_heartbeat(value: str | None) -> datetime | None:
     """Decode a stored heartbeat. Anything unreadable counts as no heartbeat."""
     if value is None:
         return None
+    try:
+        # Written as JSON since 2026-08-24; every database seeded before that
+        # holds the bare ISO string, and the worker only overwrites it on its
+        # next tick, so both encodings have to read.
+        decoded = json.loads(value)
+        value = decoded if isinstance(decoded, str) else value
+    except (json.JSONDecodeError, TypeError):
+        pass
     try:
         stamp = datetime.fromisoformat(value)
     except (TypeError, ValueError):
