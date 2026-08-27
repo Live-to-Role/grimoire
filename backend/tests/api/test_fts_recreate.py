@@ -64,9 +64,12 @@ async def test_recreate_keeps_the_canonical_schema(client, db, product):
 
     assert resp.status_code == 200
     assert resp.json()["success"] is True, resp.json()
+    # Six columns, not seven: the body moved to product_chunks_fts. What this
+    # test protects is that recreate produces whatever _ensure_fts_table says
+    # is canonical, rather than a second copy of the schema that can drift.
     assert await _columns(db) == [
         "title", "file_name", "publisher", "game_system",
-        "product_type", "description", "extracted_text",
+        "product_type", "description",
     ]
 
 

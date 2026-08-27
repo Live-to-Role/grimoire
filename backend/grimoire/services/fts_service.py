@@ -171,42 +171,32 @@ async def chunk_candidates(
 
 
 async def update_search_vector(db: AsyncSession, product: Product) -> bool:
-    """
-    Update the FTS5 index for a product based on extracted text.
-    
-    Uses SQLite FTS5 virtual table for full-text search.
-    
+    """Refresh a product's metadata row in the FTS index.
+
+    The body is no longer written here. It lives in product_chunks_fts, keyed
+    by chunk and carrying page numbers, written by index_product_chunks. This
+    function used to read the extraction JSON and index its first 50,000
+    characters, which hid 71% of the library's text from keyword search.
+
     Args:
         db: Database session
         product: Product to update
-        
+
     Returns:
         True if successful, False otherwise
     """
     try:
-        # Get extracted text content
-        extracted_text = ""
-        if product.extracted_text_path:
-            text_path = Path(product.extracted_text_path)
-            if text_path.exists():
-                try:
-                    with open(text_path, "r", encoding="utf-8") as f:
-                        data = json.load(f)
-                        extracted_text = data.get("markdown", "")[:50000]  # Limit to 50k chars for FTS5
-                except Exception as e:
-                    logger.warning(f"Failed to read extracted text for product {product.id}: {e}")
-        
-        # Update FTS5 index - delete old entry and insert new
-        # FTS5 uses rowid to link to main table
         await db.execute(
             text("DELETE FROM products_fts WHERE rowid = :product_id"),
             {"product_id": product.id}
         )
-        
+
         await db.execute(
             text("""
-                INSERT INTO products_fts(rowid, title, file_name, publisher, game_system, product_type, description, extracted_text)
-                VALUES (:product_id, :title, :file_name, :publisher, :game_system, :product_type, :description, :extracted_text)
+                INSERT INTO products_fts(rowid, title, file_name, publisher,
+                                         game_system, product_type, description)
+                VALUES (:product_id, :title, :file_name, :publisher,
+                        :game_system, :product_type, :description)
             """),
             {
                 "product_id": product.id,
@@ -216,16 +206,15 @@ async def update_search_vector(db: AsyncSession, product: Product) -> bool:
                 "game_system": product.game_system or "",
                 "product_type": product.product_type or "",
                 "description": product.description or "",
-                "extracted_text": extracted_text,
             }
         )
-        
+
         product.deep_indexed = True
         await db.commit()
-        
+
         logger.info(f"Updated FTS index for product {product.id}")
         return True
-        
+
     except Exception as e:
         logger.error(f"Failed to update FTS index for product {product.id}: {e}")
         return False
@@ -307,7 +296,12 @@ async def search_fts(
         SELECT
             fts.rowid as product_id,
             bm25(products_fts) as rank,
-            snippet(products_fts, 6, '<mark>', '</mark>', '...', 32) as snippet
+            -- Column 0 is title. This used to be column 6, extracted_text,
+            -- which no longer exists: the body moved to product_chunks_fts.
+            -- A stale offset here would not error, it would quietly snippet
+            -- whichever column now sits at 6. For a body snippet, use
+            -- chunk_candidates, which returns one with its page.
+            snippet(products_fts, 0, '<mark>', '</mark>', '...', 32) as snippet
         FROM products_fts fts
         JOIN products p ON p.id = fts.rowid
         WHERE products_fts MATCH :query

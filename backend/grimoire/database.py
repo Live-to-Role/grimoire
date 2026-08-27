@@ -87,25 +87,38 @@ async def _ensure_fts_table(conn) -> None:
         await conn.execute(text("""
             CREATE VIRTUAL TABLE products_fts USING fts5(
                 title, file_name, publisher, game_system, product_type,
-                description, extracted_text
+                description
             )
         """))
     else:
-        # Check if description column exists in FTS table by trying a query
+        needs_rebuild = False
         try:
             await conn.execute(text(
                 "SELECT description FROM products_fts LIMIT 0"
             ))
         except Exception:
-            # Rebuild FTS table with description column
+            needs_rebuild = True
+        else:
+            # The body moved to product_chunks_fts. A table still carrying
+            # extracted_text has to be rebuilt, or snippet() column offsets
+            # elsewhere silently point at the wrong column.
+            try:
+                await conn.execute(text(
+                    "SELECT extracted_text FROM products_fts LIMIT 0"
+                ))
+                needs_rebuild = True
+            except Exception:
+                pass
+
+        if needs_rebuild:
             await conn.execute(text("DROP TABLE IF EXISTS products_fts"))
             await conn.execute(text("""
                 CREATE VIRTUAL TABLE products_fts USING fts5(
                     title, file_name, publisher, game_system, product_type,
-                    description, extracted_text
+                    description
                 )
             """))
-            # Drop old triggers so they get recreated with description
+            # Drop old triggers so they get recreated against the new schema
             await conn.execute(text("DROP TRIGGER IF EXISTS products_fts_insert"))
             await conn.execute(text("DROP TRIGGER IF EXISTS products_fts_update"))
             await conn.execute(text("DROP TRIGGER IF EXISTS products_fts_delete"))
