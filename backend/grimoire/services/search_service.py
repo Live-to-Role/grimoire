@@ -197,7 +197,7 @@ def merge_candidates(
 # --- Full search flow --------------------------------------------------------
 
 from grimoire.services.embeddings import generate_embeddings  # noqa: E402
-from grimoire.services.fts_service import chunk_candidates, fts_candidates  # noqa: E402
+from grimoire.services.fts_service import fts_candidates  # noqa: E402
 from grimoire.services.hybrid_search import reciprocal_rank_fusion  # noqa: E402
 from grimoire.services.query_interpreter import Interpretation, interpret_query  # noqa: E402
 
@@ -263,8 +263,24 @@ async def search(db, request) -> dict:
         query_vector, ids, matrix, allowed, CANDIDATES_PER_SOURCE
     )
 
+    # ⚠️ The keyword side is METADATA ONLY, and deliberately so. Body text is
+    # indexed in product_chunks_fts and reachable via chunk_candidates(), but
+    # feeding it into this candidate list was measured and made search worse:
+    #
+    #   body text in BM25 (old truncated products_fts) : hit@k 50%, MRR 0.450, precision 44%
+    #   body hits from the chunk index                 : hit@k 50%, MRR 0.414, precision 32%
+    #   metadata only (this)                           : hit@k 80%, MRR 0.505, precision 84%
+    #
+    # Big rulebooks contain nearly every word, so body BM25 floats generic
+    # compendiums over real answers. The deep text is not lost: chunk
+    # embeddings already cover the whole document, and Stage 2 re-ranks on
+    # them — "Kurabanda", a term appearing only past page 30 of one book,
+    # returns that book at rank 1 with no keyword help at all.
+    #
+    # chunk_candidates() is for explicit phrase lookup with a page number, not
+    # for blending into topical ranking. Do not wire it in here without
+    # re-running scripts/search_eval.py.
     keyword_ranking: list[tuple[int, float]] = []
-    keyword_chunk: dict[int, tuple[str, int | None]] = {}
     try:
         fts_pairs = await fts_candidates(
             db, semantic_query,
@@ -272,27 +288,10 @@ async def search(db, request) -> dict:
             product_type=request.product_type,
             limit=CANDIDATES_PER_SOURCE,
         )
-        # Body hits are a second keyword source. Metadata and body compete on
-        # one merged list rather than one crowding the other out of the cut.
-        body_hits = await chunk_candidates(
-            db, semantic_query,
-            game_system=request.game_system,
-            product_type=request.product_type,
-            limit=CANDIDATES_PER_SOURCE,
-        )
-
-        best: dict[int, float] = {}
-        for pid, score in fts_pairs:
-            best[pid] = max(best.get(pid, 0.0), score)
-        for pid, score, snippet, page in body_hits:
-            best[pid] = max(best.get(pid, 0.0), score)
-            keyword_chunk[pid] = (snippet, page)
-
         keyword_ranking = [
-            (pid, score)
-            for pid, score in sorted(best.items(), key=lambda kv: -kv[1])
+            (pid, score) for pid, score in fts_pairs
             if allowed is None or pid in allowed
-        ][:CANDIDATES_PER_SOURCE]
+        ]
     except Exception:
         logger.warning("FTS failed during search; continuing semantic-only")
 
@@ -308,11 +307,7 @@ async def search(db, request) -> dict:
         reranked = rerank_by_chunks(query_vector, per_product)
         semantic_ranking = [r for r in reranked if r[1] >= CHUNK_SCORE_THRESHOLD]
 
-    # The semantic re-rank wins where both have an opinion: it scored the chunk
-    # on meaning, while the keyword side only knows a term appeared in it. But
-    # a product that surfaced purely on a keyword had no snippet at all before.
-    best_chunk = dict(keyword_chunk)
-    best_chunk.update({pid: (text, page) for pid, _, text, page in semantic_ranking})
+    best_chunk = {pid: (text, page) for pid, _, text, page in semantic_ranking}
 
     # 6. Fuse chunk ranking with keyword ranking
     fused = reciprocal_rank_fusion(
