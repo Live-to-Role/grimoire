@@ -1,7 +1,47 @@
 # Deep Text Search — Design
 
 **Date:** 2026-08-26
-**Status:** Draft for review
+**Status:** Implemented, but **its central premise was wrong**. Read this
+correction before the rest of the document.
+
+> ## ⚠️ Correction (2026-08-26, after implementation)
+>
+> **This spec argues from a claim that is not true.** It asserts below that a
+> rare term past the 50,000-character cap cannot be found, because BM25 cannot
+> nominate the book and "semantic similarity does not reliably recover them."
+>
+> Semantic recovers them fine. With the keyword body path disabled entirely,
+> `Kurabanda` and `Edestekai` — terms appearing only past page 30 of *SF1
+> Volturnus* — both return that book at **rank 1**. Chunk embeddings already
+> covered the whole document and the Stage 2 re-rank always scored against
+> them. Only the raw keyword path was blind, and that turned out not to matter.
+>
+> This was never verified before the spec was written. It should have been:
+> one search would have settled it.
+>
+> **The design still shipped, and search improved — by the opposite mechanism
+> to the one argued here.** The gain came from *removing* the truncated body
+> text from `products_fts`, not from adding the full body back:
+>
+> | Configuration | hit@k | MRR | precision@k |
+> |---|---|---|---|
+> | Before — body text in `products_fts`, 50k cap | 50% | 0.450 | 44% |
+> | Body hits fed into keyword candidates, as designed below | 50% | 0.414 | **32%** |
+> | **Shipped** — body index built but not blended into ranking | **80%** | **0.505** | **84%** |
+>
+> Big rulebooks contain nearly every word, so body BM25 floats generic
+> compendiums over real answers. Feeding *more* body text into keyword ranking
+> was worse than the truncated version it replaced.
+>
+> **What this means for the sections below:** the schema, write path, sync,
+> backfill and sweep are all as-built and correct. The **Candidate selection**
+> section is not: `chunk_candidates()` exists but is deliberately *not* wired
+> into `search_service`. It serves explicit phrase lookup — "where does this
+> book say X, and on what page" — which is what it is genuinely good at.
+>
+> Full results, including corrections to three of the implementation plan's
+> own instructions, are in
+> `docs/superpowers/plans/2026-08-26-deep-text-search.md`.
 
 ## Problem
 
@@ -30,6 +70,11 @@ long before any OCR work.
 contains "Kurabanda" 228 times. Searching for it does not return the book,
 because the term first appears past the cap in the indexed markdown.
 
+> ⚠️ **Overstated.** What was verified is narrower: the FTS body column did
+> not match — `extracted_text:Kurabanda` returned nothing. Full search was
+> never tried. It returns the book at rank 1, and did so before any of this
+> work, via the semantic path.
+
 ### Why the second stage does not save it
 
 Search runs two stages (`search_service.search`):
@@ -43,6 +88,17 @@ Stage 2 already sees the whole document. But it only ever sees products that
 Stage 1 nominated. A rare proper noun past character 50,000 can never nominate
 its book via BM25 — and rare proper nouns are precisely what keyword search
 exists for. Semantic similarity does not reliably recover them.
+
+> ⚠️ **This paragraph is the error, and the whole spec rests on it.** The
+> first two sentences are true. The last is not, and was assumed rather than
+> tested.
+>
+> Stage 1 has a second source the argument ignores: the averaged document
+> vector (`sv_top_candidates`), which is built from every chunk in the book.
+> A term repeated 228 times pulls that vector toward itself, so the book is
+> nominated on the semantic side without BM25 ever seeing the term. Measured:
+> `Kurabanda` returns *SF1 Volturnus* at rank 1 with the keyword body path
+> switched off.
 
 ## Root cause is shared ownership, not the constant
 
@@ -106,6 +162,12 @@ Page numbers travel with the hit, so a match returns its page with no join.
 `title, file_name, publisher, game_system, product_type, description`.
 
 ### Candidate selection
+
+> ⚠️ **Not as built.** This section was implemented, measured, and reverted:
+> blending body hits into keyword candidates dropped topical precision from
+> 84% to 32%. `chunk_candidates()` exists with the signature described here,
+> but `search_service` does not call it. See the correction at the top.
+
 
 `fts_candidates` gains chunk hits as a second keyword source. A product scores
 by its **single best chunk**, matching `TOP_K_CHUNKS = 1` on the semantic side
