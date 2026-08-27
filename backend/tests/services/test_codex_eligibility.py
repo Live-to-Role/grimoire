@@ -20,6 +20,8 @@ it is supposed to precede.
 Outbound only. Reading *from* Codex sends nothing upstream and stays enabled
 for every product.
 """
+import inspect
+
 import pytest
 from httpx import ASGITransport, AsyncClient
 
@@ -198,3 +200,88 @@ async def test_reading_from_codex_still_works_for_an_image_product(db, monkeypat
 
     assert result["synced"] is True
     assert product.publisher == "Cartographer Co"
+
+
+# --- the clause that cannot be written yet ---------------------------------
+
+
+def _product_columns() -> set[str]:
+    return {column.name for column in Product.__table__.columns}
+
+
+class TestCodexStaysPdfOnly:
+    """A tripwire for a rule that currently has nothing enforcing it.
+
+    Codex is PDF-only, permanently — the multi-format work extends what
+    Grimoire *catalogues*, never what it *shares*. But `file_type` does not
+    exist on `Product` yet, so `is_codex_eligible` cannot check it, and the
+    obligation lives only in prose: two plan documents and a docstring, all
+    saying the clause must land in the same commit as the column.
+
+    ⚠️ NOTHING MAKES THAT HAPPEN. Add the column in multi-format Phase 2,
+    forget the clause, and every non-PDF product Grimoire can now catalogue
+    becomes contributable upstream — silently, because Codex trusts this
+    side to filter and has deliberately grown no rule of its own.
+
+    So these arm themselves. While the column is absent they hold the
+    reminder in place; the moment it appears they demand the behaviour.
+
+    **Two things found by rehearsing it** — the column was added locally,
+    the tests were watched to fail, the clause was added, and both were
+    reverted:
+
+    1. The clause cannot be a bare `product.file_type != "pdf"` without
+       also giving `_product()` above a `file_type`. A SQLAlchemy column
+       default applies at INSERT, not to an unsaved instance, so
+       `Product(...).file_type` is `None` here and every existing
+       image/map test starts failing for the wrong reason — refused as
+       `unsupported_file_type` before it reaches the rule it was written
+       for. Whoever lands Phase 2 wants both in the same commit.
+    2. `test_the_column_is_still_absent` fails *by design* on that day.
+       Its message says so. It is a signpost to this class, not a defect.
+    """
+
+    def test_the_column_is_still_absent(self):
+        """The premise of everything below. If this fails, good — read on."""
+        assert "file_type" not in _product_columns(), (
+            "`file_type` now exists on Product, so the two tests below are live "
+            "rather than dormant. That is the intended path, not a problem."
+        )
+
+    def test_a_non_pdf_is_refused_as_soon_as_it_can_exist(self):
+        """The clause must arrive with the column, not after it.
+
+        Skipped only while a non-PDF product is inexpressible. It cannot be
+        skipped and wrong at the same time: the moment `file_type` exists,
+        this runs and fails until `is_codex_eligible` consults it.
+        """
+        if "file_type" not in _product_columns():
+            pytest.skip("`file_type` does not exist yet; nothing can be a non-PDF")
+
+        eligible, reason = is_codex_eligible(_product(file_type="epub"))
+
+        assert eligible is False
+        assert reason == "unsupported_file_type"
+
+    def test_a_pdf_is_still_allowed_through(self):
+        if "file_type" not in _product_columns():
+            pytest.skip("`file_type` does not exist yet")
+
+        eligible, _ = is_codex_eligible(_product(file_type="pdf"))
+
+        assert eligible is True
+
+    def test_the_obligation_is_recorded_where_the_clause_will_go(self):
+        """Keeps the reminder attached to the code, not only to the plans.
+
+        A docstring is weak enforcement, which is why the two tests above
+        exist — but it is what somebody adding the column actually reads,
+        and deleting it should not be silent.
+        """
+        source = inspect.getsource(is_codex_eligible)
+
+        assert "file_type" in source, (
+            "The note about the missing PDF-only clause has gone from "
+            "is_codex_eligible. Either the clause landed — in which case "
+            "these tests should be live — or the reminder was deleted."
+        )
