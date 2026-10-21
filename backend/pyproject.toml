@@ -25,6 +25,7 @@ dependencies = [
     "watchfiles>=0.21.0",
     "huey>=2.5.0",
     "httpx>=0.26.0",
+    "mcp>=2.3,<3",
 ]
 
 [project.optional-dependencies]

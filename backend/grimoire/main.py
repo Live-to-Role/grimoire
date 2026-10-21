@@ -9,6 +9,7 @@ from grimoire import __version__
 from grimoire.api.routes import api_router
 from grimoire.config import settings
 from grimoire.database import init_db
+from grimoire.mcp.server import mcp_app, mcp_server
 from grimoire.middleware import RateLimitMiddleware, CacheMiddleware
 
 
@@ -42,7 +43,9 @@ async def lifespan(app: FastAPI):
         start_auto_backup_subscriber(backup_db_path, get_db_session)
     )
 
-    yield
+    # The MCP transport's session manager lives exactly as long as the app.
+    async with mcp_server.session_manager.run():
+        yield
 
     # Stop auto-backup subscriber
     backup_task.cancel()
@@ -90,6 +93,9 @@ async def add_security_headers(request, call_next):
 
 
 app.include_router(api_router, prefix="/api/v1")
+
+# Read-only MCP endpoint for AI assistants; see grimoire/mcp/server.py.
+app.add_route("/mcp", mcp_app)
 
 
 @app.get("/")
