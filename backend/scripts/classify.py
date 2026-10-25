@@ -94,6 +94,68 @@ def cmd_excerpt(args) -> None:
     print(f"[source={ex.source} windows={ex.windows} unpaged={ex.unpaged} tokens={ex.tokens} chars={len(ex.text)}]")
 
 
+# Output per request (JSON plus adaptive thinking), from the spec's cost estimate.
+# Replace with the pilot's measured output_tokens / request_count once known.
+EST_OUTPUT_TOKENS = 500
+
+
+def _anthropic_client(db):
+    import anthropic
+
+    from grimoire.services.classification.batch import anthropic_api_key
+
+    async def make():
+        return anthropic.Anthropic(api_key=await anthropic_api_key(db))
+
+    return make()
+
+
+def cmd_submit(args) -> None:
+    from grimoire.services.classification.batch import BATCH_PRICES, build_items, submit_run
+    from grimoire.services.classification.excerpt import estimate_tokens
+    from grimoire.services.classification.prompt import SYSTEM_PROMPT
+
+    slugs = Path(args.slugs).read_text(encoding="utf-8").split() if args.slugs else None
+
+    async def run(db):
+        items = await build_items(db, pilot=args.pilot, all_=args.all, slugs=slugs)
+        n = len(items)
+        tokens_in = sum(i.excerpt.tokens for i in items) + n * estimate_tokens(SYSTEM_PROMPT)
+        tokens_out = n * EST_OUTPUT_TOKENS
+        price_in, price_out = BATCH_PRICES[args.model]
+        projected = tokens_in / 1e6 * price_in + tokens_out / 1e6 * price_out
+        descriptions = sum(1 for i in items if i.source == "description")
+        print(f"{n} requests ({descriptions} description-only), ~{tokens_in:,} input tokens, "
+              f"~{tokens_out:,} output tokens (est.), projected ${projected:.2f} on {args.model}")
+        if args.dry_run or n == 0:
+            print("not sent")
+            return
+        client = await _anthropic_client(db)
+        r = await submit_run(db, client, args.run, args.model, args.effort, items)
+        print(f"run {r.name}: batch {r.batch_id}")
+
+    asyncio.run(_with_session(run))
+
+
+def cmd_collect(args) -> None:
+    from sqlalchemy import select
+
+    from grimoire.models.classification import ClassificationRun
+    from grimoire.services.classification.batch import collect_run
+
+    async def run(db):
+        client = await _anthropic_client(db)
+        counts = await collect_run(db, client, args.run, wait=args.wait)
+        print(counts)
+        r = (await db.execute(select(ClassificationRun).where(ClassificationRun.name == args.run))).scalar_one()
+        if r.status == "collected":
+            per = r.cost_usd / r.request_count if r.request_count else 0
+            print(f"{r.input_tokens:,} input / {r.output_tokens:,} output tokens, "
+                  f"${r.cost_usd:.2f} (${per:.4f} per product)")
+
+    asyncio.run(_with_session(run))
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     sub = parser.add_subparsers(dest="command", required=True)
@@ -114,6 +176,22 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("excerpt", help="print the excerpt for one Codex product, for eyeballing")
     p.add_argument("slug")
     p.set_defaults(func=cmd_excerpt)
+
+    p = sub.add_parser("submit", help="send a classification run to the Batches API")
+    p.add_argument("--run", required=True)
+    p.add_argument("--model", required=True, choices=["claude-sonnet-5-5", "claude-opus-5-5"])
+    p.add_argument("--effort", default="medium", choices=["low", "medium", "high"])
+    which = p.add_mutually_exclusive_group(required=True)
+    which.add_argument("--pilot", action="store_true")
+    which.add_argument("--all", action="store_true")
+    which.add_argument("--slugs", help="file of Codex slugs, whitespace-separated")
+    p.add_argument("--dry-run", action="store_true", help="print the projection, send nothing")
+    p.set_defaults(func=cmd_submit)
+
+    p = sub.add_parser("collect", help="store a run's batch results")
+    p.add_argument("--run", required=True)
+    p.add_argument("--wait", action="store_true", help="poll every 60 s until the batches end")
+    p.set_defaults(func=cmd_collect)
 
     return parser
 
