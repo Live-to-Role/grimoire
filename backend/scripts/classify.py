@@ -164,6 +164,51 @@ def cmd_apply(args) -> None:
           f"errors {report.skipped_error}, no Grimoire product {report.skipped_no_product}")
 
 
+def cmd_export(args) -> None:
+    from datetime import datetime
+
+    from grimoire.services.classification import export
+    from grimoire.services.classification.snapshot import dump_codex, import_snapshot
+
+    if args.live:
+        items = [i for i in export.read_reviewed(Path(args.source))
+                 if (i.confidence or 0.0) >= args.min_confidence]
+
+        async def live(db):
+            outcomes = export.send_items(items, await export.codex_token(db), dry_run=False)
+            await export.stamp_exported(db, args.run, outcomes)
+            return outcomes
+
+        outcomes = asyncio.run(_with_session(live))
+        print(f"LIVE: sent {len(items)} items")
+        print(export.summarize(items, outcomes))
+        return
+
+    async def dry(db):
+        if not args.no_refresh:
+            # Compare against Codex as it is now, not as it was at the first dump.
+            snapshot = DATA_DIR / f"codex_snapshot_{datetime.now():%Y%m%d_%H%M%S}.csv"
+            print(f"refreshed {dump_codex(snapshot)} Codex rows -> {snapshot}")
+            await import_snapshot(db, snapshot)
+        items = await export.build_items(db, args.run, args.min_confidence)
+        outcomes = export.send_items(items, await export.codex_token(db), dry_run=True)
+        return items, outcomes
+
+    items, outcomes = asyncio.run(_with_session(dry))
+    export.write_report(items, outcomes, Path(args.out))
+    print(f"DRY RUN, nothing written to Codex. Review {args.out}, then:")
+    print(f"  export --live --from {args.out} --yes")
+
+
+def _check_export(parser, args) -> None:
+    if args.live and not args.source:
+        parser.error("export --live needs --from <reviewed csv>")
+    if args.live and not args.yes:
+        parser.error("export --live writes to Codex; pass --yes to confirm")
+    if not args.live and (args.source or args.yes):
+        parser.error("--from and --yes only apply with --live")
+
+
 def cmd_select_pilot(args) -> None:
     from collections import Counter
 
@@ -248,6 +293,16 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--run", required=True)
     p.set_defaults(func=cmd_apply)
 
+    p = sub.add_parser("export", help="dry-run (default) or live send of a run to Codex")
+    p.add_argument("--run", default="full")
+    p.add_argument("--min-confidence", type=float, default=0.0)
+    p.add_argument("--out", default=str(DATA_DIR / "export_report.csv"))
+    p.add_argument("--no-refresh", action="store_true", help="skip re-dumping Codex first")
+    p.add_argument("--live", action="store_true", help="send for real (dry_run false)")
+    p.add_argument("--from", dest="source", help="the reviewed report CSV (with --live)")
+    p.add_argument("--yes", action="store_true", help="confirm a live send")
+    p.set_defaults(func=cmd_export, check=_check_export)
+
     p = sub.add_parser("select-pilot", help="pick the hand-labelled pilot products")
     p.add_argument("--n", type=int, default=150)
     p.add_argument("--seed", type=int, default=20261025)
@@ -268,7 +323,10 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> None:
-    args = build_parser().parse_args(argv)
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    if hasattr(args, "check"):
+        args.check(parser, args)
     args.func(args)
 
 
