@@ -1,0 +1,78 @@
+"""Codex reclassification CLI: one subcommand per pipeline stage.
+
+Nothing runs automatically; each stage is driven by hand in the order given in
+docs/superpowers/plans/2026-10-25-codex-reclassification.md (Run sequence).
+
+Usage (from backend/):
+    C:/Users/mkemi/miniconda3/python.exe scripts/classify.py dump-codex
+    C:/Users/mkemi/miniconda3/python.exe scripts/classify.py import-codex data/classification/codex_snapshot.csv
+"""
+
+import argparse
+import asyncio
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+DATA_DIR = Path(__file__).resolve().parent.parent / "data" / "classification"
+
+
+async def _with_session(fn):
+    """Run fn(db) in a session against the live Grimoire database, then commit."""
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+    import grimoire.models  # noqa: F401 — registers every model with Base.metadata
+    from grimoire.config import settings
+    from grimoire.database import Base
+
+    engine = create_async_engine(settings.database_url)
+    async with engine.begin() as conn:
+        # The classification tables are new; create them if the app has not yet.
+        await conn.run_sync(Base.metadata.create_all)
+    session_factory = async_sessionmaker(engine, expire_on_commit=False)
+    try:
+        async with session_factory() as db:
+            result = await fn(db)
+            await db.commit()
+            return result
+    finally:
+        await engine.dispose()
+
+
+def cmd_dump_codex(args) -> None:
+    from grimoire.services.classification.snapshot import dump_codex
+
+    n = dump_codex(Path(args.out))
+    print(f"{n} rows -> {args.out}")
+
+
+def cmd_import_codex(args) -> None:
+    from grimoire.services.classification.snapshot import import_snapshot
+
+    n = asyncio.run(_with_session(lambda db: import_snapshot(db, Path(args.csv))))
+    print(f"{n} rows")
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    sub = parser.add_subparsers(dest="command", required=True)
+
+    p = sub.add_parser("dump-codex", help="dump the Codex catalog to CSV")
+    p.add_argument("--out", default=str(DATA_DIR / "codex_snapshot.csv"))
+    p.set_defaults(func=cmd_dump_codex)
+
+    p = sub.add_parser("import-codex", help="upsert a Codex snapshot CSV")
+    p.add_argument("csv")
+    p.set_defaults(func=cmd_import_codex)
+
+    return parser
+
+
+def main(argv: list[str] | None = None) -> None:
+    args = build_parser().parse_args(argv)
+    args.func(args)
+
+
+if __name__ == "__main__":
+    main()
