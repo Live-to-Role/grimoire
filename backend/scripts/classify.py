@@ -156,6 +156,14 @@ def cmd_collect(args) -> None:
     asyncio.run(_with_session(run))
 
 
+def cmd_apply(args) -> None:
+    from grimoire.services.classification.apply import apply_run
+
+    report = asyncio.run(_with_session(lambda db: apply_run(db, args.run)))
+    print(f"applied {report.applied}; skipped: already applied {report.skipped_applied}, "
+          f"errors {report.skipped_error}, no Grimoire product {report.skipped_no_product}")
+
+
 def cmd_select_pilot(args) -> None:
     from collections import Counter
 
@@ -235,6 +243,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--run", required=True)
     p.add_argument("--wait", action="store_true", help="poll every 60 s until the batches end")
     p.set_defaults(func=cmd_collect)
+
+    p = sub.add_parser("apply", help="write a collected run onto Grimoire products")
+    p.add_argument("--run", required=True)
+    p.set_defaults(func=cmd_apply)
 
     p = sub.add_parser("select-pilot", help="pick the hand-labelled pilot products")
     p.add_argument("--n", type=int, default=150)
