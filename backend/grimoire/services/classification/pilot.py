@@ -6,6 +6,7 @@ sees the same products. Nothing here applies or exports anything.
 
 import csv
 import random
+import re
 from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
@@ -102,6 +103,21 @@ def _cell(value) -> str:
     return "" if value is None else str(value)
 
 
+_FORMULA_START = ("=", "+", "-", "@", "\t", "\r")
+_UNSAFE_FILENAME = re.compile(r"[^A-Za-z0-9._-]")
+
+
+def _text_cell(value) -> str:
+    """A display-only cell: Excel would run a leading = + - @ as a formula, and
+    evidence quotes from books often start with "- " bullets."""
+    text = _cell(value)
+    return "'" + text if text.startswith(_FORMULA_START) else text
+
+
+def _excerpt_path(excerpt_dir: Path, slug: str) -> Path:
+    return excerpt_dir / f"{_UNSAFE_FILENAME.sub('_', slug).lstrip('.')}.md"
+
+
 async def write_pilot_sheet(db: AsyncSession, run_names: list[str], out: Path,
                             excerpt_dir: Path) -> int:
     from grimoire.services.classification.batch import build_items
@@ -126,15 +142,16 @@ async def write_pilot_sheet(db: AsyncSession, run_names: list[str], out: Path,
         writer = csv.writer(f)
         writer.writerow(header)
         for cp in pilot:
-            path = excerpt_dir / f"{cp.slug}.md"
+            path = _excerpt_path(excerpt_dir, cp.slug)
             path.write_text(excerpts[cp.id].text, encoding="utf-8")
-            row = [cp.slug, cp.title, cp.publisher or "", str(path), cp.product_type or "",
-                   _cell(cp.level_range_min), _cell(cp.level_range_max)]
+            # The slug stays raw: pilot-score reads it back to find the product.
+            row = [cp.slug, _text_cell(cp.title), _text_cell(cp.publisher), str(path),
+                   cp.product_type or "", _cell(cp.level_range_min), _cell(cp.level_range_max)]
             for name in run_names:
                 r = results[name].get(cp.id)
                 row += ["", "", "", "", "", ""] if r is None else [
                     _cell(r.product_type_new), _cell(r.level_min_new), _cell(r.level_max_new),
-                    _cell(r.confidence), _cell(r.type_evidence), _cell(r.level_evidence),
+                    _cell(r.confidence), _text_cell(r.type_evidence), _text_cell(r.level_evidence),
                 ]
             writer.writerow(row + ["", "", ""])
             count += 1

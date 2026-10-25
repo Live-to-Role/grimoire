@@ -114,6 +114,28 @@ async def test_pilot_sheet_columns_per_run(db, tmp_path):
     assert "about p1" in excerpt.read_text(encoding="utf-8")
 
 
+async def test_pilot_sheet_neutralises_formulas_and_unsafe_slugs(db, tmp_path):
+    run_a, _ = await _seed_scored(db, {"p1": (None, None, None)})
+    cp = await db.get(CodexProduct, "p1")
+    cp.slug = "..\\..\\escape"
+    cp.title = "=HYPERLINK(\"http://x\")"
+    db.add(ClassificationResult(run_id=run_a.id, codex_product_id="p1", source="description",
+                                product_type_new="adventure", type_evidence="- **Level 1: spells"))
+    await db.flush()
+
+    out = tmp_path / "pilot.csv"
+    await write_pilot_sheet(db, ["a"], out, tmp_path / "excerpts")
+
+    with open(out, encoding="utf-8-sig", newline="") as f:
+        row = next(csv.DictReader(f))
+    assert row["title"] == "'=HYPERLINK(\"http://x\")"
+    assert row["a_type_evidence"] == "'- **Level 1: spells"
+    assert row["slug"] == "..\\..\\escape"  # read back by pilot-score, so left as is
+    written = list((tmp_path / "excerpts").iterdir())
+    assert len(written) == 1 and written[0].parent == tmp_path / "excerpts"
+    assert not (tmp_path.parent / "escape.md").exists()
+
+
 def _write_truth(path, rows):
     with open(path, "w", encoding="utf-8-sig", newline="") as f:
         w = csv.writer(f)
