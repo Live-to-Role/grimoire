@@ -70,6 +70,30 @@ def cmd_match(args) -> None:
     print(f"unmatched -> {out}")
 
 
+def cmd_excerpt(args) -> None:
+    import json
+
+    from sqlalchemy import select
+
+    from grimoire.models import Product
+    from grimoire.models.classification import CodexProduct
+    from grimoire.services.classification.excerpt import build_description_excerpt, build_excerpt
+
+    async def run(db):
+        cp = (await db.execute(select(CodexProduct).where(CodexProduct.slug == args.slug))).scalar_one()
+        product = await db.get(Product, cp.grimoire_product_id) if cp.grimoire_product_id else None
+        if product is None or not product.extracted_text_path:
+            return build_description_excerpt(cp)
+        with open(product.extracted_text_path, encoding="utf-8") as f:
+            text_json = json.load(f)
+        return build_excerpt(text_json, {"filename": product.file_name, "codex_title": cp.title})
+
+    ex = asyncio.run(_with_session(run))
+    sys.stdout.reconfigure(encoding="utf-8")
+    print(ex.text)
+    print(f"[source={ex.source} windows={ex.windows} unpaged={ex.unpaged} tokens={ex.tokens} chars={len(ex.text)}]")
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     sub = parser.add_subparsers(dest="command", required=True)
@@ -86,6 +110,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--fuzzy-threshold", type=int, default=90)
     p.add_argument("--report", default=str(DATA_DIR / "unmatched.csv"))
     p.set_defaults(func=cmd_match)
+
+    p = sub.add_parser("excerpt", help="print the excerpt for one Codex product, for eyeballing")
+    p.add_argument("slug")
+    p.set_defaults(func=cmd_excerpt)
 
     return parser
 
