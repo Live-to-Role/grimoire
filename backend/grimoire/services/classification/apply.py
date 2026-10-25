@@ -5,6 +5,7 @@ copies, other editions) were never classified and are left alone. A result is
 applied once; applied_at marks it so a re-run never overwrites a hand edit.
 """
 
+from collections import Counter
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
@@ -13,6 +14,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from grimoire.models import Product
 from grimoire.models.classification import ClassificationResult, ClassificationRun
+from grimoire.services.classification.enum import CODEX_PRODUCT_TYPES, normalize_free_text
+from grimoire.services.codex_eligibility import IMAGE_PRODUCT_TYPES
+
+VOCAB_RUN = "vocab-migration"
 
 
 def effective_levels(min_: int | None, max_: int | None) -> tuple[int | None, int | None]:
@@ -68,3 +73,63 @@ async def apply_run(db: AsyncSession, run_name: str) -> ApplyReport:
             report.applied += 1
     await db.commit()
     return report
+
+
+async def apply_vocab_migration(db: AsyncSession, dry_run: bool = False) -> dict[str, int]:
+    """Map the free-text types of products no AI run reached onto the enum.
+
+    Products with an applied result of any run are left alone: their type came
+    from the model, or from a person after it. Returns counts by target value,
+    plus "unmapped" and "kept_image_type".
+    """
+    reached = set((await db.execute(
+        select(ClassificationResult.product_id).where(
+            ClassificationResult.product_id.is_not(None),
+            ClassificationResult.applied_at.is_not(None),
+        )
+    )).scalars())
+    products = (await db.execute(
+        select(Product).where(
+            Product.product_type.is_not(None),
+            Product.product_type.not_in(CODEX_PRODUCT_TYPES),
+        ).order_by(Product.id)
+    )).scalars().all()
+
+    run = None
+    if not dry_run:
+        run = (await db.execute(
+            select(ClassificationRun).where(ClassificationRun.name == VOCAB_RUN)
+        )).scalar()
+        if run is None:
+            run = ClassificationRun(name=VOCAB_RUN, model="table", effort="none",
+                                    status="collected")
+            db.add(run)
+            await db.flush()
+
+    counts: Counter[str] = Counter()
+    now = datetime.now(UTC).replace(tzinfo=None)
+    for product in products:
+        if product.id in reached:
+            continue
+        old = product.product_type
+        new = normalize_free_text(old)
+        if new is None:
+            counts["unmapped"] += 1
+            continue
+        # codex_eligibility refuses image collections by this free text. Without
+        # the image flag, "Stock Art" -> other would make the pack contributable.
+        if (old.strip().lower() in IMAGE_PRODUCT_TYPES and new != "map"
+                and not product.is_image_content):
+            counts["kept_image_type"] += 1
+            continue
+        counts[new] += 1
+        if dry_run:
+            continue
+        db.add(ClassificationResult(
+            run_id=run.id, product_id=product.id, source="vocab",
+            product_type_old=old, product_type_new=new, applied_at=now,
+        ))
+        product.product_type = new
+    if not dry_run:
+        await db.commit()
+    return dict(counts)

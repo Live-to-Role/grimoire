@@ -209,6 +209,16 @@ def _check_export(parser, args) -> None:
         parser.error("--from and --yes only apply with --live")
 
 
+def cmd_vocab_migrate(args) -> None:
+    from grimoire.services.classification.apply import apply_vocab_migration
+
+    counts = asyncio.run(_with_session(lambda db: apply_vocab_migration(db, dry_run=args.dry_run)))
+    total = sum(n for k, n in counts.items() if k not in ("unmapped", "kept_image_type"))
+    print(f"{'DRY RUN: would map' if args.dry_run else 'mapped'} {total} products")
+    for k, n in sorted(counts.items(), key=lambda kv: -kv[1]):
+        print(f"  {k}: {n}")
+
+
 def cmd_select_pilot(args) -> None:
     from collections import Counter
 
@@ -292,6 +302,10 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("apply", help="write a collected run onto Grimoire products")
     p.add_argument("--run", required=True)
     p.set_defaults(func=cmd_apply)
+
+    p = sub.add_parser("vocab-migrate", help="map free-text types the AI run did not reach")
+    p.add_argument("--dry-run", action="store_true", help="count only, write nothing")
+    p.set_defaults(func=cmd_vocab_migrate)
 
     p = sub.add_parser("export", help="dry-run (default) or live send of a run to Codex")
     p.add_argument("--run", default="full")

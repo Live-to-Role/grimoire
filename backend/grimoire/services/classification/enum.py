@@ -54,7 +54,8 @@ VOCAB_MAP: dict[str, str] = {
         "tools",
     ),
     **dict.fromkeys(["Map", "Maps", "Art/Maps", "Dungeon Backdrop"], "map"),
-    "Magazine": "magazine",
+    # No true periodicals in this catalog (Michael, pilot review).
+    "Magazine": "zine",
     "Zine": "zine",
     "GM Screen": "screen",
     **dict.fromkeys(
@@ -74,6 +75,7 @@ def normalize_free_text(value: str | None) -> str | None:
     if value is None:
         return None
     key = value.strip().lower()
-    if key in CODEX_PRODUCT_TYPES:
-        return key
-    return _VOCAB_LOWER.get(key)
+    # The table first: it may redirect an enum spelling ("Magazine" -> zine).
+    if key in _VOCAB_LOWER:
+        return _VOCAB_LOWER[key]
+    return key if key in CODEX_PRODUCT_TYPES else None

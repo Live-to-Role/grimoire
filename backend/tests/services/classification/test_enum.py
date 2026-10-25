@@ -17,3 +17,9 @@ def test_normalize_free_text():
     assert normalize_free_text("adventure") == "adventure"
     assert normalize_free_text("Anthology") is None
     assert normalize_free_text(None) is None
+
+
+def test_magazine_free_text_is_a_zine():
+    # Michael, pilot review: the catalog has no true periodicals; zine is right.
+    assert normalize_free_text("Magazine") == "zine"
+    assert normalize_free_text("magazine") == "zine"

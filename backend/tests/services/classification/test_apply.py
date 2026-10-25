@@ -1,7 +1,7 @@
 import pytest
 
 from grimoire.models import ClassificationResult, ClassificationRun, CodexProduct, Product
-from grimoire.services.classification.apply import apply_run, effective_levels
+from grimoire.services.classification.apply import apply_run, apply_vocab_migration, effective_levels
 
 CX1 = "00000000-0000-0000-0000-000000000001"
 CX2 = "00000000-0000-0000-0000-000000000002"
@@ -138,3 +138,93 @@ async def test_apply_refuses_uncollected_run(db):
 
     await db.refresh(p)
     assert p.product_type == "Supplement"
+
+
+async def _vocab_rows(db):
+    from sqlalchemy import select
+    run = (await db.execute(
+        select(ClassificationRun).where(ClassificationRun.name == "vocab-migration"))).scalar()
+    if run is None:
+        return run, []
+    rows = (await db.execute(
+        select(ClassificationResult).where(ClassificationResult.run_id == run.id))).scalars().all()
+    return run, rows
+
+
+async def test_vocab_migration_maps_table_values_and_records_old(db):
+    p = await _product(db, "s.pdf", "Supplement")
+    enum_already = await _product(db, "e.pdf", "adventure")
+
+    counts = await apply_vocab_migration(db)
+
+    await db.refresh(p)
+    await db.refresh(enum_already)
+    run, rows = await _vocab_rows(db)
+    assert p.product_type == "supplement" and enum_already.product_type == "adventure"
+    assert (run.model, run.effort) == ("table", "none")
+    assert [(r.product_id, r.source, r.product_type_old, r.product_type_new) for r in rows] == [
+        (p.id, "vocab", "Supplement", "supplement")]
+    assert rows[0].applied_at is not None
+    assert counts["supplement"] == 1
+
+
+async def test_vocab_migration_leaves_unmapped_and_ai_applied_rows(db):
+    from datetime import datetime
+    anthology = await _product(db, "a.pdf", "Anthology")
+    ai = await _product(db, "ai.pdf", "Supplement")
+    run = ClassificationRun(name="full", model="claude-sonnet-5-5", effort="medium",
+                            status="collected")
+    db.add(run)
+    await db.flush()
+    # The AI result was applied and a person has since set a free-text type by hand.
+    db.add(ClassificationResult(run_id=run.id, product_id=ai.id, source="pdf",
+                                product_type_new="gm_tools", applied_at=datetime(2026, 10, 25)))
+    await db.flush()
+
+    counts = await apply_vocab_migration(db)
+
+    await db.refresh(anthology)
+    await db.refresh(ai)
+    assert anthology.product_type == "Anthology" and ai.product_type == "Supplement"
+    assert counts["unmapped"] == 1
+
+
+async def test_vocab_migration_keeps_image_free_text_without_image_flag(db):
+    # codex_eligibility refuses "Stock Art" by its free text. Mapped to "other",
+    # an unflagged stock-art pack would become contributable to Codex.
+    unflagged = await _product(db, "art.pdf", "Stock Art")
+    flagged = await _product(db, "tok.pdf", "Token")
+    flagged.is_image_content = True
+    await db.flush()
+
+    counts = await apply_vocab_migration(db)
+
+    await db.refresh(unflagged)
+    await db.refresh(flagged)
+    assert unflagged.product_type == "Stock Art"
+    assert flagged.product_type == "tools"
+    assert counts["kept_image_type"] == 1
+
+
+async def test_vocab_migration_dry_run_writes_nothing(db):
+    p = await _product(db, "s.pdf", "Supplement")
+
+    counts = await apply_vocab_migration(db, dry_run=True)
+
+    await db.refresh(p)
+    run, rows = await _vocab_rows(db)
+    assert counts["supplement"] == 1
+    assert p.product_type == "Supplement" and run is None and rows == []
+
+
+async def test_vocab_migration_reruns_reuse_the_run(db):
+    await _product(db, "s.pdf", "Supplement")
+    await apply_vocab_migration(db)
+    later = await _product(db, "later.pdf", "Adventure")
+
+    counts = await apply_vocab_migration(db)
+
+    await db.refresh(later)
+    run, rows = await _vocab_rows(db)
+    assert later.product_type == "adventure" and len(rows) == 2
+    assert counts.get("supplement", 0) == 0
