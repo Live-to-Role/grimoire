@@ -32,9 +32,10 @@ not a whole campaign world.
 - `setting`: a campaign setting or world book describing a whole world or \
 major setting to play in. A book about one region of a larger world is a \
 `sourcebook`; a book presenting the world itself is a `setting`.
-- `supplement`: a smaller add-on of mixed game content (a handful of items, \
-traps, hazards, encounters, spells, or locations) that is not a full adventure \
-and not mainly player options.
+- `supplement`: an add-on of new game content, such as items, spells, \
+hazards, or rules options, that is not a full adventure, not mainly player \
+options, and not a GM aid. When a product could be either `supplement` or \
+`gm_tools`, choose `gm_tools`.
 - `character_options`: content mainly for building player characters: \
 classes, subclasses, ancestries, backgrounds, feats, or a player's guide. A \
 supplement that is mostly new player options is `character_options`.
@@ -44,8 +45,8 @@ stat blocks.
 handbook of the base rules, a complete standalone game, a starter set, or a \
 quickstart. A quickstart or basic rules of a game is `core_rulebook`.
 - `gm_tools`: material that helps the GM prepare or run any game: random \
-tables, generators (NPC, name, dungeon, loot), advice, encounter builders, \
-prep aids.
+tables, lists of ideas or encounters ("100 things found in..."), generators \
+(NPC, name, dungeon, loot), advice, encounter builders, prep aids.
 - `tools`: play aids used at the table: character sheets, cards, tokens, \
 handouts, pregenerated characters, spell sheets, reference sheets, paper \
 models. Play aids for players or the table are `tools`; aids for the GM's \
@@ -53,11 +54,10 @@ preparation are `gm_tools`.
 - `map`: a product that is mainly maps, battle maps, floor plans, or map \
 tiles. A map pack is `map`; an adventure that includes maps is an `adventure`.
 - `screen`: a GM screen or its inserts.
-- `magazine`: a periodical from a publisher, issued in a numbered or dated \
-series, usually with articles by several authors.
-- `zine`: a small independent publication, often a single author's or a \
-small press, usually short and in zine format. A professional periodical is a \
-`magazine`; an indie short-form publication is a `zine`.
+- `zine`: an issue of a numbered or dated periodical, or a small independent \
+short-form publication. Every periodical issue in this catalog is a `zine`, \
+even when its title calls it a magazine.
+- `magazine`: not used in this catalog; choose `zine` instead.
 - `other`: anything that fits none of the above: fiction, comics, stock art, \
 textures, music, or a product whose nature the excerpt does not reveal. Use \
 `other` only when no specific type is supported by the text.
