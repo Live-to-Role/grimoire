@@ -13,6 +13,7 @@ from typing import Any
 import httpx
 
 from grimoire.config import settings
+from grimoire.services.classification.excerpt import build_excerpt
 
 logger = logging.getLogger(__name__)
 
@@ -169,13 +170,14 @@ def estimate_batch_cost(
 IDENTIFICATION_PROMPT = """Analyze this RPG PDF and return a JSON object with these fields:
 - game_system: e.g. "Dungeons & Dragons 5th Edition", "Pathfinder 2nd Edition", "Dungeon Crawl Classics", "Old-School Essentials", or null
 - genre: one of "Fantasy", "Horror", "Science Fiction", "Modern", "Historical", or null
-- product_type: e.g. "Adventure", "Supplement", "Core Rulebook", "Bestiary", "Setting", "Zine", or null
+- product_type: one of: adventure, sourcebook, supplement, bestiary, tools, core_rulebook, setting, character_options, gm_tools, map, zine, screen, other; or null. gm_tools is a GM aid (tables, generators, advice); tools is a play aid for the table (character sheets, cards, tokens, handouts); map is a map pack; zine is any periodical issue
 - publisher: publisher name or null
 - author: primary author/writer name(s) or null
 - title: product title or null
 - publication_year: year as number or null
-- level_range_min: minimum character level or null
-- level_range_max: maximum character level or null
+- level_range_min: minimum character level (0-40) or null
+- level_range_max: maximum character level (0-40) or null
+  Give levels only when the text states them; never infer them from words like "beginner" or "low-level" or from the game system. Level 0 is real: a 0-level funnel is 0, and "levels 0-1" is 0 and 1. Spell levels, monster levels, dungeon levels and page numbers are not character levels. If only one end is stated, use null for both.
 - description: 1-2 sentence description or null
 - confidence: "high", "medium", or "low"
 {filename_section}
@@ -332,7 +334,9 @@ async def identify_product(
     Returns:
         Dictionary with identified metadata
     """
-    truncated_text = text[:4000]
+    # The opening pages plus the passages that state levels, not text[:4000],
+    # which cut off a level range stated anywhere past the first pages.
+    truncated_text = build_excerpt({"markdown": text}, header={"filename": filename or ""}).text
     
     # Check env vars first, then database settings
     openai_key = os.getenv("OPENAI_API_KEY", "") or await get_setting_from_db("openai_api_key")
@@ -520,7 +524,7 @@ async def suggest_tags(
     Returns:
         Dictionary with suggested tags by category
     """
-    truncated_text = text[:4000]
+    truncated_text = build_excerpt({"markdown": text}, header={"filename": ""}).text
     
     # Check env vars first, then database settings
     openai_key = os.getenv("OPENAI_API_KEY", "") or await get_setting_from_db("openai_api_key")

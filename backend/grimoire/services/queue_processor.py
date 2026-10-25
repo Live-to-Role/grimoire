@@ -738,6 +738,7 @@ async def handle_identify_task(db: AsyncSession, product: Product) -> bool:
 async def handle_ai_identify_task(db: AsyncSession, product: Product, config: dict | None = None) -> bool:
     """Handle AI identification task using configured provider."""
     from grimoire.processors.ai_identifier import identify_product
+    from grimoire.services.classification.enum import normalize_free_text
     from grimoire.services.processor import get_extracted_text
 
     # Use provider from queue item config, falling back to settings
@@ -791,7 +792,7 @@ async def handle_ai_identify_task(db: AsyncSession, product: Product, config: di
         product_type = identification["product_type"]
         if isinstance(product_type, list):
             product_type = ", ".join(str(p) for p in product_type)
-        product.product_type = product_type
+        product.product_type = normalize_free_text(product_type) or product_type
     if identification.get("publisher"):
         publisher = identification["publisher"]
         if isinstance(publisher, list):
@@ -809,9 +810,10 @@ async def handle_ai_identify_task(db: AsyncSession, product: Product, config: di
         product.title = title
     if identification.get("publication_year"):
         product.publication_year = identification["publication_year"]
-    if identification.get("level_range_min"):
+    # `is not None`: level 0 is real (a DCC funnel) and falsy.
+    if identification.get("level_range_min") is not None:
         product.level_range_min = identification["level_range_min"]
-    if identification.get("level_range_max"):
+    if identification.get("level_range_max") is not None:
         product.level_range_max = identification["level_range_max"]
 
     product.ai_identified = True
