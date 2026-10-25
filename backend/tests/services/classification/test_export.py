@@ -224,3 +224,24 @@ def test_cli_live_requires_from_and_yes(tmp_path, capsys):
         err = capsys.readouterr().err
         # Refused by the export check itself, not by argparse not knowing "export".
         assert "invalid choice" not in err and needed in err
+
+
+def test_reviewed_items_keep_old_values_kinds_and_shared_count(tmp_path):
+    # The live summary is built from read_reviewed; without the old values it
+    # printed every transition as "None -> ..." and every shared count as 0.
+    item = ExportItem(codex_id=_cx(1), slug="slug-1", title="T", confidence=0.9,
+                      fields={"product_type": "map", "level_range_min": 1, "level_range_max": 3},
+                      kinds={"product_type": "correction", "level_range_min": "fill",
+                             "level_range_max": "correction"},
+                      type_evidence=None, level_evidence=None,
+                      old={"product_type": "adventure", "level_range_min": None,
+                           "level_range_max": 5},
+                      shared_with=10)
+    out = tmp_path / "report.csv"
+    write_report([item], {}, out)
+
+    [reviewed] = read_reviewed(out)
+
+    assert reviewed.old == item.old
+    assert reviewed.kinds == item.kinds
+    assert reviewed.shared_with == 10

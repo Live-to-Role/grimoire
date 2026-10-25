@@ -217,19 +217,20 @@ def read_reviewed(path: Path) -> list[ExportItem]:
                     fields[name] = value
             if not fields:
                 continue
-            kinds = {}
-            if "product_type" in fields:
-                kinds["product_type"] = row.get("type_kind", "")
-            for name in LEVEL_FIELDS:
-                if name in fields:
-                    kinds[name] = row.get("level_kind", "")
+            old = {
+                "product_type": (row.get("type_old") or "").strip() or None,
+                LEVEL_FIELDS[0]: _int(row.get("min_old", "")),
+                LEVEL_FIELDS[1]: _int(row.get("max_old", "")),
+            }
             confidence = (row.get("confidence") or "").strip()
+            shared = (row.get("shared_file") or "").strip()
             items.append(ExportItem(
                 codex_id=row["codex_id"], slug=row["slug"], title=row["title"],
-                fields=fields, kinds=kinds,
+                fields=fields, kinds={name: _kind(old[name]) for name in fields},
                 confidence=float(confidence) if confidence else None,
                 type_evidence=row.get("type_evidence") or None,
                 level_evidence=row.get("level_evidence") or None,
+                old=old, shared_with=int(shared) if shared else 0,
             ))
     return items
 
