@@ -54,6 +54,22 @@ def cmd_import_codex(args) -> None:
     print(f"{n} rows")
 
 
+def cmd_match(args) -> None:
+    import csv
+
+    from grimoire.services.classification.matching import match_all
+
+    report = asyncio.run(_with_session(lambda db: match_all(db, args.fuzzy_threshold)))
+    print(f"folder={report.folder} title={report.title} fuzzy={report.fuzzy} none={report.none}")
+    out = Path(args.report)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    with open(out, "w", encoding="utf-8", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(["slug", "title", "publisher"])
+        writer.writerows(report.unmatched)
+    print(f"unmatched -> {out}")
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     sub = parser.add_subparsers(dest="command", required=True)
@@ -65,6 +81,11 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("import-codex", help="upsert a Codex snapshot CSV")
     p.add_argument("csv")
     p.set_defaults(func=cmd_import_codex)
+
+    p = sub.add_parser("match", help="match Codex products to Grimoire files")
+    p.add_argument("--fuzzy-threshold", type=int, default=90)
+    p.add_argument("--report", default=str(DATA_DIR / "unmatched.csv"))
+    p.set_defaults(func=cmd_match)
 
     return parser
 
