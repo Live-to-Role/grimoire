@@ -16,6 +16,7 @@ from grimoire.models.deleted_duplicate import DeletedDuplicate
 from grimoire.models.product_search_vector import ProductSearchVector
 from grimoire.models.monster_entry import MonsterEntry
 from grimoire.models.bestiary_favorite import BestiaryFavorite
+from grimoire.models.classification import ClassificationResult, ClassificationRun, CodexProduct
 
 __all__ = [
     "Product",
@@ -41,4 +42,7 @@ __all__ = [
     "ProductSearchVector",
     "MonsterEntry",
     "BestiaryFavorite",
+    "CodexProduct",
+    "ClassificationRun",
+    "ClassificationResult",
 ]
