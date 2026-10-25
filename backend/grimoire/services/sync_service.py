@@ -20,6 +20,7 @@ from grimoire.services.codex import (
     IdentificationSource,
     MatchType,
 )
+from grimoire.services.classification.enum import CODEX_PRODUCT_TYPES, normalize_free_text
 from grimoire.services.codex_eligibility import is_codex_eligible, may_share_cover
 from grimoire.services.contribution_service import (
     CodexIneligibleError,
@@ -37,37 +38,6 @@ CONTRIBUTION_FIELDS = [
     "estimated_runtime", "series", "series_order", "format", "isbn", "msrp",
     "dtrpg_url", "itch_url", "themes", "content_warnings",
 ]
-
-# Valid Codex product types
-CODEX_PRODUCT_TYPES = {
-    "adventure", "sourcebook", "supplement", "bestiary",
-    "tools", "magazine", "core_rules", "screen", "other",
-}
-
-# Mapping from Grimoire product types to Codex product types
-PRODUCT_TYPE_MAPPING = {
-    # Direct matches (case-insensitive)
-    "adventure": "adventure",
-    "sourcebook": "sourcebook",
-    "supplement": "supplement",
-    "bestiary": "bestiary",
-    "screen": "screen",
-    "other": "other",
-    # Grimoire-specific mappings
-    "core rulebook": "core_rules",
-    "setting": "sourcebook",
-    "character options": "supplement",
-    "gm tools": "tools",
-    "map": "other",
-    "zine": "magazine",
-    "magazine": "magazine",
-    # Additional common variations
-    "module": "adventure",
-    "campaign": "adventure",
-    "one-shot": "adventure",
-    "art/maps": "other",
-}
-
 
 def _parse_json_array(value: str | None) -> list[str] | None:
     """
@@ -101,28 +71,27 @@ def _parse_json_array(value: str | None) -> list[str] | None:
 def normalize_product_type(product_type: str | None) -> str | None:
     """
     Normalize a Grimoire product type to a Codex-accepted value.
-    
+
+    The column holds the Codex enum, so enum values pass through unchanged.
+    Free text left over from before the reclassification goes through the
+    vocabulary table; anything still unknown is sent as "other".
+
     Args:
         product_type: The product type from Grimoire
-        
+
     Returns:
         Codex-compatible product type, or None if input is None
     """
     if not product_type:
         return None
-    
-    # Check direct match first (case-insensitive)
-    normalized = product_type.lower().strip()
-    
-    # Check mapping
-    if normalized in PRODUCT_TYPE_MAPPING:
-        return PRODUCT_TYPE_MAPPING[normalized]
-    
-    # Check if already a valid Codex type
-    if normalized in CODEX_PRODUCT_TYPES:
-        return normalized
-    
-    # Default to "other" for unknown types
+
+    if product_type in CODEX_PRODUCT_TYPES:
+        return product_type
+
+    mapped = normalize_free_text(product_type)
+    if mapped is not None:
+        return mapped
+
     logger.debug(f"Unknown product_type '{product_type}' mapped to 'other'")
     return "other"
 
