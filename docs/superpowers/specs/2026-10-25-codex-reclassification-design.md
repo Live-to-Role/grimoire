@@ -268,11 +268,13 @@ else. The live run records the Codex response per item so a re-run
 reports `unchanged` rather than re-sending.
 
 **Prerequisite, verified 2026-10-25:** the endpoint is deployed on prod
-(a dry run answered 401, not 404) and `may_overwrite_classification` is
-ticked, but the token Grimoire holds in its settings table is rejected
-("Invalid token"). The current Grimoire token from Codex's admin must be
-saved in Grimoire settings before the dry run. The request also needs a
-real `User-Agent`; Cloudflare returns 403 error 1010 to Python's default.
+and Grimoire's stored token authenticates. Settings values are stored
+JSON-encoded, so read the token with `json.loads` as `settings.py` does.
+The token was regenerated after the flag was ticked, so the new token
+still needs `may_overwrite_classification` ticked in Codex's admin: a
+dry run currently answers 403 "This credential may not overwrite
+classifications." The request also needs a real `User-Agent`; Cloudflare
+returns 403 error 1010 to Python's default.
 
 ## Phase C: stop the data rotting again
 
@@ -379,5 +381,5 @@ measured token counts replace this table before the full run.
   reviewed CSV; `--min-confidence` drops the tail. (Folded into §8.)
 - Map the common free-text types deterministically. (Phase D.)
 - Known-wrong examples: found in the Codex dump by Claude. (Folded into §6.)
-- `may_overwrite_classification` is ticked and the endpoint is deployed.
-  Grimoire's stored token is stale; see the prerequisite in §8.
+- The endpoint is deployed and the token authenticates, but the
+  regenerated token needs the flag ticked again; see §8.
