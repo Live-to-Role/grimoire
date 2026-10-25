@@ -156,6 +156,49 @@ def cmd_collect(args) -> None:
     asyncio.run(_with_session(run))
 
 
+def cmd_select_pilot(args) -> None:
+    from collections import Counter
+
+    from sqlalchemy import select
+
+    from grimoire.models.classification import CodexProduct
+    from grimoire.services.classification.pilot import select_pilot
+
+    async def run(db):
+        slugs = await select_pilot(db, n=args.n, seed=args.seed)
+        rows = (await db.execute(select(CodexProduct).where(CodexProduct.in_pilot.is_(True)))).scalars()
+        by = Counter("description" if r.match_method == "none" else (r.product_type or "(blank)")
+                     for r in rows)
+        return slugs, by
+
+    slugs, by = asyncio.run(_with_session(run))
+    print(f"{len(slugs)} pilot products")
+    for key, count in by.most_common():
+        print(f"  {key}: {count}")
+
+
+def cmd_pilot_sheet(args) -> None:
+    from grimoire.services.classification.pilot import write_pilot_sheet
+
+    out = Path(args.out)
+    excerpt_dir = out.parent / "pilot_excerpts"
+    runs = args.runs.split(",")
+    n = asyncio.run(_with_session(lambda db: write_pilot_sheet(db, runs, out, excerpt_dir)))
+    print(f"{n} rows -> {out}; excerpts in {excerpt_dir}")
+
+
+def cmd_pilot_score(args) -> None:
+    from grimoire.services.classification.pilot import score_pilot
+
+    runs = args.runs.split(",")
+    scores = asyncio.run(_with_session(lambda db: score_pilot(db, runs, Path(args.truth))))
+    print(f"{'run':<16}{'n':>5}{'type':>8}{'levels':>8}{'lvl FP':>8}{'$/product':>11}{'full run':>10}")
+    for s in scores:
+        full = s.cost_per_product * args.full_count
+        print(f"{s.run:<16}{s.n:>5}{s.type_accuracy:>8.1%}{s.level_exact:>8.1%}"
+              f"{s.level_false_positive:>8.1%}{s.cost_per_product:>11.4f}{full:>10.2f}")
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     sub = parser.add_subparsers(dest="command", required=True)
@@ -192,6 +235,22 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--run", required=True)
     p.add_argument("--wait", action="store_true", help="poll every 60 s until the batches end")
     p.set_defaults(func=cmd_collect)
+
+    p = sub.add_parser("select-pilot", help="pick the hand-labelled pilot products")
+    p.add_argument("--n", type=int, default=150)
+    p.add_argument("--seed", type=int, default=20261025)
+    p.set_defaults(func=cmd_select_pilot)
+
+    p = sub.add_parser("pilot-sheet", help="write the pilot label sheet and excerpts")
+    p.add_argument("--runs", required=True, help="comma-separated run names")
+    p.add_argument("--out", default=str(DATA_DIR / "pilot.csv"))
+    p.set_defaults(func=cmd_pilot_sheet)
+
+    p = sub.add_parser("pilot-score", help="score runs against the labelled pilot sheet")
+    p.add_argument("--runs", required=True, help="comma-separated run names")
+    p.add_argument("--truth", required=True)
+    p.add_argument("--full-count", type=int, default=7327, help="products in the full run")
+    p.set_defaults(func=cmd_pilot_score)
 
     return parser
 
