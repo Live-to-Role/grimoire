@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from grimoire.models import Product, Setting
 from grimoire.models.classification import ClassificationResult, ClassificationRun, CodexProduct
+from grimoire.services.classification.enum import normalize_free_text
 from grimoire.services.classification.excerpt import (
     Excerpt,
     build_description_excerpt,
@@ -175,7 +176,8 @@ def _store(row: ClassificationResult, result) -> tuple[bool, int, int]:
         return False, tokens_in, tokens_out
 
     row.error = None
-    row.product_type_new = out.product_type
+    # The schema still allows magazine; every periodical is stored as zine.
+    row.product_type_new = normalize_free_text(out.product_type)
     row.level_min_new = out.level_range_min
     row.level_max_new = out.level_range_max
     row.confidence = out.confidence
@@ -208,15 +210,23 @@ async def collect_run(db: AsyncSession, client, name: str, wait: bool = False,
     counts = {"stored": 0, "error": 0}
     # Totals are recomputed from the full result set, so collecting twice is safe.
     run.input_tokens = run.output_tokens = 0
+    returned: set[str] = set()
     for batch_id in batch_ids:
         for entry in client.messages.batches.results(batch_id):
             row = rows.get(entry.custom_id)
             if row is None:
                 continue
+            returned.add(entry.custom_id)
             stored, tokens_in, tokens_out = _store(row, entry.result)
             counts["stored" if stored else "error"] += 1
             run.input_tokens += tokens_in
             run.output_tokens += tokens_out
+    # Every batch has ended, so a row with no result never gets one. Left
+    # without an error, apply would read its null type as the decision.
+    for custom_id, row in rows.items():
+        if custom_id not in returned:
+            row.error = "no result returned"
+            counts["error"] += 1
 
     run.cost_usd = cost_usd(run.model, run.input_tokens, run.output_tokens)
     run.status = "collected"

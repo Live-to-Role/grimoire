@@ -1,5 +1,5 @@
 import pytest
-from sqlalchemy import update
+from sqlalchemy import select, update
 
 from grimoire.models import ClassificationResult, ClassificationRun, CodexProduct, Product
 from grimoire.services.classification.apply import (
@@ -290,3 +290,18 @@ async def test_restore_image_types_dry_run_writes_nothing(db):
     await db.refresh(row)
     assert restored == 1
     assert p.product_type == "tools" and row.product_type_new == "tools"
+
+
+async def test_apply_skips_rows_without_a_new_type(db):
+    # A collected row with no type and no error (a result that never came back,
+    # collected before collect marked such rows) must not blank the product.
+    p = await _product(db, "a.pdf", "Supplement", (3, 5))
+    run = await _run(db, dict(product_id=p.id, product_type_new=None))
+
+    report = await apply_run(db, "full")
+
+    await db.refresh(p)
+    row = (await db.execute(
+        select(ClassificationResult).where(ClassificationResult.run_id == run.id))).scalar_one()
+    assert p.product_type == "Supplement" and row.applied_at is None
+    assert report.skipped_no_result == 1 and report.applied == 0

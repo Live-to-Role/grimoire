@@ -161,7 +161,8 @@ def cmd_apply(args) -> None:
 
     report = asyncio.run(_with_session(lambda db: apply_run(db, args.run)))
     print(f"applied {report.applied}; skipped: already applied {report.skipped_applied}, "
-          f"errors {report.skipped_error}, no Grimoire product {report.skipped_no_product}")
+          f"errors {report.skipped_error}, no result {report.skipped_no_result}, "
+          f"no Grimoire product {report.skipped_no_product}")
 
 
 def cmd_export(args) -> None:

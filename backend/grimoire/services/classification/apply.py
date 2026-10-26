@@ -52,6 +52,7 @@ class ApplyReport:
     skipped_applied: int = 0
     skipped_error: int = 0
     skipped_no_product: int = 0
+    skipped_no_result: int = 0
 
 
 async def apply_run(db: AsyncSession, run_name: str) -> ApplyReport:
@@ -77,6 +78,9 @@ async def apply_run(db: AsyncSession, run_name: str) -> ApplyReport:
     for r in results:
         if r.error:
             report.skipped_error += 1
+        elif r.product_type_new is None:
+            # No decision came back; a null here must never blank the product.
+            report.skipped_no_result += 1
         elif r.applied_at is not None:
             report.skipped_applied += 1
         elif r.product_id is None or r.product_id not in products:

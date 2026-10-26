@@ -264,3 +264,32 @@ async def test_build_items_matched_without_text_falls_back_to_description(db):
 async def test_build_items_all(db):
     await _seed(db)
     assert len(await build_items(db, all_=True)) == 3
+
+
+async def test_collect_maps_magazine_to_zine(db, fake_client):
+    # The output schema still allows magazine; every periodical is a zine.
+    await _seed(db)
+    await submit_run(db, fake_client, "r", "claude-sonnet-5-5", "medium", [_item(CX1)])
+    batches = fake_client.messages.batches
+    batches.status["msgbatch_1"] = "ended"
+    batches.result_sets["msgbatch_1"] = [_succeeded(CX1, _good(product_type="magazine"))]
+
+    await collect_run(db, fake_client, "r")
+
+    row = (await db.execute(select(ClassificationResult))).scalar_one()
+    assert row.product_type_new == "zine"
+
+
+async def test_collect_marks_rows_with_no_result(db, fake_client):
+    await _seed(db)
+    await submit_run(db, fake_client, "r", "claude-sonnet-5-5", "medium", [_item(CX1), _item(CX2)])
+    batches = fake_client.messages.batches
+    batches.status["msgbatch_1"] = "ended"
+    batches.result_sets["msgbatch_1"] = [_succeeded(CX1, _good())]
+
+    counts = await collect_run(db, fake_client, "r")
+
+    rows = {r.codex_product_id: r for r in (await db.execute(select(ClassificationResult))).scalars()}
+    assert rows[CX1].error is None
+    assert rows[CX2].error == "no result returned" and rows[CX2].product_type_new is None
+    assert counts == {"stored": 1, "error": 1}
