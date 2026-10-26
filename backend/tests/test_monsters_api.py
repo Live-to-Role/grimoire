@@ -59,6 +59,20 @@ async def test_list_filters_by_environment_and_default_confirmed(db):
     assert [i["name"] for i in pending["items"]] == ["Pending Rat"]
 
 
+async def test_list_hides_entries_on_duplicate_or_superseded_copies(db):
+    await seed(db, "/t/api-live-1.pdf", "Live Lurker", "fen")
+    hidden, _ = await seed(db, "/t/api-live-2.pdf", "Hidden Lurker", "fen")
+    hidden.is_duplicate = True
+    old, _ = await seed(db, "/t/api-live-3.pdf", "Old Lurker", "fen")
+    old.is_superseded = True
+    await db.flush()
+
+    result = await list_monsters(db=db, environment="fen")
+
+    assert [i["name"] for i in result["items"]] == ["Live Lurker"]
+    assert result["total"] == 1
+
+
 async def test_hd_range_filter(db):
     await seed(db, "/t/api-hd-1.pdf", "Big Troll", "hills", hd_value=6.0)
     result = await list_monsters(db=db, hd_min=5.0)

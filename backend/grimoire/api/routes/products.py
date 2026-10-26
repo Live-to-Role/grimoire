@@ -16,6 +16,7 @@ from grimoire.api.deps import DbSession, Pagination
 from grimoire.config import settings
 from grimoire.utils.security import validate_covers_path, validate_path_in_directory, PathTraversalError
 from grimoire.models import Product, ProductTag, Tag
+from grimoire.models.product import live_product_conditions
 from grimoire.services.fts_service import check_fts_available
 from grimoire.schemas.product import (
     ProductListResponse,
@@ -143,7 +144,7 @@ async def list_products(
 ) -> ProductListResponse:
     """List products with filtering and pagination."""
     # Collect all filter conditions
-    conditions = [Product.is_duplicate == False, Product.is_missing == False, Product.is_superseded == False]
+    conditions = list(live_product_conditions())
 
     if search:
         search_term = f"%{search}%"

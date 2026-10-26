@@ -7,15 +7,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from grimoire.mcp.common import MAX_CHARS, ToolError, json_list, load_product, product_summary
 from grimoire.models import Collection, CollectionProduct, Product, ProductTag, Tag
+from grimoire.models.product import live_product_conditions
 
 MAX_LIST = 100
 MAX_CONTEXT_PAGES = 3
-
-_LIVE = (
-    Product.is_duplicate == False,  # noqa: E712 - SQLAlchemy comparison
-    Product.is_missing == False,  # noqa: E712
-    Product.is_superseded == False,  # noqa: E712
-)
 
 
 def _no_text(product: Product) -> ToolError:
@@ -84,7 +79,7 @@ async def list_products(
 ) -> dict:
     limit = max(1, min(int(limit), MAX_LIST))
     offset = max(0, int(offset))
-    conditions = list(_LIVE)
+    conditions = list(live_product_conditions())
     if query and query.strip():
         like = f"%{query.strip()}%"
         conditions.append(Product.title.ilike(like) | Product.file_name.ilike(like))

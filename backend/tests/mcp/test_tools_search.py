@@ -196,3 +196,39 @@ async def test_keyword_level_filter_looks_past_the_first_page_of_hits(db, librar
     out = await tools_search.search_library(db, query="ferryman", limit=1, level_min=5)
 
     assert [h["product_id"] for h in out["results"]] == [high.id]
+
+
+async def test_search_hides_superseded_revisions(db, library):
+    """The Library hides superseded revisions everywhere; search must too, on
+    the body path, the keyword path and the metadata candidates alike."""
+    from grimoire.services.fts_service import fts_candidates
+    from tests.mcp.conftest import _product
+
+    old = await _product(
+        db,
+        file_hash="sf1-old",
+        title="SF1 Volturnus, first printing",
+        text_path=None,
+        chunks=[("Kurabanda scouts watch the party from the trees.", 3)],
+        is_superseded=True,
+    )
+
+    phrase = await tools_search.find_phrase(db, phrase="Kurabanda")
+    assert [h["product_id"] for h in phrase["results"]] == [library["sf1"].id]
+
+    keyword = await tools_search.search_library(db, query="Kurabanda")
+    assert [h["product_id"] for h in keyword["results"]] == [library["sf1"].id]
+
+    # Title match: the live SF1, not the superseded printing nor the duplicate.
+    ids = {row[0] for row in await fts_candidates(db, "Volturnus")}
+    assert ids == {library["sf1"].id}, (ids, old.id)
+
+
+async def test_search_library_rejects_bad_levels_with_a_usable_message(db, library, fake_search):
+    with pytest.raises(ToolError, match="level_min"):
+        await tools_search.search_library(db, query="funnel", level_min=-1)
+    with pytest.raises(ToolError, match="level_max"):
+        await tools_search.search_library(db, query="funnel", level_max=-2)
+    with pytest.raises(ToolError, match="level_min"):
+        await tools_search.search_library(db, query="funnel", level_min=5, level_max=3)
+    assert fake_search == []

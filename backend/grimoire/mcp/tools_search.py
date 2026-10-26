@@ -60,6 +60,16 @@ def _clamp(value: int, upper: int) -> int:
     return max(1, min(int(value), upper))
 
 
+def _check_levels(level_min: int | None, level_max: int | None) -> None:
+    """A usable message instead of the pydantic dump SemanticSearchRequest gives."""
+    if level_min is not None and level_min < 0:
+        raise ToolError("level_min must be 0 or greater (0 is a character funnel)")
+    if level_max is not None and level_max < 0:
+        raise ToolError("level_max must be 0 or greater")
+    if level_min is not None and level_max is not None and level_min > level_max:
+        raise ToolError(f"level_min ({level_min}) must not exceed level_max ({level_max})")
+
+
 async def search_library(
     db: AsyncSession,
     *,
@@ -74,6 +84,7 @@ async def search_library(
     query = query.strip()[:QUERY_MAX_LENGTH]
     if not query:
         raise ToolError("query must not be empty")
+    _check_levels(level_min, level_max)
     limit = _clamp(limit, MAX_RESULTS)
     mode, _ = await search_mode(db)
 

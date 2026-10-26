@@ -9,6 +9,7 @@ from sqlalchemy import func, select, update
 
 from grimoire.api.deps import DbSession
 from grimoire.models import BestiaryFavorite, MonsterEntry, ProcessingQueue, Product
+from grimoire.models.product import live_product_conditions
 from grimoire.processors.system_profiles import PROFILES
 from grimoire.services.monster_fields import derive_stats
 from grimoire.services.monster_metrics import compute_metrics
@@ -229,8 +230,15 @@ async def list_monsters(
     per_page = max(1, min(per_page, 200))
     page = max(1, page)
     conditions = _base_conditions(environment, system_profile, product_ids, review_status, hd_min, hd_max, q)
+    # Entries on duplicate, missing or superseded copies point at books the
+    # Library hides, so they are hidden here too.
+    conditions.extend(live_product_conditions())
 
-    count_query = select(func.count(MonsterEntry.id)).where(*conditions)
+    count_query = (
+        select(func.count(MonsterEntry.id))
+        .join(Product, Product.id == MonsterEntry.product_id)
+        .where(*conditions)
+    )
     total = (await db.execute(count_query)).scalar() or 0
 
     query = (

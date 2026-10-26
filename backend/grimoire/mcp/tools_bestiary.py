@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from grimoire.mcp.common import json_list
 from grimoire.models import MonsterEntry, Product
+from grimoire.models.product import live_product_conditions
 
 MAX_LIST = 100
 
@@ -54,7 +55,14 @@ async def list_monsters(
         hd_max=hd_max,
         q=name,
     )
-    total = (await db.execute(select(func.count(MonsterEntry.id)).where(*conditions))).scalar()
+    conditions.extend(live_product_conditions())
+    total = (
+        await db.execute(
+            select(func.count(MonsterEntry.id))
+            .join(Product, Product.id == MonsterEntry.product_id)
+            .where(*conditions)
+        )
+    ).scalar()
     rows = await db.execute(
         select(MonsterEntry, Product.title, Product.file_name)
         .join(Product, Product.id == MonsterEntry.product_id)

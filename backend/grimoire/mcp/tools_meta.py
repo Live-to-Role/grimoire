@@ -5,13 +5,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from grimoire.mcp.common import search_mode
 from grimoire.models import MonsterEntry, Product
+from grimoire.models.product import live_product_conditions
 from grimoire.models.product_search_vector import ProductSearchVector
-
-_LIVE = (
-    Product.is_duplicate == False,  # noqa: E712 - SQLAlchemy comparison
-    Product.is_missing == False,  # noqa: E712
-    Product.is_superseded == False,  # noqa: E712
-)
 
 
 async def _count(db: AsyncSession, statement) -> int:
@@ -19,10 +14,11 @@ async def _count(db: AsyncSession, statement) -> int:
 
 
 async def library_stats(db: AsyncSession) -> dict:
-    products = await _count(db, select(func.count(Product.id)).where(*_LIVE))
+    live = live_product_conditions()
+    products = await _count(db, select(func.count(Product.id)).where(*live))
     extracted = await _count(
         db,
-        select(func.count(Product.id)).where(*_LIVE, Product.text_extracted == True),  # noqa: E712
+        select(func.count(Product.id)).where(*live, Product.text_extracted == True),  # noqa: E712
     )
     # Semantic search ranks over product_search_vectors (one averaged vector per
     # product), not over the chunk embeddings, so this is what it can find.
@@ -30,7 +26,7 @@ async def library_stats(db: AsyncSession) -> dict:
         db,
         select(func.count(func.distinct(ProductSearchVector.product_id)))
         .join(Product, Product.id == ProductSearchVector.product_id)
-        .where(*_LIVE),
+        .where(*live),
     )
     monsters = await _count(
         db,
