@@ -36,9 +36,11 @@ async def search_library(
 ) -> dict:
     """Search the library by topic. Semantic plus keyword when semantic search is
     configured, keyword-only otherwise (the result says which). Each hit has a
-    product_id, score, match_type, matched_page and snippet. Filters are exact
-    matches on game_system and product_type (adventure, supplement, rulebook,
-    map, ...); level_min/level_max keep products whose level range overlaps.
+    product_id, score, match_type, matched_page and snippet. game_system is an
+    exact match. product_type is one of adventure, sourcebook, supplement,
+    bestiary, tools, core_rulebook, setting, character_options, gm_tools, map,
+    zine, screen, other (common spellings such as "Rulebook" are mapped);
+    level_min/level_max keep products whose level range overlaps.
     Follow up with get_page(product_id, matched_page) before quoting."""
     async with open_session() as db:
         return await tools_search.search_library(

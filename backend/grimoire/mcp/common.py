@@ -8,11 +8,26 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from grimoire.models import Product, ProductTag, Setting
+from grimoire.services.classification.enum import canonical_product_type
 
-__all__ = ["ToolError", "load_product", "product_summary", "search_mode", "json_list"]
+__all__ = [
+    "ToolError", "load_product", "product_summary", "product_type_filter", "search_mode", "json_list",
+]
 
 # Hard ceiling on characters of document text any single call returns.
 MAX_CHARS = 20_000
+
+
+def product_type_filter(value: str | None) -> str | None:
+    """A caller's product_type, spelled the way the column stores it.
+
+    The filters are exact matches and the column holds the Codex enum, so an
+    assistant's "Rulebook" or "Map" would otherwise match nothing. Same rule
+    the Product model applies on write.
+    """
+    if value is None or not value.strip():
+        return None
+    return canonical_product_type(value.strip())
 
 
 def product_summary(product: Product) -> dict:

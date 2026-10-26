@@ -232,3 +232,18 @@ async def test_search_library_rejects_bad_levels_with_a_usable_message(db, libra
     with pytest.raises(ToolError, match="level_min"):
         await tools_search.search_library(db, query="funnel", level_min=5, level_max=3)
     assert fake_search == []
+
+
+async def test_search_library_type_filter_uses_the_stored_spelling(db, library, fake_search):
+    # The tool docs used to suggest "rulebook"; the column holds core_rulebook.
+    await set_search_provider(db, "ollama")
+
+    await tools_search.search_library(db, query="x", product_type="Rulebook")
+
+    assert fake_search[0].product_type == "core_rulebook"
+
+
+async def test_find_phrase_type_filter_takes_any_known_spelling(db, library):
+    out = await tools_search.find_phrase(db, phrase="Kurabanda", product_type="Adventure")
+
+    assert [r["product_id"] for r in out["results"]] == [library["sf1"].id]

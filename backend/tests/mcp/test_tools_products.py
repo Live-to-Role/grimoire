@@ -200,3 +200,10 @@ async def test_disk_reads_run_off_the_event_loop(db, library, monkeypatch):
 
     assert len(threads) >= 3
     assert all(t is not threading.main_thread() for t in threads)
+
+
+async def test_list_products_type_filter_takes_any_known_spelling(db, library):
+    # Types are stored as the Codex enum; an assistant may say "Map" or "Art/Maps".
+    for spelling in ("Map", "Art/Maps", " map "):
+        out = await tools_products.list_products(db, product_type=spelling)
+        assert [p["product_id"] for p in out["results"]] == [library["bare"].id], spelling

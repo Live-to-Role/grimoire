@@ -5,7 +5,9 @@ import asyncio
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from grimoire.mcp.common import MAX_CHARS, ToolError, json_list, load_product, product_summary
+from grimoire.mcp.common import (
+    MAX_CHARS, ToolError, json_list, load_product, product_summary, product_type_filter,
+)
 from grimoire.models import Collection, CollectionProduct, Product, ProductTag, Tag
 from grimoire.models.product import live_product_conditions
 
@@ -85,6 +87,7 @@ async def list_products(
         conditions.append(Product.title.ilike(like) | Product.file_name.ilike(like))
     if game_system:
         conditions.append(Product.game_system == game_system)
+    product_type = product_type_filter(product_type)
     if product_type:
         conditions.append(Product.product_type == product_type)
     if publisher:
