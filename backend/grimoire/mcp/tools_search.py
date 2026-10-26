@@ -213,8 +213,13 @@ async def search_pack(
                 entry = dict(hit, matched_queries=[], best_query=query)
                 merged[pid] = entry
             elif (hit.get("score") or 0) > (entry.get("score") or 0):
+                # The winner sets score and best_query, but a title match that
+                # outscores a body match carries no page: keep the only pointer.
                 matched = entry["matched_queries"]
+                page, snippet = entry.get("matched_page"), entry.get("snippet")
                 entry.update(hit, matched_queries=matched, best_query=query)
+                if entry.get("matched_page") is None and page is not None:
+                    entry["matched_page"], entry["snippet"] = page, snippet
             entry["matched_queries"].append(query)
 
     results = sorted(merged.values(), key=lambda h: h.get("score") or 0, reverse=True)
