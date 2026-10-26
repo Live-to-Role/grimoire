@@ -300,6 +300,51 @@ nothing is ever processed:
 
 > **Note**: When running natively, Ollama URL defaults to `http://localhost:11434` (no `host.docker.internal` needed). Redis is optional — the queue falls back to SQLite-based processing.
 
+## Use with an AI assistant (MCP)
+
+Grimoire serves a read-only [Model Context Protocol](https://modelcontextprotocol.io)
+endpoint at `http://localhost:8000/mcp`, on both the Docker and the native
+install, with nothing extra to start. Connect an assistant to it and the
+assistant can search your library, read pages of your books and look up
+confirmed bestiary entries while you prep.
+
+Claude Code:
+
+```bash
+claude mcp add --transport http grimoire http://localhost:8000/mcp
+```
+
+Any other client that takes an HTTP MCP server uses the same URL, for example:
+
+```json
+{
+  "mcpServers": {
+    "grimoire": { "url": "http://localhost:8000/mcp" }
+  }
+}
+```
+
+A client that only speaks stdio can bridge with `npx mcp-remote http://localhost:8000/mcp`.
+
+| Tool | What it does |
+|------|--------------|
+| `search_library` | Topic search; semantic plus keyword when a search provider is set in Settings, keyword-only otherwise |
+| `find_phrase` | Where the library's text says a name or exact term, with the page number |
+| `search_pack` | Several phrasings in one call, merged by product |
+| `get_product` / `list_products` | Catalogue metadata and browsing with the Library's filters |
+| `get_page` / `get_text` | The extracted markdown of one page, or a window of the full text |
+| `list_monsters` | Confirmed bestiary entries as pointers: name, book, page, HD, AC, environments |
+| `library_stats` | Counts and whether search is in hybrid or keyword-only mode |
+
+Every tool is read-only. Two things to keep in mind:
+
+- The endpoint returns your extracted text to whichever assistant you connect.
+  If that assistant uses a cloud model, the text goes to that model, exactly as
+  it does when you pick a cloud provider in Settings.
+- Like the rest of the API, the endpoint has no login. It is reachable wherever
+  port 8000 is reachable, so if you publish that port beyond your own machine,
+  this is published with it.
+
 ## Troubleshooting
 
 ### Generate a diagnostic report
@@ -482,6 +527,7 @@ grimoire/
 ### Search
 - `GET /api/v1/search?q=query` - Full-text search
 - `POST /api/v1/semantic/search` - Semantic similarity search
+- `POST /mcp` - Model Context Protocol endpoint for AI assistants (see above)
 
 ### AI & Identification
 - `POST /api/v1/ai/identify/{id}` - AI-identify a product
