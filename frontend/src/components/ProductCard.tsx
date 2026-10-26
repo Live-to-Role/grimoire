@@ -4,6 +4,7 @@ import { useMutation } from '@tanstack/react-query';
 import type { Product } from '../types/product';
 import { getCoverUrl } from '../api/products';
 import apiClient from '../api/client';
+import { productTypeLabel } from '../lib/productType';
 
 interface ProductCardProps {
   product: Product;
@@ -141,7 +142,7 @@ export function ProductCard({ product, onClick, viewMode = 'grid', selectable, s
           )}
           {product.product_type && (
             <span className="badge-secondary text-sm px-3 py-1">
-              {product.product_type}
+              {productTypeLabel(product.product_type)}
             </span>
           )}
           {product.processing_status?.text_extracted && (
@@ -302,7 +303,7 @@ export function ProductCard({ product, onClick, viewMode = 'grid', selectable, s
           )}
           {product.product_type && (
             <span className="badge-secondary text-sm px-3 py-1">
-              {product.product_type}
+              {productTypeLabel(product.product_type)}
             </span>
           )}
         </div>

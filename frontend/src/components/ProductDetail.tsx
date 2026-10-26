@@ -39,6 +39,7 @@ import { PDFViewer } from './PDFViewer';
 import { ComboboxWithAdd } from './ComboboxWithAdd';
 import { useFocusTrap } from '../hooks/useFocusTrap';
 import { queueExtraction } from '../api/monsters';
+import { SELECTABLE_PRODUCT_TYPES, productTypeLabel } from '../lib/productType';
 
 interface LibraryStats {
   total_products: number;
@@ -844,15 +845,13 @@ export function ProductDetail({ product, onClose }: ProductDetailProps) {
                             className="mt-1 w-full rounded-md border px-3 py-2 text-lg focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500" style={{ borderColor: 'var(--color-border)', minHeight: '48px', fontSize: '18px' }}
                           >
                             <option value="">Select...</option>
-                            <option value="adventure">Adventure</option>
-                            <option value="sourcebook">Sourcebook</option>
-                            <option value="supplement">Supplement</option>
-                            <option value="bestiary">Bestiary</option>
-                            <option value="core_rules">Core Rules</option>
-                            <option value="tools">Tools</option>
-                            <option value="magazine">Magazine</option>
-                            <option value="screen">Screen</option>
-                            <option value="other">Other</option>
+                            {SELECTABLE_PRODUCT_TYPES.map((t) => (
+                              <option key={t} value={t}>{productTypeLabel(t)}</option>
+                            ))}
+                            {/* A value outside the list (old free text, magazine) stays selectable, so saving never silently changes it. */}
+                            {editForm.product_type && !(SELECTABLE_PRODUCT_TYPES as readonly string[]).includes(editForm.product_type) && (
+                              <option value={editForm.product_type}>{productTypeLabel(editForm.product_type)}</option>
+                            )}
                           </select>
                         </div>
                       </div>
@@ -1082,7 +1081,7 @@ export function ProductDetail({ product, onClose }: ProductDetailProps) {
                           <FileText className="h-4 w-4" style={{ color: 'var(--color-text-secondary)' }} />
                           <div>
                             <p className="text-base" style={{ color: 'var(--color-text-secondary)' }}>Type</p>
-                            <p className="text-lg font-medium" style={{ color: 'var(--color-text-primary)' }}>{localProduct.product_type}</p>
+                            <p className="text-lg font-medium" style={{ color: 'var(--color-text-primary)' }}>{productTypeLabel(localProduct.product_type)}</p>
                           </div>
                         </div>
                       )}

@@ -23,6 +23,7 @@ import type { Collection } from '../api/collections';
 import type { Tag as TagType } from '../api/tags';
 import type { ProductFilters } from '../api/products';
 import apiClient from '../api/client';
+import { productTypeLabel } from '../lib/productType';
 
 interface LibraryStats {
   total_products: number;
@@ -432,7 +433,7 @@ export function FilterDrawer({
                   .map(([type, count]) => (
                     <FilterItem
                       key={type}
-                      label={type}
+                      label={productTypeLabel(type)}
                       count={count}
                       active={activeFilters.product_type === type}
                       onClick={() => onFilterChange('product_type', activeFilters.product_type === type ? null : type)}

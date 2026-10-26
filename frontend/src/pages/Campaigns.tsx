@@ -17,6 +17,7 @@ import {
   History,
 } from 'lucide-react';
 import apiClient from '../api/client';
+import { productTypeLabel } from '../lib/productType';
 
 interface Campaign {
   id: number;
@@ -568,7 +569,7 @@ export function Campaigns() {
                             <span>{product.game_system}</span>
                           )}
                           {product.product_type && (
-                            <span className="capitalize">{product.product_type}</span>
+                            <span>{productTypeLabel(product.product_type)}</span>
                           )}
                         </div>
                       </div>
@@ -1087,7 +1088,7 @@ export function Campaigns() {
                             <span>{product.game_system}</span>
                           )}
                           {product.product_type && (
-                            <span className="capitalize">{product.product_type}</span>
+                            <span>{productTypeLabel(product.product_type)}</span>
                           )}
                         </div>
                       </div>
