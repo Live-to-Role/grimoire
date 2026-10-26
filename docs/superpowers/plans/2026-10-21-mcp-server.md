@@ -2,7 +2,7 @@
 
 **Date:** 2026-10-21
 **Spec:** `docs/superpowers/specs/2026-10-21-mcp-server-design.md`
-**Status:** Executed 2026-10-21 in one pass; kept as the record of the steps and what each one found.
+**Status:** Executed 2026-10-21 in one pass except the final live assistant check, done 2026-10-25 after merge; kept as the record of the steps and what each one found.
 
 ## Steps
 

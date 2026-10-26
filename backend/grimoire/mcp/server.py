@@ -16,14 +16,15 @@ INSTRUCTIONS = """Grimoire is the user's own tabletop RPG library: their PDFs, c
 with extracted text, search and a reviewed bestiary. Everything here is read-only.
 
 Workflow: start with search_library for topics ("swamp hex-crawl for low levels") or \
-find_phrase for names and exact terms ("Kurabanda"). A hit matched in the body text \
-carries a matched_page; call get_page on it before quoting or summarising, because the \
-snippet is only a fragment. A hit on title or metadata alone has no matched_page: use \
-find_phrase with a term from the query, or get_text, to read it. Use get_text only when \
-one page is not enough. search_pack runs several \
-phrasings at once and dedupes by product. Cite results as *Title, p. N*. \
-library_stats says whether semantic search is available; if the mode is keyword_only, \
-prefer exact terms and tell the user they can enable semantic search in Settings."""
+find_phrase for names and exact terms ("Kurabanda"). When a hit has a matched_page, call \
+get_page on it before quoting or summarising, because the snippet is only a fragment. A \
+hit without one was matched on its title or metadata, or comes from a book extracted \
+without page anchors; read it with get_text (get_product says whether it has page \
+anchors). Prefer get_page whenever a page is known; get_text is for pageless books and \
+for when one page is not enough. search_pack runs several phrasings at once and dedupes \
+by product. Cite results as *Title, p. N*. library_stats says whether semantic search is \
+available; if the mode is keyword_only, prefer exact terms and tell the user they can \
+enable semantic search in Settings."""
 
 mcp_server = MCPServer("grimoire", version=__version__, instructions=INSTRUCTIONS)
 
@@ -41,8 +42,10 @@ async def search_library(
     configured, keyword-only otherwise (the result says which). Each hit has a
     product_id, score, match_type, matched_page and snippet. game_system is an
     exact match; product_type takes any spelling of a type (see its description);
-    level_min/level_max keep products whose level range overlaps.
-    Follow up with get_page(product_id, matched_page) before quoting."""
+    level_min/level_max keep products whose level range overlaps. When matched_page
+    is set, follow up with get_page(product_id, matched_page) before quoting; when
+    it is null the hit matched on title or metadata, or the book has no page
+    anchors, so read it with get_text."""
     async with open_session() as db:
         return await tools_search.search_library(
             db,

@@ -136,6 +136,27 @@ async def test_search_pack_dedupes_and_keeps_best_score(db, library, monkeypatch
     assert out["mode"] == "hybrid"
 
 
+async def test_search_pack_keeps_a_page_when_a_pageless_hit_scores_higher(db, library, monkeypatch):
+    """A title match can outscore a body match for the same book. The score and
+    best_query follow the winner, but the only page pointer must survive."""
+    hits = {
+        "swamp": {"score": 0.6, "matched_page": 32, "snippet": "the swamp ferryman"},
+        "marsh": {"score": 0.8, "matched_page": None, "snippet": None},
+    }
+
+    async def fake(db, query, **kw):
+        return {"mode": "hybrid", "results": [dict(product_id=7, title="Marsh", **hits[query])]}
+
+    monkeypatch.setattr(tools_search, "search_library", fake)
+
+    out = await tools_search.search_pack(db, queries=["swamp", "marsh"])
+
+    hit = out["results"][0]
+    assert hit["score"] == 0.8 and hit["best_query"] == "marsh"
+    assert hit["matched_page"] == 32
+    assert hit["snippet"] == "the swamp ferryman"
+
+
 async def test_search_pack_global_limit_and_query_cap(db, library, monkeypatch):
     async def fake(db, query, **kw):
         return {"mode": "hybrid", "results": [
