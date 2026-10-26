@@ -1,5 +1,7 @@
 """get_product, list_products, get_page, get_text."""
 
+import asyncio
+
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -23,9 +25,22 @@ def _no_text(product: Product) -> ToolError:
     )
 
 
-async def get_product(db: AsyncSession, *, product_id: int) -> dict:
-    from grimoire.services.processor import get_extracted_pages
+# The extraction JSON of a long book runs to tens of megabytes. Parsing it on
+# the event loop stalls every request in flight, and an agent fans these calls
+# out, so the reads go to a worker thread.
+async def _read_pages(product: Product) -> list[dict] | None:
+    from grimoire.services import processor
 
+    return await asyncio.to_thread(processor.get_extracted_pages, product)
+
+
+async def _read_text(product: Product) -> str | None:
+    from grimoire.services import processor
+
+    return await asyncio.to_thread(processor.get_extracted_text, product)
+
+
+async def get_product(db: AsyncSession, *, product_id: int) -> dict:
     product = await load_product(db, product_id, with_tags=True)
     collections = await db.execute(
         select(Collection.id, Collection.name)
@@ -46,7 +61,7 @@ async def get_product(db: AsyncSession, *, product_id: int) -> dict:
             "tags": sorted(pt.tag.name for pt in product.product_tags),
             "collections": [{"id": cid, "name": name} for cid, name in collections],
             "has_page_anchors": bool(
-                product.text_extracted and get_extracted_pages(product) is not None
+                product.text_extracted and await _read_pages(product) is not None
             ),
             "run_status": product.run_status,
             "is_duplicate": bool(product.is_duplicate),
@@ -108,15 +123,13 @@ async def list_products(
     }
 
 
-def _pages_or_error(product: Product) -> list[dict]:
-    from grimoire.services.processor import get_extracted_pages, get_extracted_text
-
+async def _pages_or_error(product: Product) -> list[dict]:
     if not product.text_extracted:
         raise _no_text(product)
-    pages = get_extracted_pages(product)
+    pages = await _read_pages(product)
     if pages is not None:
         return pages
-    if get_extracted_text(product) is None:
+    if await _read_text(product) is None:
         raise ToolError(
             f"Product {product.id} is marked as extracted but its text file is missing. "
             "Ask the user to re-run text extraction for it."
@@ -131,11 +144,18 @@ async def get_page(
     db: AsyncSession, *, product_id: int, page: int, context_pages: int = 0
 ) -> dict:
     product = await load_product(db, product_id)
-    pages = _pages_or_error(product)
+    pages = await _pages_or_error(product)
     by_number = {int(p["page"]): p.get("markdown") or "" for p in pages}
-    count = len(by_number)
+    # Page numbers are not contiguous: some extractors emit a marker only for
+    # pages that had text, so a blank or image-only page is simply absent.
+    count = max(product.page_count or 0, max(by_number, default=0))
     if page < 1 or page > count:
         raise ToolError(f"Page {page} is out of range: product {product_id} has {count} pages")
+    if page not in by_number:
+        raise ToolError(
+            f"Page {page} of product {product_id} has no extracted text (a blank or "
+            "image-only page). Neighbouring pages may; try context_pages."
+        )
 
     context = max(0, min(int(context_pages), MAX_CONTEXT_PAGES))
     wanted = [n for n in range(page - context, page + context + 1) if n in by_number]
@@ -168,12 +188,10 @@ async def get_page(
 async def get_text(
     db: AsyncSession, *, product_id: int, offset: int = 0, max_chars: int = 8000
 ) -> dict:
-    from grimoire.services.processor import get_extracted_text
-
     product = await load_product(db, product_id)
     if not product.text_extracted:
         raise _no_text(product)
-    text = get_extracted_text(product)
+    text = await _read_text(product)
     if text is None:
         raise ToolError(
             f"Product {product.id} is marked as extracted but its text file is missing. "

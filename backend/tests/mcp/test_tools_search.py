@@ -151,3 +151,48 @@ async def test_search_pack_global_limit_and_query_cap(db, library, monkeypatch):
         await tools_search.search_pack(db, queries=[f"q{i}" for i in range(11)])
     with pytest.raises(ToolError):
         await tools_search.search_pack(db, queries=[])
+
+
+async def test_search_pack_does_not_interpret_each_phrasing(db, library, fake_search):
+    """The caller already supplied the phrasings; one LLM interpretation per
+    sub-query would be ten sequential round trips for nothing."""
+    await set_search_provider(db, "ollama")
+
+    await tools_search.search_library(db, query="swamp")
+    assert fake_search[-1].interpret is True
+
+    await tools_search.search_pack(db, queries=["swamp", "marsh", "bog"])
+    assert len(fake_search) == 4
+    assert all(request.interpret is False for request in fake_search[1:])
+
+
+async def test_search_pack_keeps_the_keyword_note(db, library, fake_search):
+    out = await tools_search.search_pack(db, queries=["Kurabanda", "Ul-Mor"])
+    assert out["mode"] == "keyword_only"
+    assert out["note"] == tools_search.KEYWORD_NOTE
+
+    await set_search_provider(db, "ollama")
+    out = await tools_search.search_pack(db, queries=["swamp"])
+    assert out["mode"] == "hybrid"
+    assert out.get("note") is None
+
+
+async def test_keyword_level_filter_looks_past_the_first_page_of_hits(db, library):
+    """Level filters are applied after the FTS LIMIT, so the tool must fetch
+    deeper than `limit` or a filtered-out top hit leaves the answer empty."""
+    from tests.mcp.conftest import _product
+
+    high = await _product(
+        db,
+        file_hash="high",
+        title="Crossing of the Damned",
+        text_path=None,
+        chunks=[("The ferryman waits by the long dark river under a cold moon.", 1)],
+        level_range_min=5,
+        level_range_max=7,
+    )
+    # The fixture's "Marsh of Sorrows" (levels 2-4) also says "ferryman" in a
+    # shorter chunk, so it outranks `high` and alone fills limit=1.
+    out = await tools_search.search_library(db, query="ferryman", limit=1, level_min=5)
+
+    assert [h["product_id"] for h in out["results"]] == [high.id]

@@ -4,7 +4,8 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from grimoire.mcp.common import search_mode
-from grimoire.models import MonsterEntry, Product, ProductEmbedding
+from grimoire.models import MonsterEntry, Product
+from grimoire.models.product_search_vector import ProductSearchVector
 
 _LIVE = (
     Product.is_duplicate == False,  # noqa: E712 - SQLAlchemy comparison
@@ -23,10 +24,12 @@ async def library_stats(db: AsyncSession) -> dict:
         db,
         select(func.count(Product.id)).where(*_LIVE, Product.text_extracted == True),  # noqa: E712
     )
+    # Semantic search ranks over product_search_vectors (one averaged vector per
+    # product), not over the chunk embeddings, so this is what it can find.
     embedded = await _count(
         db,
-        select(func.count(func.distinct(ProductEmbedding.product_id)))
-        .join(Product, Product.id == ProductEmbedding.product_id)
+        select(func.count(func.distinct(ProductSearchVector.product_id)))
+        .join(Product, Product.id == ProductSearchVector.product_id)
         .where(*_LIVE),
     )
     monsters = await _count(

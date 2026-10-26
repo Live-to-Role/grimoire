@@ -130,3 +130,73 @@ async def test_get_text_works_for_legacy_flat_files(db, library):
 async def test_get_text_without_extraction(db, library):
     with pytest.raises(ToolError, match="text extraction"):
         await tools_products.get_text(db, product_id=library["bare"].id)
+
+
+async def _gapped_product(db, tmp_path):
+    """A pdfplumber-style extraction: markers only for pages with text, so page 3 is absent."""
+    import json
+
+    from tests.mcp.conftest import _product
+
+    pages = [(1, "# Gaps\n\nIntro."), (2, "Second page."), (4, "The fourth page, after a blank one.")]
+    path = tmp_path / "gaps.json"
+    path.write_text(json.dumps({
+        "markdown": "\n\n".join(t for _, t in pages),
+        "pages": [{"page": n, "markdown": t} for n, t in pages],
+        "total_pages": 4,
+        "method": "pdfplumber",
+    }), encoding="utf-8")
+    return await _product(db, file_hash="gaps", title="Gaps", text_path=str(path), page_count=4)
+
+
+async def test_get_page_reads_a_page_after_a_gap(db, library, tmp_path):
+    product = await _gapped_product(db, tmp_path)
+
+    out = await tools_products.get_page(db, product_id=product.id, page=4)
+
+    assert out["page_count"] == 4
+    assert [p["page"] for p in out["pages"]] == [4]
+    assert "fourth" in out["pages"][0]["markdown"]
+
+
+async def test_get_page_on_a_missing_page_is_an_error_not_an_empty_list(db, library, tmp_path):
+    product = await _gapped_product(db, tmp_path)
+
+    with pytest.raises(ToolError, match="no extracted text"):
+        await tools_products.get_page(db, product_id=product.id, page=3)
+    with pytest.raises(ToolError, match="out of range"):
+        await tools_products.get_page(db, product_id=product.id, page=5)
+
+
+async def test_get_page_context_skips_missing_pages(db, library, tmp_path):
+    product = await _gapped_product(db, tmp_path)
+    out = await tools_products.get_page(db, product_id=product.id, page=4, context_pages=2)
+    assert [p["page"] for p in out["pages"]] == [2, 4]
+
+
+async def test_disk_reads_run_off_the_event_loop(db, library, monkeypatch):
+    """Extraction JSON can be tens of MB; parsing it inline stalls every request."""
+    import threading
+
+    from grimoire.services import processor
+
+    threads = []
+    real_pages, real_text = processor.get_extracted_pages, processor.get_extracted_text
+
+    def pages(product):
+        threads.append(threading.current_thread())
+        return real_pages(product)
+
+    def text(product):
+        threads.append(threading.current_thread())
+        return real_text(product)
+
+    monkeypatch.setattr(processor, "get_extracted_pages", pages)
+    monkeypatch.setattr(processor, "get_extracted_text", text)
+
+    await tools_products.get_page(db, product_id=library["sf1"].id, page=1)
+    await tools_products.get_text(db, product_id=library["sf1"].id)
+    await tools_products.get_product(db, product_id=library["sf1"].id)
+
+    assert len(threads) >= 3
+    assert all(t is not threading.main_thread() for t in threads)

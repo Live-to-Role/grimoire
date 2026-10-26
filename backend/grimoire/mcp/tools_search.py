@@ -11,6 +11,11 @@ from grimoire.models import Product
 MAX_RESULTS = 50
 MAX_PACK_QUERIES = 10
 QUERY_MAX_LENGTH = 1000  # SemanticSearchRequest.query's bound
+# Keyword search has no level predicate in SQL, so with a level filter the tool
+# fetches deeper than `limit` and filters afterwards; without it, a filtered-out
+# top hit would leave the answer short or empty while matches exist.
+LEVEL_OVERFETCH = 10
+MAX_KEYWORD_FETCH = 500
 
 KEYWORD_NOTE = (
     "Semantic search is not configured in Grimoire, so this was a keyword-only "
@@ -64,6 +69,7 @@ async def search_library(
     product_type: str | None = None,
     level_min: int | None = None,
     level_max: int | None = None,
+    interpret: bool = True,
 ) -> dict:
     query = query.strip()[:QUERY_MAX_LENGTH]
     if not query:
@@ -74,13 +80,15 @@ async def search_library(
     if mode == "keyword_only":
         from grimoire.services.fts_service import search_fts
 
+        level_filtered = level_min is not None or level_max is not None
+        fetch = min(limit * LEVEL_OVERFETCH, MAX_KEYWORD_FETCH) if level_filtered else limit
         rows = await search_fts(
-            db, query, game_system=game_system, product_type=product_type, limit=limit
+            db, query, game_system=game_system, product_type=product_type, limit=fetch
         )
         results = [
             _hit(row, score=row.get("relevance_score"), match_type="keyword") for row in rows
         ]
-        results = [r for r in results if _level_overlaps(r, level_min, level_max)]
+        results = [r for r in results if _level_overlaps(r, level_min, level_max)][:limit]
         return {
             "query": query,
             "mode": mode,
@@ -99,6 +107,7 @@ async def search_library(
         product_type=product_type,
         level_min=level_min,
         level_max=level_max,
+        interpret=interpret,
     )
     out = await search_service.search(db, request)
     return {
@@ -170,15 +179,20 @@ async def search_pack(
 
     merged: dict[int, dict] = {}
     mode = None
+    note = None
     for query in queries:
+        # The caller already supplied the phrasings, so the per-query LLM
+        # interpretation (one round trip each, sequential) is skipped here.
         out = await search_library(
             db,
             query=query,
             limit=limit_per_query,
             game_system=game_system,
             product_type=product_type,
+            interpret=False,
         )
         mode = out["mode"]
+        note = out.get("note")
         for hit in out["results"]:
             pid = hit["product_id"]
             entry = merged.get(pid)
@@ -193,4 +207,4 @@ async def search_pack(
     results = sorted(merged.values(), key=lambda h: h.get("score") or 0, reverse=True)
     if global_limit:
         results = results[: max(1, int(global_limit))]
-    return {"queries": queries, "mode": mode, "results": results}
+    return {"queries": queries, "mode": mode, "note": note, "results": results}
