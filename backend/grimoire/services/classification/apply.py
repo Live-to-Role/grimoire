@@ -152,3 +152,32 @@ async def apply_vocab_migration(db: AsyncSession, dry_run: bool = False) -> dict
     if not dry_run:
         await db.commit()
     return dict(counts)
+
+
+async def restore_image_types(db: AsyncSession, dry_run: bool = False) -> int:
+    """Put back the image labels the vocab migration replaced ("Token" -> tools).
+
+    Only where the product still holds the migrated value: anything changed
+    since was a person's decision. The record is updated too, so it matches the
+    product. Returns the number restored.
+    """
+    rows = (await db.execute(
+        select(ClassificationResult, Product)
+        .join(ClassificationRun, ClassificationResult.run_id == ClassificationRun.id)
+        .join(Product, ClassificationResult.product_id == Product.id)
+        .where(ClassificationRun.name == VOCAB_RUN)
+    )).all()
+    restored = 0
+    for row, product in rows:
+        old, new = row.product_type_old, row.product_type_new
+        if (not old or old.strip().lower() not in IMAGE_PRODUCT_TYPES or new == "map"
+                or product.product_type != new):
+            continue
+        restored += 1
+        if dry_run:
+            continue
+        product.product_type = old
+        row.product_type_new = old
+    if not dry_run:
+        await db.commit()
+    return restored

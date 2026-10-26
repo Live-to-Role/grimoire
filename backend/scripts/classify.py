@@ -219,6 +219,13 @@ def cmd_vocab_migrate(args) -> None:
         print(f"  {k}: {n}")
 
 
+def cmd_restore_image_types(args) -> None:
+    from grimoire.services.classification.apply import restore_image_types
+
+    n = asyncio.run(_with_session(lambda db: restore_image_types(db, dry_run=args.dry_run)))
+    print(f"{'DRY RUN: would restore' if args.dry_run else 'restored'} {n}")
+
+
 def cmd_select_pilot(args) -> None:
     from collections import Counter
 
@@ -306,6 +313,11 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("vocab-migrate", help="map free-text types the AI run did not reach")
     p.add_argument("--dry-run", action="store_true", help="count only, write nothing")
     p.set_defaults(func=cmd_vocab_migrate)
+
+    p = sub.add_parser("restore-image-types",
+                       help="put back image labels (Token, Stock Art) the vocab migration replaced")
+    p.add_argument("--dry-run", action="store_true", help="count only, write nothing")
+    p.set_defaults(func=cmd_restore_image_types)
 
     p = sub.add_parser("export", help="dry-run (default) or live send of a run to Codex")
     p.add_argument("--run", default="full")

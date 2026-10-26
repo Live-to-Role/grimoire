@@ -2,7 +2,9 @@ import pytest
 from sqlalchemy import update
 
 from grimoire.models import ClassificationResult, ClassificationRun, CodexProduct, Product
-from grimoire.services.classification.apply import apply_run, apply_vocab_migration, effective_levels
+from grimoire.services.classification.apply import (
+    apply_run, apply_vocab_migration, effective_levels, restore_image_types,
+)
 
 CX1 = "00000000-0000-0000-0000-000000000001"
 CX2 = "00000000-0000-0000-0000-000000000002"
@@ -235,3 +237,56 @@ async def test_vocab_migration_reruns_reuse_the_run(db):
     run, rows = await _vocab_rows(db)
     assert later.product_type == "adventure" and len(rows) == 2
     assert counts.get("supplement", 0) == 0
+
+
+async def _migrated(db, name, old, new):
+    """A product the vocab migration moved from `old` to `new`, and its record."""
+    p = await _product(db, name, new)
+    run, _ = await _vocab_rows(db)
+    if run is None:
+        run = ClassificationRun(name="vocab-migration", model="table", effort="none",
+                                status="collected")
+        db.add(run)
+        await db.flush()
+    row = ClassificationResult(run_id=run.id, product_id=p.id, source="vocab",
+                               product_type_old=old, product_type_new=new)
+    db.add(row)
+    await db.flush()
+    return p, row
+
+
+async def test_restore_image_types_puts_back_the_label(db):
+    p, row = await _migrated(db, "tok.pdf", "Token", "tools")
+
+    restored = await restore_image_types(db)
+
+    await db.refresh(p)
+    await db.refresh(row)
+    assert restored == 1
+    assert p.product_type == "Token" and row.product_type_new == "Token"
+
+
+async def test_restore_image_types_skips_hand_edits_and_maps(db):
+    edited, _ = await _migrated(db, "art.pdf", "Stock Art", "other")
+    await _legacy_type(db, edited, "adventure")   # changed by hand since
+    mapped, _ = await _migrated(db, "map.pdf", "Map", "map")
+    document, _ = await _migrated(db, "s.pdf", "Supplement", "supplement")
+
+    restored = await restore_image_types(db)
+
+    for p in (edited, mapped, document):
+        await db.refresh(p)
+    assert restored == 0
+    assert (edited.product_type, mapped.product_type, document.product_type) == (
+        "adventure", "map", "supplement")
+
+
+async def test_restore_image_types_dry_run_writes_nothing(db):
+    p, row = await _migrated(db, "por.pdf", "Portrait", "tools")
+
+    restored = await restore_image_types(db, dry_run=True)
+
+    await db.refresh(p)
+    await db.refresh(row)
+    assert restored == 1
+    assert p.product_type == "tools" and row.product_type_new == "tools"
