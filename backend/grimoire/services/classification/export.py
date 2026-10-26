@@ -304,7 +304,15 @@ async def send_and_stamp(db: AsyncSession, run_name: str, items: list[ExportItem
     the caller passed one); re-sending them is safe, since Codex answers
     `unchanged`.
     """
-    await collected_run(db, run_name)
+    run = await collected_run(db, run_name)
+    # The reviewed CSV names no run; against the wrong one, nothing would be stamped.
+    known = set((await db.execute(
+        select(ClassificationResult.codex_product_id).where(ClassificationResult.run_id == run.id)
+    )).scalars())
+    missing = sum(i.codex_id not in known for i in items)
+    if missing:
+        raise ValueError(f"{missing} of {len(items)} items are not in run {run_name!r}; "
+                         "nothing sent (pass the run the report came from with --run)")
     outcomes = {} if outcomes is None else outcomes
     for start in range(0, len(items), CHUNK):
         chunk_outcomes = send_items(items[start:start + CHUNK], token, dry_run=False, client=client)

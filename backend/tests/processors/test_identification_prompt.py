@@ -99,12 +99,12 @@ async def test_excerpt_is_built_off_the_event_loop(monkeypatch):
     assert threads and threading.main_thread() not in threads
 
 
-async def test_tag_excerpt_is_built_off_the_event_loop(monkeypatch):
-    import threading
-
-    threads = _record_excerpt_thread(monkeypatch)
+async def test_tags_are_suggested_from_the_head_only(monkeypatch):
+    # Level passages add nothing to tags and ~4x the tokens of a bulk run.
+    seen = {}
 
     async def fake_tags(t, url, model):
+        seen["text"] = t
         return {}
 
     async def ollama_url():
@@ -116,9 +116,10 @@ async def test_tag_excerpt_is_built_off_the_event_loop(monkeypatch):
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
 
-    await ai_identifier.suggest_tags("A sourcebook. " * 100, provider="ollama")
+    text = "A sourcebook. " * 2000 + "An adventure for 3rd to 5th level characters."
+    await ai_identifier.suggest_tags(text, provider="ollama")
 
-    assert threads and threading.main_thread() not in threads
+    assert seen["text"] == text[:4000]
 
 
 async def _empty():

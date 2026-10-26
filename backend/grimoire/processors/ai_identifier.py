@@ -533,8 +533,9 @@ async def suggest_tags(
     Returns:
         Dictionary with suggested tags by category
     """
-    truncated_text = (await asyncio.to_thread(
-        build_excerpt, {"markdown": text}, header={"filename": ""})).text
+    # Tags come from what the book is about; the opening is enough. The level
+    # excerpt identification uses would send ~4x the tokens for nothing here.
+    truncated_text = text[:4000]
     
     # Check env vars first, then database settings
     openai_key = os.getenv("OPENAI_API_KEY", "") or await get_setting_from_db("openai_api_key")

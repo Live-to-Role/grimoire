@@ -33,8 +33,12 @@ async def _run(db, *results):
     for i, fields in enumerate(results):
         cx = CX1 if i == 0 else CX2
         db.add(CodexProduct(id=cx, slug=f"slug-{i}", title=f"T{i}"))
+        # The old values default to the product as it stands, as submit records them.
+        p = await db.get(Product, fields["product_id"]) if fields.get("product_id") else None
+        old = {"product_type_old": p.product_type, "level_min_old": p.level_range_min,
+               "level_max_old": p.level_range_max} if p else {}
         db.add(ClassificationResult(run_id=run.id, codex_product_id=cx,
-                                    **{"source": "pdf", **fields}))
+                                    **{"source": "pdf", **old, **fields}))
     await db.flush()
     return run
 
@@ -305,3 +309,18 @@ async def test_apply_skips_rows_without_a_new_type(db):
         select(ClassificationResult).where(ClassificationResult.run_id == run.id))).scalar_one()
     assert p.product_type == "Supplement" and row.applied_at is None
     assert report.skipped_no_result == 1 and report.applied == 0
+
+
+async def test_apply_skips_a_product_changed_since_submit(db):
+    # Submit recorded Supplement 3-5; a person (or an earlier run) changed the
+    # product since. A later run's unapplied row must not overwrite that.
+    p = await _product(db, "a.pdf", "tools", (1, 2))
+    await _run(db, dict(product_id=p.id, product_type_new="adventure",
+                        product_type_old="Supplement", level_min_old=3, level_max_old=5,
+                        level_min_new=4, level_max_new=6))
+
+    report = await apply_run(db, "full")
+
+    await db.refresh(p)
+    assert (p.product_type, p.level_range_min, p.level_range_max) == ("tools", 1, 2)
+    assert report.skipped_changed == 1 and report.applied == 0

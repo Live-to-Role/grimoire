@@ -327,3 +327,16 @@ async def test_live_send_stamps_each_chunk(db):
         select(ClassificationResult).where(ClassificationResult.run_id == run.id))).scalars()}
     assert all(rows[_cx(n)].exported_status == "changed" for n in range(1, 101))
     assert all(rows[_cx(n)].exported_status is None for n in range(101, 151))
+
+
+async def test_live_send_refuses_items_from_another_run(db):
+    # The reviewed CSV names no run; sent against the wrong --run, nothing
+    # would be stamped and the audit trail would be lost.
+    await _run(db, [("other", None, None, {"product_type_new": "adventure"})])
+    await db.commit()
+    requests = []
+
+    with pytest.raises(ValueError, match="1 of 2"):
+        await send_and_stamp(db, "full", [_item(1), _item(2)], "tok", client=_codex(requests))
+
+    assert requests == []

@@ -53,6 +53,12 @@ class ApplyReport:
     skipped_error: int = 0
     skipped_no_product: int = 0
     skipped_no_result: int = 0
+    skipped_changed: int = 0
+
+
+def _changed_since_submit(product: Product, r: ClassificationResult) -> bool:
+    return (product.product_type, product.level_range_min, product.level_range_max) != (
+        r.product_type_old, r.level_min_old, r.level_max_old)
 
 
 async def apply_run(db: AsyncSession, run_name: str) -> ApplyReport:
@@ -85,6 +91,10 @@ async def apply_run(db: AsyncSession, run_name: str) -> ApplyReport:
             report.skipped_applied += 1
         elif r.product_id is None or r.product_id not in products:
             report.skipped_no_product += 1
+        elif _changed_since_submit(products[r.product_id], r):
+            # By a person, or by another row's result for the same file.
+            # Either way, not ours to undo.
+            report.skipped_changed += 1
         else:
             product = products[r.product_id]
             product.product_type = r.product_type_new
