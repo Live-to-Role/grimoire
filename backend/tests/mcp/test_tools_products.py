@@ -3,6 +3,7 @@ import pytest
 
 from grimoire.mcp import tools_products
 from grimoire.mcp.common import ToolError
+from tests.mcp.conftest import _product
 
 
 async def test_get_product_metadata_tags_collections(db, library):
@@ -200,3 +201,27 @@ async def test_disk_reads_run_off_the_event_loop(db, library, monkeypatch):
 
     assert len(threads) >= 3
     assert all(t is not threading.main_thread() for t in threads)
+
+
+async def test_list_products_type_filter_takes_any_known_spelling(db, library):
+    # Types are stored as the Codex enum; an assistant may say "Map" or "Art/Maps".
+    for spelling in ("Map", "Art/Maps", " map "):
+        out = await tools_products.list_products(db, product_type=spelling)
+        assert [p["product_id"] for p in out["results"]] == [library["bare"].id], spelling
+
+
+async def test_list_products_type_filter_ignores_case_of_kept_free_text(db, library):
+    # Image labels are stored as written ("Token"); the filter is not case-sensitive.
+    tokens = await _product(db, file_hash="tok", title="Token Pack", product_type="Token")
+
+    out = await tools_products.list_products(db, product_type="token")
+
+    assert [p["product_id"] for p in out["results"]] == [tokens.id]
+
+
+async def test_list_products_unknown_type_is_an_error_listing_the_types(db, library):
+    # Silently empty would read as "the library has none".
+    with pytest.raises(ToolError, match="Monsters") as exc:
+        await tools_products.list_products(db, product_type="Monsters")
+
+    assert "adventure" in str(exc.value) and "map" in str(exc.value)

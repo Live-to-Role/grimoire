@@ -82,3 +82,14 @@ async def test_mounted_at_mcp_and_exempt_from_rate_limiting(monkeypatch):
                 statuses.append(resp.status_code)
             assert statuses == [200, 200, 200]
             assert resp.json()["result"]["serverInfo"]["name"] == "grimoire"
+
+
+async def test_every_product_type_filter_documents_the_enum(mcp_sessions):
+    # One description for all four tools, built from the enum so it can't drift.
+    from grimoire.services.classification.enum import CODEX_PRODUCT_TYPES
+
+    async with Client(mcp_server) as client:
+        tools = {t.name: t for t in (await client.list_tools()).tools}
+    for name in ("search_library", "find_phrase", "search_pack", "list_products"):
+        description = tools[name].input_schema["properties"]["product_type"].get("description", "")
+        assert all(t in description for t in CODEX_PRODUCT_TYPES if t != "magazine"), name
