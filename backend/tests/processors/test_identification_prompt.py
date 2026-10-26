@@ -71,3 +71,55 @@ async def test_ollama_requests_carry_a_context_window_for_the_excerpt(monkeypatc
     await ai_identifier.suggest_tags_with_ollama("text", "http://ollama.test")
 
     assert [b["options"]["num_ctx"] >= 8192 for b in bodies] == [True, True]
+
+
+def _record_excerpt_thread(monkeypatch) -> list:
+    """Wrap build_excerpt to record the thread each call runs on."""
+    import threading
+
+    threads = []
+    real = ai_identifier.build_excerpt
+
+    def recording(*args, **kwargs):
+        threads.append(threading.current_thread())
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(ai_identifier, "build_excerpt", recording)
+    return threads
+
+
+async def test_excerpt_is_built_off_the_event_loop(monkeypatch):
+    # build_excerpt scans the whole book; on the loop it stalls the API (PR #7).
+    import threading
+
+    threads = _record_excerpt_thread(monkeypatch)
+
+    await _sent_text(monkeypatch, "An adventure for 3rd level characters. " * 100)
+
+    assert threads and threading.main_thread() not in threads
+
+
+async def test_tag_excerpt_is_built_off_the_event_loop(monkeypatch):
+    import threading
+
+    threads = _record_excerpt_thread(monkeypatch)
+
+    async def fake_tags(t, url, model):
+        return {}
+
+    async def ollama_url():
+        return "http://ollama.test"
+
+    monkeypatch.setattr(ai_identifier, "suggest_tags_with_ollama", fake_tags)
+    monkeypatch.setattr(ai_identifier, "get_ollama_url", ollama_url)
+    monkeypatch.setattr(ai_identifier, "get_setting_from_db", lambda key: _empty())
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+
+    await ai_identifier.suggest_tags("A sourcebook. " * 100, provider="ollama")
+
+    assert threads and threading.main_thread() not in threads
+
+
+async def _empty():
+    return ""

@@ -341,8 +341,10 @@ async def identify_product(
         Dictionary with identified metadata
     """
     # The opening pages plus the passages that state levels, not text[:4000],
-    # which cut off a level range stated anywhere past the first pages.
-    truncated_text = build_excerpt({"markdown": text}, header={"filename": filename or ""}).text
+    # which cut off a level range stated anywhere past the first pages. It scans
+    # the whole book, so it runs in a thread: on the loop it stalls the API.
+    truncated_text = (await asyncio.to_thread(
+        build_excerpt, {"markdown": text}, header={"filename": filename or ""})).text
     
     # Check env vars first, then database settings
     openai_key = os.getenv("OPENAI_API_KEY", "") or await get_setting_from_db("openai_api_key")
@@ -531,7 +533,8 @@ async def suggest_tags(
     Returns:
         Dictionary with suggested tags by category
     """
-    truncated_text = build_excerpt({"markdown": text}, header={"filename": ""}).text
+    truncated_text = (await asyncio.to_thread(
+        build_excerpt, {"markdown": text}, header={"filename": ""})).text
     
     # Check env vars first, then database settings
     openai_key = os.getenv("OPENAI_API_KEY", "") or await get_setting_from_db("openai_api_key")
