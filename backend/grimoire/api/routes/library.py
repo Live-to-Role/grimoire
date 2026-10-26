@@ -620,7 +620,7 @@ async def reset_image_classification(db: DbSession) -> dict:
         product.image_count = None
         product.text_extracted = False
         # Only clear product_type if it was an image classification
-        if product.product_type in ("Map", "Stock Art", "Token", "Portrait", "Handout", "Scene", "Item", "Texture"):
+        if product.product_type in ("Map", "map", "Stock Art", "Token", "Portrait", "Handout", "Scene", "Item", "Texture"):
             product.product_type = None
 
         # Remove auto-applied builtin tags

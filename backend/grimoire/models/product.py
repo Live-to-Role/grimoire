@@ -4,9 +4,10 @@ from datetime import datetime
 from typing import TYPE_CHECKING
 
 from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Index, Integer, String, Text, func
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, mapped_column, relationship, validates
 
 from grimoire.database import Base
+from grimoire.services.classification.enum import canonical_product_type
 
 if TYPE_CHECKING:
     from grimoire.models.collection import CollectionProduct
@@ -203,6 +204,11 @@ class Product(Base):
     monster_entries: Mapped[list["MonsterEntry"]] = relationship(
         "MonsterEntry", cascade="all, delete-orphan"
     )
+
+    @validates("product_type")
+    def _canonical_product_type(self, _key: str, value: str | None) -> str | None:
+        # Every writer goes through here; a row loaded from the database does not.
+        return canonical_product_type(value)
 
     def __repr__(self) -> str:
         return f"<Product(id={self.id}, title='{self.title}', file_name='{self.file_name}')>"

@@ -31,6 +31,10 @@ redis>=5.0.0
 # HTTP Client
 httpx>=0.26.0
 
+# Codex reclassification (Message Batches, fuzzy title matching)
+anthropic>=1.0
+rapidfuzz>=3.0
+
 # Embeddings/Semantic Search
 numpy>=1.26.0
 

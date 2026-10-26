@@ -80,6 +80,8 @@ Before declaring work done:
 - [ ] No regressions in related functionality
 - [ ] Code follows project conventions
 
+Before pushing any branch for a PR, run the `code-review` skill at high effort (`/code-review high`) over it. Fix the findings that matter, or say why they stay, before the push.
+
 ---
 
 ## Project-Specific Guidelines

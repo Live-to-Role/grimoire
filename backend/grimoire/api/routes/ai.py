@@ -11,6 +11,7 @@ from sqlalchemy import select
 
 from grimoire.api.deps import DbSession
 from grimoire.models import Product, Tag, ProductTag
+from grimoire.services.classification.apply import coerce_levels
 from grimoire.services.processor import get_extracted_text
 from grimoire.services.identifier import (
     IdentificationMethod,
@@ -64,10 +65,10 @@ def _apply_ai_fields(product: Product, data: dict) -> None:
         product.publisher = _coerce_str(data["publisher"])
     if data.get("publication_year"):
         product.publication_year = data["publication_year"]
-    if data.get("level_range_min"):
-        product.level_range_min = data["level_range_min"]
-    if data.get("level_range_max"):
-        product.level_range_max = data["level_range_max"]
+    # A clean range only; level 0 is real (a DCC funnel) and falsy.
+    lo, hi = coerce_levels(data.get("level_range_min"), data.get("level_range_max"))
+    if lo is not None:
+        product.level_range_min, product.level_range_max = lo, hi
     if data.get("party_size_min"):
         product.party_size_min = data["party_size_min"]
     if data.get("party_size_max"):
@@ -248,10 +249,9 @@ async def identify_product_endpoint(
             product.publisher = identification.publisher
         if identification.publication_year:
             product.publication_year = identification.publication_year
-        if identification.level_range_min:
-            product.level_range_min = identification.level_range_min
-        if identification.level_range_max:
-            product.level_range_max = identification.level_range_max
+        lo, hi = coerce_levels(identification.level_range_min, identification.level_range_max)
+        if lo is not None:
+            product.level_range_min, product.level_range_max = lo, hi
         if identification.party_size_min:
             product.party_size_min = identification.party_size_min
         if identification.party_size_max:

@@ -11,6 +11,7 @@ import { useDebounce } from '../hooks/useDebounce';
 import type { Product, ProductListResponse } from '../types/product';
 import type { ProductFilters } from '../api/products';
 import { pauseQueue, resumeQueue, contributeProduct } from '../api/products';
+import { productTypeLabel } from '../lib/productType';
 
 interface LibraryProps {
   selectedCollection?: number | null;
@@ -484,7 +485,7 @@ export function Library({
                 if (interp.product_type && !effectiveFilters.product_type) {
                   suggestions.push({
                     key: 'type',
-                    label: `Type: ${interp.product_type}`,
+                    label: `Type: ${productTypeLabel(interp.product_type)}`,
                     apply: () => setFilters((p) => ({ ...p, product_type: interp.product_type! })),
                   });
                 }

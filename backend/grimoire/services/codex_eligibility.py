@@ -16,27 +16,11 @@ harder to dismantle by accident than a helper among sync internals.
 import logging
 
 from grimoire.models import Product
+# IMAGE_PRODUCT_TYPES lives with the vocabulary, which the Product model's
+# type rule uses; it is still imported from here by callers.
+from grimoire.services.classification.enum import IMAGE_PRODUCT_TYPES
 
 logger = logging.getLogger(__name__)
-
-#: `product_type` values that describe a collection of images rather than a
-#: document. Compared case-insensitively, since these are free text written by
-#: several different code paths — the live library holds "Map", "Art/Maps",
-#: "Stock Art", "Token" and "Portrait" among others.
-#:
-#: Deliberately *not* here: "Character Sheet", "Handout", "GM Tools". Those are
-#: page-light but they are play aids, which is exactly what Codex is for.
-IMAGE_PRODUCT_TYPES = frozenset({
-    "map",
-    "maps",
-    "art/maps",
-    "art / maps",
-    "stock art",
-    "token",
-    "tokens",
-    "portrait",
-    "portraits",
-})
 
 
 def is_codex_eligible(product: Product) -> tuple[bool, str]:

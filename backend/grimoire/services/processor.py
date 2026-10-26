@@ -203,7 +203,7 @@ def process_text_extraction_sync(product: Product, use_marker: bool = False) -> 
         print(f"Low-text PDF detected for {product.file_name}: {char_count} chars, {chars_per_page:.0f} chars/page")
         # Mark as art/maps if no product_type set
         if not product.product_type:
-            product.product_type = "Art/Maps"
+            product.product_type = "map"  # the enum; "Art/Maps" maps to it
         result["is_low_text"] = True
         result["auto_marked_art"] = True
 

@@ -1,0 +1,7 @@
+id,slug,title,publisher,product_type,level_range_min,level_range_max,dtrpg_id,page_count,description
+00000000-0000-0000-0000-000000000001,beach-encounters,1008573-BeachEncounters,Frugal GM,other,,,1008573,12,"A set of beach encounters, with ""quotes"" and commas."
+00000000-0000-0000-0000-000000000002,city-of-brass,City of Brass,Frog God Games,sourcebook,,,123,400,
+00000000-0000-0000-0000-000000000003,the-tomb-of-rakoss,The Tomb of Rakoss,Frog God Games,adventure,1,3,456,32,
+00000000-0000-0000-0000-000000000004,lonely-zine,Lonely Zine,,zine,,,,8,
+00000000-0000-0000-0000-000000000005,d30-npc-background-generator,d30 NPC Background Generator,Frugal GM,adventure,,,789,4,
+00000000-0000-0000-0000-000000000006,dcc-funnel,Sailors on the Starless Sea,Goodman Games,adventure,0,0,1011,20,

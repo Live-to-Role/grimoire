@@ -12,6 +12,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from grimoire.database import async_session_maker
 from grimoire.models import ProcessingQueue, Product
+from grimoire.services.classification.apply import coerce_levels
+from grimoire.services.codex_eligibility import IMAGE_PRODUCT_TYPES
 from grimoire.processors.text_extractor import extract_with_ocr, TESSERACT_AVAILABLE
 
 logger = logging.getLogger(__name__)
@@ -192,6 +194,21 @@ def register_handler(task_type: str):
     return decorator
 
 
+
+def image_product_type(current: str | None, label: str | None) -> str | None:
+    """The type to store when image detection labels a product ("Map", "Token").
+
+    Only over an empty or image type: re-extraction must not put "Map" back
+    over a type the AI run decided. The label is returned as given; the
+    Product validator canonicalises it ("Map" -> `map`, "Token" kept).
+    """
+    if not label:
+        return current
+    if current and current.strip().lower() not in IMAGE_PRODUCT_TYPES:
+        return current
+    return label
+
+
 @register_handler("cover")
 async def handle_cover_task(db: AsyncSession, product: Product) -> bool:
     """Handle cover extraction task."""
@@ -352,7 +369,7 @@ async def handle_text_task(db: AsyncSession, product: Product) -> bool:
 
             product.is_image_content = True
             if classification:
-                product.product_type = classification
+                product.product_type = image_product_type(product.product_type, classification)
 
                 # Auto-tag with built-in tag
                 from grimoire.models import Tag, ProductTag
@@ -809,10 +826,11 @@ async def handle_ai_identify_task(db: AsyncSession, product: Product, config: di
         product.title = title
     if identification.get("publication_year"):
         product.publication_year = identification["publication_year"]
-    if identification.get("level_range_min"):
-        product.level_range_min = identification["level_range_min"]
-    if identification.get("level_range_max"):
-        product.level_range_max = identification["level_range_max"]
+    # A clean range only; level 0 is real (a DCC funnel) and falsy.
+    lo, hi = coerce_levels(identification.get("level_range_min"),
+                           identification.get("level_range_max"))
+    if lo is not None:
+        product.level_range_min, product.level_range_max = lo, hi
 
     product.ai_identified = True
     product.updated_at = datetime.now(UTC)
