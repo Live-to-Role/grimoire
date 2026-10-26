@@ -87,7 +87,7 @@ async def list_products(
         conditions.append(Product.title.ilike(like) | Product.file_name.ilike(like))
     if game_system:
         conditions.append(Product.game_system == game_system)
-    product_type = product_type_filter(product_type)
+    product_type = await product_type_filter(db, product_type)
     if product_type:
         conditions.append(Product.product_type == product_type)
     if publisher:

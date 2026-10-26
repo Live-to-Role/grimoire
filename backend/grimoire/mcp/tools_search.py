@@ -86,7 +86,7 @@ async def search_library(
         raise ToolError("query must not be empty")
     _check_levels(level_min, level_max)
     limit = _clamp(limit, MAX_RESULTS)
-    product_type = product_type_filter(product_type)
+    product_type = await product_type_filter(db, product_type)
     mode, _ = await search_mode(db)
 
     if mode == "keyword_only":
@@ -145,7 +145,7 @@ async def find_phrase(
     if not phrase:
         raise ToolError("phrase must not be empty")
     limit = _clamp(limit, MAX_RESULTS)
-    product_type = product_type_filter(product_type)
+    product_type = await product_type_filter(db, product_type)
 
     from grimoire.services.fts_service import chunk_candidates
 

@@ -4,7 +4,7 @@ import pytest
 from grimoire.mcp import tools_search
 from grimoire.mcp.common import ToolError
 from grimoire.services import search_service
-from tests.mcp.conftest import set_search_provider
+from tests.mcp.conftest import _product, set_search_provider
 
 
 @pytest.fixture
@@ -236,11 +236,19 @@ async def test_search_library_rejects_bad_levels_with_a_usable_message(db, libra
 
 async def test_search_library_type_filter_uses_the_stored_spelling(db, library, fake_search):
     # The tool docs used to suggest "rulebook"; the column holds core_rulebook.
+    await _product(db, file_hash="core", title="Core Rules", product_type="core_rulebook")
     await set_search_provider(db, "ollama")
 
     await tools_search.search_library(db, query="x", product_type="Rulebook")
 
     assert fake_search[0].product_type == "core_rulebook"
+
+
+async def test_keyword_search_type_filter_takes_any_known_spelling(db, library, fake_search):
+    out = await tools_search.search_library(db, query="Kurabanda", product_type="Adventure")
+
+    assert out["mode"] == "keyword_only"
+    assert [h["product_id"] for h in out["results"]] == [library["sf1"].id]
 
 
 async def test_find_phrase_type_filter_takes_any_known_spelling(db, library):

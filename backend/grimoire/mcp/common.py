@@ -1,33 +1,68 @@
 """Shared helpers for MCP tools: compact product rows, lookups, errors."""
 
 import json
+from typing import Annotated
 
 from mcp.server.mcpserver.exceptions import ToolError
-from sqlalchemy import select
+from pydantic import Field
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from grimoire.models import Product, ProductTag, Setting
-from grimoire.services.classification.enum import canonical_product_type
+from grimoire.models.product import live_product_conditions
+from grimoire.services.classification.enum import CODEX_PRODUCT_TYPES, canonical_product_type
 
 __all__ = [
-    "ToolError", "load_product", "product_summary", "product_type_filter", "search_mode", "json_list",
+    "ProductTypeFilter", "ToolError", "load_product", "product_summary", "product_type_filter",
+    "search_mode", "json_list",
 ]
 
 # Hard ceiling on characters of document text any single call returns.
 MAX_CHARS = 20_000
 
 
-def product_type_filter(value: str | None) -> str | None:
-    """A caller's product_type, spelled the way the column stores it.
+# The product_type parameter's description, shared by every tool that filters
+# on it. Built from the enum so it cannot drift; magazine is left out because
+# every periodical is stored as zine (and "magazine" is mapped to it).
+ProductTypeFilter = Annotated[str | None, Field(description=(
+    "Filter by product type, ignoring case: "
+    + ", ".join(t for t in CODEX_PRODUCT_TYPES if t != "magazine")
+    + ". Common spellings (\"Rulebook\", \"Map\") are mapped. Image packs may carry "
+    "free-text types such as Token, Portrait or Stock Art. An unknown type is an "
+    "error that lists the library's types."
+))]
 
-    The filters are exact matches and the column holds the Codex enum, so an
-    assistant's "Rulebook" or "Map" would otherwise match nothing. Same rule
-    the Product model applies on write.
+# How many stored types an unknown-type error lists, most common first.
+TYPES_LISTED = 30
+
+
+async def product_type_filter(db: AsyncSession, value: str | None) -> str | None:
+    """A caller's product_type, as the column actually stores it.
+
+    The filters downstream are exact matches. The column holds the Codex enum
+    plus free text the Product model keeps as written ("Token"), so the value
+    is mapped with the model's own rule, then looked up among the stored
+    types ignoring case. An unknown type is an error that lists the stored
+    types: an empty result would read as "the library has none".
     """
     if value is None or not value.strip():
         return None
-    return canonical_product_type(value.strip())
+    value = value.strip()
+    rows = (await db.execute(
+        select(Product.product_type, func.count(Product.id))
+        .where(*live_product_conditions(), Product.product_type.is_not(None))
+        .group_by(Product.product_type)
+        .order_by(func.count(Product.id).desc())
+    )).all()
+    stored: dict[str, str] = {}
+    for product_type, _ in rows:
+        stored.setdefault(product_type.lower(), product_type)
+    for candidate in (canonical_product_type(value), value):
+        if candidate.lower() in stored:
+            return stored[candidate.lower()]
+    listed = ", ".join(t for t, _ in rows[:TYPES_LISTED])
+    raise ToolError(f"unknown product_type {value!r}; the library's types include: {listed}")
 
 
 def product_summary(product: Product) -> dict:

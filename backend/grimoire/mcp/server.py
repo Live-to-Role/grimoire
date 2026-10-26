@@ -9,6 +9,7 @@ from mcp.server.transport_security import TransportSecuritySettings
 
 from grimoire import __version__
 from grimoire.mcp import tools_bestiary, tools_meta, tools_products, tools_search
+from grimoire.mcp.common import ProductTypeFilter
 from grimoire.mcp.db import open_session
 
 INSTRUCTIONS = """Grimoire is the user's own tabletop RPG library: their PDFs, catalogued, \
@@ -30,16 +31,14 @@ async def search_library(
     query: str,
     limit: int = 10,
     game_system: str | None = None,
-    product_type: str | None = None,
+    product_type: ProductTypeFilter = None,
     level_min: int | None = None,
     level_max: int | None = None,
 ) -> dict:
     """Search the library by topic. Semantic plus keyword when semantic search is
     configured, keyword-only otherwise (the result says which). Each hit has a
     product_id, score, match_type, matched_page and snippet. game_system is an
-    exact match. product_type is one of adventure, sourcebook, supplement,
-    bestiary, tools, core_rulebook, setting, character_options, gm_tools, map,
-    zine, screen, other (common spellings such as "Rulebook" are mapped);
+    exact match; product_type takes any spelling of a type (see its description);
     level_min/level_max keep products whose level range overlaps.
     Follow up with get_page(product_id, matched_page) before quoting."""
     async with open_session() as db:
@@ -59,7 +58,7 @@ async def find_phrase(
     phrase: str,
     limit: int = 10,
     game_system: str | None = None,
-    product_type: str | None = None,
+    product_type: ProductTypeFilter = None,
 ) -> dict:
     """Find where the library's text says a specific thing: a monster, NPC, place
     or exact term. Keyword match over the full body text of every extracted
@@ -77,7 +76,7 @@ async def search_pack(
     limit_per_query: int = 10,
     global_limit: int | None = None,
     game_system: str | None = None,
-    product_type: str | None = None,
+    product_type: ProductTypeFilter = None,
 ) -> dict:
     """Run several phrasings of one question in a single call (at most 10) and
     merge the hits by product, keeping each product's best score and listing
@@ -106,7 +105,7 @@ async def get_product(product_id: int) -> dict:
 async def list_products(
     query: str | None = None,
     game_system: str | None = None,
-    product_type: str | None = None,
+    product_type: ProductTypeFilter = None,
     publisher: str | None = None,
     tag: str | None = None,
     collection_id: int | None = None,
@@ -114,7 +113,8 @@ async def list_products(
     offset: int = 0,
 ) -> dict:
     """Browse the catalogue. query matches title or file name (not contents; use
-    search_library for that). Other filters are exact; tag is a tag name. Sorted
+    search_library for that). product_type takes any spelling of a type; the
+    other filters are exact, and tag is a tag name. Sorted
     by title, paginated with limit (max 100) and offset; total is the full count."""
     async with open_session() as db:
         return await tools_products.list_products(
