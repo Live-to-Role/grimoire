@@ -36,9 +36,14 @@
       redirects to `/mcp`; with the limiter forced to one request per
       minute `/api/v1/health` returned 429 on its second call while `/mcp`
       kept answering.
-- [ ] **Live check, assistant.** On the real library: `claude mcp add
+- [x] **Live check, assistant.** On the real library: `claude mcp add
       --transport http grimoire http://localhost:8000/mcp`, then ask for
-      swamp adventures and a page from one of them.
+      swamp adventures and a page from one of them. Done 2026-10-25 after
+      merge: eight tool calls, six swamp adventures each summarised from its
+      matched page via `get_page`, cited as *Title, p. N*. Two title-only
+      hits came back without a `matched_page` and the assistant correctly
+      declined to quote them; the server instructions now say what to do
+      with such a hit instead of promising every hit has a page.
 
 ## Running the tests without Docker
 

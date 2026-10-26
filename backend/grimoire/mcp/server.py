@@ -16,9 +16,11 @@ INSTRUCTIONS = """Grimoire is the user's own tabletop RPG library: their PDFs, c
 with extracted text, search and a reviewed bestiary. Everything here is read-only.
 
 Workflow: start with search_library for topics ("swamp hex-crawl for low levels") or \
-find_phrase for names and exact terms ("Kurabanda"). Every hit carries a matched_page; \
-call get_page on it before quoting or summarising, because the snippet is only a \
-fragment. Use get_text only when one page is not enough. search_pack runs several \
+find_phrase for names and exact terms ("Kurabanda"). A hit matched in the body text \
+carries a matched_page; call get_page on it before quoting or summarising, because the \
+snippet is only a fragment. A hit on title or metadata alone has no matched_page: use \
+find_phrase with a term from the query, or get_text, to read it. Use get_text only when \
+one page is not enough. search_pack runs several \
 phrasings at once and dedupes by product. Cite results as *Title, p. N*. \
 library_stats says whether semantic search is available; if the mode is keyword_only, \
 prefer exact terms and tell the user they can enable semantic search in Settings."""
