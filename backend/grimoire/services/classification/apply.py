@@ -27,6 +27,24 @@ def effective_levels(min_: int | None, max_: int | None) -> tuple[int | None, in
     return None, None
 
 
+def coerce_levels(min_, max_) -> tuple[int | None, int | None]:
+    """A model's level answer as a range: whole numbers 0-40, both ends, min <= max.
+
+    Identification models answer "", "3rd" or 99 as often as a number; anything
+    that is not a clean range is no range, and the stored one is left alone.
+    """
+    def level(value) -> int | None:
+        if isinstance(value, bool):
+            return None
+        if isinstance(value, float) and value.is_integer():
+            value = int(value)
+        if isinstance(value, str) and value.strip().isdigit():
+            value = int(value.strip())
+        return value if isinstance(value, int) and 0 <= value <= 40 else None
+
+    return effective_levels(level(min_), level(max_))
+
+
 @dataclass
 class ApplyReport:
     applied: int = 0

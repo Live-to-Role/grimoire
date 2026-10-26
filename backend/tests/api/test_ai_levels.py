@@ -64,3 +64,39 @@ async def test_worker_identify_stores_level_zero_and_enum_type(db, tmp_path, mon
     await db.refresh(p)
     assert (p.level_range_min, p.level_range_max) == (0, 0)
     assert p.product_type == "core_rulebook"
+
+
+@pytest.mark.parametrize("sent, stored", [
+    ({"level_range_min": "", "level_range_max": ""}, (3, 5)),     # blank: leave alone
+    ({"level_range_min": "4", "level_range_max": "6"}, (4, 6)),   # numeric strings
+    ({"level_range_min": 1, "level_range_max": 99}, (3, 5)),      # out of 0-40
+    ({"level_range_min": 7}, (3, 5)),                             # half range
+    ({"level_range_min": 6, "level_range_max": 2}, (3, 5)),       # inverted
+    ({"level_range_min": "3rd", "level_range_max": "5th"}, (3, 5)),
+])
+@pytest.mark.asyncio
+async def test_identified_levels_follow_the_range_rules(client, db, sent, stored):
+    p = await _product(db)
+
+    response = await client.post(f"/api/v1/ai/identify/{p.id}/confirm", json=sent)
+
+    assert response.status_code == 200
+    await db.refresh(p)
+    assert (p.level_range_min, p.level_range_max) == stored
+
+
+@pytest.mark.asyncio
+async def test_worker_identify_ignores_a_half_range(db, tmp_path, monkeypatch):
+    text_file = tmp_path / "t.json"
+    text_file.write_text(json.dumps({"markdown": "An adventure. " * 20}), encoding="utf-8")
+    p = await _product(db, text_extracted=True, extracted_text_path=str(text_file))
+
+    async def fake_identify(text, provider=None, filename=None):
+        return {"product_type": "adventure", "level_range_min": 2, "level_range_max": ""}
+
+    monkeypatch.setattr(ai_identifier, "identify_product", fake_identify)
+
+    assert await handle_ai_identify_task(db, p, {"provider": "ollama"})
+
+    await db.refresh(p)
+    assert (p.level_range_min, p.level_range_max) == (3, 5)

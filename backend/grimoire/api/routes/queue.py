@@ -886,7 +886,7 @@ async def dismiss_queue_item(
         
         if product:
             if not product.product_type:
-                product.product_type = "Art/Maps"
+                product.product_type = "map"  # the enum; "Art/Maps" maps to it
             # Mark text extraction as "done" to prevent future attempts
             product.text_extracted = True
             product_updated = True
@@ -929,7 +929,7 @@ async def dismiss_all_failed(
             
             for product in products:
                 if not product.product_type:
-                    product.product_type = "Art/Maps"
+                    product.product_type = "map"  # the enum; "Art/Maps" maps to it
                 product.text_extracted = True
                 products_marked += 1
     

@@ -121,3 +121,20 @@ def test_description_excerpt_source():
     assert ex.source == "description" and ex.unpaged is False
     assert "title: Sea Dogs" in ex.text and "publisher: Pub" in ex.text
     assert "page_count: 12" in ex.text and "3rd-level characters" in ex.text
+
+
+def test_5e_spell_blocks_and_class_features_do_not_spend_the_windows():
+    # The common 5e formats name no "spell": a school after the level, and class
+    # features that say when a character gains them.
+    noise = [
+        "### Shield\n*1st-level abjuration*\n**Casting Time:** 1 reaction",
+        "### Fireball\n*3rd-level evocation*\n**Range:** 150 feet",
+        "### Mage Hand\n*Conjuration cantrip*",
+        "When you reach 3rd level, you choose an archetype.",
+        "Starting at 6th level, you can attack twice.",
+        "### Hold Person\n*2nd-level enchantment*",
+    ]
+    inserts = {25 + i: text for i, text in enumerate(noise)}
+    inserts[40] = "An adventure for four 5th-level characters."
+    ex = build_excerpt(_pages(60, inserts=inserts), HEADER)
+    assert _window_tags(ex.text) == [("page", "40")]

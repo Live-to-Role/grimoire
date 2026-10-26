@@ -27,8 +27,13 @@ LEVEL_PATTERNS: list[re.Pattern] = [
 ]
 
 _NEGATIVE_CONTEXT = re.compile(
-    r"spell|caster|dungeon level|"
-    r"level \d+ (warlock|wizard|cleric|druid|sorcerer|bard|paladin|ranger)",
+    r"spell|caster|dungeon level|cantrip|"
+    r"level \d+ (warlock|wizard|cleric|druid|sorcerer|bard|paladin|ranger)|"
+    # A 5e spell block names its school, not "spell": "*3rd-level evocation*".
+    r"abjuration|conjuration|divination|enchantment|evocation|illusion|necromancy|"
+    r"transmutation|"
+    # Class features say when a character gains them; a product's range does not.
+    r"when you reach|starting at \d+(st|nd|rd|th) level, you",
     re.IGNORECASE,
 )
 _CONTEXT_CHARS = 40

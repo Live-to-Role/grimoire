@@ -204,6 +204,11 @@ Text to analyze:
 Return ONLY the JSON object, nothing else."""
 
 
+# The excerpt runs to ~5k real tokens; Ollama's default window would cut the
+# prompt's field instructions off the top without an error.
+OLLAMA_NUM_CTX = 8192
+
+
 def _format_prompt(text: str, filename: str | None = None) -> str:
     """Format the identification prompt with optional filename hint."""
     if filename:
@@ -281,6 +286,7 @@ async def identify_with_ollama(text: str, base_url: str, model: str = "gemma3:12
                 "prompt": _format_prompt(text, filename),
                 "stream": False,
                 "format": "json",
+                "options": {"num_ctx": OLLAMA_NUM_CTX},
             },
         )
         response.raise_for_status()
@@ -500,6 +506,7 @@ async def suggest_tags_with_ollama(text: str, base_url: str, model: str = "gemma
                 "prompt": TAG_SUGGESTION_PROMPT.format(text=text),
                 "stream": False,
                 "format": "json",
+                "options": {"num_ctx": OLLAMA_NUM_CTX},
             },
         )
         response.raise_for_status()

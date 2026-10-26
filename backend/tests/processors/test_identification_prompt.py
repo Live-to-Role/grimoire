@@ -3,6 +3,8 @@
 It used to offer free-text examples ("Adventure", "Core Rulebook") and read only
 text[:4000], so a level range stated past the first pages never reached it.
 """
+import json
+
 import grimoire.processors.ai_identifier as ai_identifier
 from grimoire.processors.ai_identifier import IDENTIFICATION_PROMPT, identify_product
 
@@ -48,3 +50,24 @@ async def test_identify_sends_level_passage_beyond_first_4000_chars(monkeypatch)
 
     assert "3rd to 5th level characters" in sent
     assert sent.startswith("# Document")
+
+
+async def test_ollama_requests_carry_a_context_window_for_the_excerpt(monkeypatch):
+    # The excerpt is ~5k real tokens; Ollama's default context window would
+    # silently cut the prompt's field instructions off the top.
+    import httpx
+
+    bodies = []
+
+    def handler(request):
+        bodies.append(json.loads(request.content))
+        return httpx.Response(200, json={"response": '{"product_type": "adventure"}'})
+
+    real_client = httpx.AsyncClient
+    monkeypatch.setattr(ai_identifier.httpx, "AsyncClient",
+                        lambda **kw: real_client(transport=httpx.MockTransport(handler), **kw))
+
+    await ai_identifier.identify_with_ollama("text", "http://ollama.test")
+    await ai_identifier.suggest_tags_with_ollama("text", "http://ollama.test")
+
+    assert [b["options"]["num_ctx"] >= 8192 for b in bodies] == [True, True]
