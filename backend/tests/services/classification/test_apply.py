@@ -1,4 +1,5 @@
 import pytest
+from sqlalchemy import update
 
 from grimoire.models import ClassificationResult, ClassificationRun, CodexProduct, Product
 from grimoire.services.classification.apply import apply_run, apply_vocab_migration, effective_levels
@@ -9,11 +10,17 @@ CX2 = "00000000-0000-0000-0000-000000000002"
 
 async def _product(db, name, product_type="Supplement", levels=(None, None)):
     p = Product(file_path=f"/lib/Pub/Folder/{name}", file_name=name, file_size=1,
-                file_hash=name, product_type=product_type,
-                level_range_min=levels[0], level_range_max=levels[1])
+                file_hash=name, level_range_min=levels[0], level_range_max=levels[1])
     db.add(p)
     await db.flush()
+    await _legacy_type(db, p, product_type)
     return p
+
+
+async def _legacy_type(db, product, value):
+    """Store a pre-branch free-text type: a Core update skips the model's validator."""
+    await db.execute(update(Product).where(Product.id == product.id).values(product_type=value))
+    await db.refresh(product)
 
 
 async def _run(db, *results):
@@ -189,9 +196,9 @@ async def test_vocab_migration_leaves_unmapped_and_ai_applied_rows(db):
     assert counts["unmapped"] == 1
 
 
-async def test_vocab_migration_keeps_image_free_text_without_image_flag(db):
-    # codex_eligibility refuses "Stock Art" by its free text. Mapped to "other",
-    # an unflagged stock-art pack would become contributable to Codex.
+async def test_vocab_migration_keeps_image_free_text(db):
+    # codex_eligibility and the image reset recognise "Stock Art" / "Token" by
+    # their free text, flagged or not; mapped to other/tools, both miss them.
     unflagged = await _product(db, "art.pdf", "Stock Art")
     flagged = await _product(db, "tok.pdf", "Token")
     flagged.is_image_content = True
@@ -202,8 +209,8 @@ async def test_vocab_migration_keeps_image_free_text_without_image_flag(db):
     await db.refresh(unflagged)
     await db.refresh(flagged)
     assert unflagged.product_type == "Stock Art"
-    assert flagged.product_type == "tools"
-    assert counts["kept_image_type"] == 1
+    assert flagged.product_type == "Token"
+    assert counts["kept_image_type"] == 2
 
 
 async def test_vocab_migration_dry_run_writes_nothing(db):

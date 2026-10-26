@@ -14,8 +14,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from grimoire.models import Product
 from grimoire.models.classification import ClassificationResult, ClassificationRun
-from grimoire.services.classification.enum import CODEX_PRODUCT_TYPES, normalize_free_text
-from grimoire.services.codex_eligibility import IMAGE_PRODUCT_TYPES
+from grimoire.services.classification.enum import (
+    CODEX_PRODUCT_TYPES, IMAGE_PRODUCT_TYPES, normalize_free_text,
+)
 
 VOCAB_RUN = "vocab-migration"
 
@@ -134,10 +135,10 @@ async def apply_vocab_migration(db: AsyncSession, dry_run: bool = False) -> dict
         if new is None:
             counts["unmapped"] += 1
             continue
-        # codex_eligibility refuses image collections by this free text. Without
-        # the image flag, "Stock Art" -> other would make the pack contributable.
-        if (old.strip().lower() in IMAGE_PRODUCT_TYPES and new != "map"
-                and not product.is_image_content):
+        # codex_eligibility and the image reset recognise image collections by
+        # this free text; "Stock Art" -> other would hide it from both. Same
+        # rule as the Product validator.
+        if old.strip().lower() in IMAGE_PRODUCT_TYPES and new != "map":
             counts["kept_image_type"] += 1
             continue
         counts[new] += 1

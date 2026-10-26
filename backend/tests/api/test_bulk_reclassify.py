@@ -213,7 +213,7 @@ class TestReclassifyToImageContent:
         for p in reclassify_products:
             await db.refresh(p)
             assert p.is_image_content is True
-            assert p.product_type == "Map"
+            assert p.product_type == "map"  # the tag name, canonicalised by the model
 
     @pytest.mark.asyncio
     async def test_creates_auto_tag(self, db, seeded_tags, reclassify_products):
@@ -355,7 +355,7 @@ class TestReclassifyToImageContent:
         )
         await bulk_update_products(db, req)
         await db.refresh(p)
-        assert p.product_type == "Map"  # content_type wins
+        assert p.product_type == "map"  # content_type wins
 
 
 class TestReclassifyToRegular:

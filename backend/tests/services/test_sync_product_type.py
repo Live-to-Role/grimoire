@@ -28,8 +28,9 @@ def test_free_text_goes_through_vocab_then_other():
     assert normalize_product_type(None) is None
 
 
-def test_core_rules_from_old_data_is_not_sent():
-    assert normalize_product_type("core_rules") == "other"
+def test_core_rules_from_old_data_is_sent_as_core_rulebook():
+    # Codex refuses core_rules; the vocabulary maps it to core_rulebook.
+    assert normalize_product_type("core_rules") == "core_rulebook"
 
 
 def test_old_mapping_is_gone():

@@ -12,7 +12,6 @@ from sqlalchemy import select
 from grimoire.api.deps import DbSession
 from grimoire.models import Product, Tag, ProductTag
 from grimoire.services.classification.apply import coerce_levels
-from grimoire.services.classification.enum import normalize_free_text
 from grimoire.services.processor import get_extracted_text
 from grimoire.services.identifier import (
     IdentificationMethod,
@@ -50,11 +49,6 @@ def _coerce_str(val) -> str | None:
     return str(val)
 
 
-def _enum_type(value: str | None) -> str | None:
-    """A model's product type onto the Codex enum; unmapped text is kept as given."""
-    return normalize_free_text(value) or value
-
-
 def _apply_ai_fields(product: Product, data: dict) -> None:
     """Apply AI identification fields to a product, safely coercing types."""
     if data.get("title"):
@@ -66,7 +60,7 @@ def _apply_ai_fields(product: Product, data: dict) -> None:
     if data.get("genre"):
         product.genre = _coerce_str(data["genre"])
     if data.get("product_type"):
-        product.product_type = _enum_type(_coerce_str(data["product_type"]))
+        product.product_type = _coerce_str(data["product_type"])
     if data.get("publisher"):
         product.publisher = _coerce_str(data["publisher"])
     if data.get("publication_year"):
@@ -250,7 +244,7 @@ async def identify_product_endpoint(
         if identification.genre:
             product.genre = identification.genre
         if identification.product_type:
-            product.product_type = _enum_type(identification.product_type)
+            product.product_type = identification.product_type
         if identification.publisher:
             product.publisher = identification.publisher
         if identification.publication_year:

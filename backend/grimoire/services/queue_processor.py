@@ -13,7 +13,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from grimoire.database import async_session_maker
 from grimoire.models import ProcessingQueue, Product
 from grimoire.services.classification.apply import coerce_levels
-from grimoire.services.classification.enum import normalize_free_text
 from grimoire.services.codex_eligibility import IMAGE_PRODUCT_TYPES
 from grimoire.processors.text_extractor import extract_with_ocr, TESSERACT_AVAILABLE
 
@@ -199,14 +198,15 @@ def register_handler(task_type: str):
 def image_product_type(current: str | None, label: str | None) -> str | None:
     """The type to store when image detection labels a product ("Map", "Token").
 
-    Written as the enum, and only over an empty or image type: re-extraction
-    must not put "Map" back over `map`, or over a type the AI run decided.
+    Only over an empty or image type: re-extraction must not put "Map" back
+    over a type the AI run decided. The label is returned as given; the
+    Product validator canonicalises it ("Map" -> `map`, "Token" kept).
     """
     if not label:
         return current
     if current and current.strip().lower() not in IMAGE_PRODUCT_TYPES:
         return current
-    return normalize_free_text(label) or label
+    return label
 
 
 @register_handler("cover")
@@ -808,7 +808,7 @@ async def handle_ai_identify_task(db: AsyncSession, product: Product, config: di
         product_type = identification["product_type"]
         if isinstance(product_type, list):
             product_type = ", ".join(str(p) for p in product_type)
-        product.product_type = normalize_free_text(product_type) or product_type
+        product.product_type = product_type
     if identification.get("publisher"):
         publisher = identification["publisher"]
         if isinstance(publisher, list):

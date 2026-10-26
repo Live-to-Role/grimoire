@@ -2,7 +2,7 @@ import json
 from types import SimpleNamespace
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import select, update
 
 from grimoire.models import ClassificationResult, ClassificationRun, CodexProduct, Product, Setting
 from grimoire.services.classification.batch import (
@@ -79,10 +79,13 @@ def _item(cx_id, product_id=None, source="pdf"):
 async def _seed(db):
     product = Product(
         file_path=r"D:\Drivethrurpg\P\T\t.pdf", file_name="t.pdf", file_size=1, file_hash="h",
-        product_type="Supplement", level_range_min=3, level_range_max=5,
+        level_range_min=3, level_range_max=5,
     )
     db.add(product)
     await db.flush()
+    # A pre-branch free-text type: a Core update skips the model's validator.
+    await db.execute(update(Product).where(Product.id == product.id).values(product_type="Supplement"))
+    await db.refresh(product)
     db.add_all([
         CodexProduct(id=CX1, slug="a", title="A", product_type="other",
                      grimoire_product_id=product.id, match_method="folder"),
