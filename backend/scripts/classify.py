@@ -175,12 +175,20 @@ def cmd_export(args) -> None:
         items = [i for i in export.read_reviewed(Path(args.source))
                  if (i.confidence or 0.0) >= args.min_confidence]
 
-        async def live(db):
-            outcomes = export.send_items(items, await export.codex_token(db), dry_run=False)
-            await export.stamp_exported(db, args.run, outcomes)
-            return outcomes
+        sent: dict[str, dict] = {}
 
-        outcomes = asyncio.run(_with_session(live))
+        async def live(db):
+            # `sent` fills chunk by chunk, so a failure can say what landed.
+            return await export.send_and_stamp(db, args.run, items, await export.codex_token(db),
+                                               outcomes=sent)
+
+        try:
+            outcomes = asyncio.run(_with_session(live))
+        except Exception as exc:
+            print(f"failed: {exc}", file=sys.stderr)
+            print(f"sent and recorded {len(sent)} items before the failure; "
+                  "re-running is safe (Codex answers unchanged)", file=sys.stderr)
+            sys.exit(1)
         print(f"LIVE: sent {len(items)} items")
         print(export.summarize(items, outcomes))
         return

@@ -21,7 +21,7 @@ from grimoire.config import settings
 from grimoire.models import Setting
 from grimoire.models.classification import ClassificationResult, ClassificationRun, CodexProduct
 from grimoire.services.classification.apply import effective_levels
-from grimoire.services.classification.enum import CODEX_PRODUCT_TYPES
+from grimoire.services.classification.enum import CODEX_PRODUCT_TYPES, normalize_free_text
 from grimoire.services.classification.pilot import _text_cell
 
 CHUNK = 100  # Codex's per-request limit
@@ -50,7 +50,7 @@ def _kind(codex_value) -> str:
     return "fill" if codex_value in _EMPTY else "correction"
 
 
-async def _collected_run(db: AsyncSession, run_name: str) -> ClassificationRun:
+async def collected_run(db: AsyncSession, run_name: str) -> ClassificationRun:
     run = (await db.execute(
         select(ClassificationRun).where(ClassificationRun.name == run_name)
     )).scalar()
@@ -63,7 +63,7 @@ async def _collected_run(db: AsyncSession, run_name: str) -> ClassificationRun:
 
 async def build_items(db: AsyncSession, run_name: str,
                       min_confidence: float = 0.0) -> list[ExportItem]:
-    run = await _collected_run(db, run_name)
+    run = await collected_run(db, run_name)
     rows = (await db.execute(
         select(ClassificationResult, CodexProduct)
         .join(CodexProduct, CodexProduct.id == ClassificationResult.codex_product_id)
@@ -202,19 +202,57 @@ def _int(cell: str) -> int | None:
     return int(cell) if cell else None
 
 
+def _level_cell(cell: str) -> int | None:
+    """A whole number 0-40, None when blank; ValueError otherwise."""
+    cell = (cell or "").strip()
+    if not cell:
+        return None
+    if not cell.isdigit() or int(cell) > 40:
+        raise ValueError(f"level {cell!r} is not a whole number 0-40")
+    return int(cell)
+
+
+def _reviewed_fields(row: dict) -> dict[str, int | str]:
+    """The fields a reviewed row sends; ValueError naming what is wrong.
+
+    A hand edit in Excel can produce anything, and Codex would store most of
+    it. A blank *_new means Codex's *_old stands, so the range is judged on
+    the two combined: max_new 3 over Codex's 1-5 is a whole range.
+    """
+    fields: dict[str, int | str] = {}
+    type_new = (row.get("type_new") or "").strip()
+    if type_new:
+        value = normalize_free_text(type_new)
+        if value not in CODEX_PRODUCT_TYPES or value in ("magazine", "core_rules"):
+            raise ValueError(f"type {type_new!r} is not a Codex product type")
+        fields["product_type"] = value
+    new = [_level_cell(row.get(c, "")) for c in ("min_new", "max_new")]
+    if any(v is not None for v in new):
+        old = [_level_cell(row.get(c, "")) for c in ("min_old", "max_old")]
+        lo, hi = (n if n is not None else o for n, o in zip(new, old))
+        if lo is None or hi is None:
+            raise ValueError("half a level range")
+        if lo > hi:
+            raise ValueError(f"inverted level range {lo}-{hi}")
+        for name, value in zip(LEVEL_FIELDS, new):
+            if value is not None:
+                fields[name] = value
+    return fields
+
+
 def read_reviewed(path: Path) -> list[ExportItem]:
+    """The `send = yes` rows of a reviewed report; ValueError if any is bad."""
     items = []
+    bad = []
     with open(path, encoding="utf-8-sig", newline="") as f:
         for row in csv.DictReader(f):
             if (row.get("send") or "").strip().lower() != "yes":
                 continue
-            fields: dict[str, int | str] = {}
-            if (row.get("type_new") or "").strip():
-                fields["product_type"] = row["type_new"].strip()
-            for name, column in ((LEVEL_FIELDS[0], "min_new"), (LEVEL_FIELDS[1], "max_new")):
-                value = _int(row.get(column, ""))
-                if value is not None:
-                    fields[name] = value
+            try:
+                fields = _reviewed_fields(row)
+            except ValueError as exc:
+                bad.append(f"{row.get('slug')}: {exc}")
+                continue
             if not fields:
                 continue
             old = {
@@ -232,12 +270,14 @@ def read_reviewed(path: Path) -> list[ExportItem]:
                 level_evidence=row.get("level_evidence") or None,
                 old=old, shared_with=int(shared) if shared else 0,
             ))
+    if bad:
+        raise ValueError("reviewed CSV has bad rows, nothing sent:\n" + "\n".join(bad))
     return items
 
 
 async def stamp_exported(db: AsyncSession, run_name: str, outcomes: dict[str, dict]) -> int:
     """Record each live item's Codex status on the run's result rows."""
-    run = await _collected_run(db, run_name)
+    run = await collected_run(db, run_name)
     now = datetime.now(UTC).replace(tzinfo=None)
     rows = (await db.execute(
         select(ClassificationResult).where(
@@ -252,3 +292,22 @@ async def stamp_exported(db: AsyncSession, run_name: str, outcomes: dict[str, di
         count += 1
     await db.commit()
     return count
+
+
+async def send_and_stamp(db: AsyncSession, run_name: str, items: list[ExportItem], token: str,
+                         client: httpx.Client | None = None,
+                         outcomes: dict[str, dict] | None = None) -> dict[str, dict]:
+    """Live send, recording each chunk as it lands.
+
+    The run is checked before anything is sent. If a later chunk fails, the
+    chunks already sent are stamped and committed (and are in `outcomes`, when
+    the caller passed one); re-sending them is safe, since Codex answers
+    `unchanged`.
+    """
+    await collected_run(db, run_name)
+    outcomes = {} if outcomes is None else outcomes
+    for start in range(0, len(items), CHUNK):
+        chunk_outcomes = send_items(items[start:start + CHUNK], token, dry_run=False, client=client)
+        await stamp_exported(db, run_name, chunk_outcomes)
+        outcomes.update(chunk_outcomes)
+    return outcomes

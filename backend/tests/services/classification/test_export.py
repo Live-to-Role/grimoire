@@ -8,7 +8,9 @@ from grimoire.services.classification.export import (
     ExportItem,
     build_items,
     codex_token,
+    REPORT_COLUMNS,
     read_reviewed,
+    send_and_stamp,
     send_items,
     write_report,
 )
@@ -245,3 +247,83 @@ def test_reviewed_items_keep_old_values_kinds_and_shared_count(tmp_path):
     assert reviewed.old == item.old
     assert reviewed.kinds == item.kinds
     assert reviewed.shared_with == 10
+
+
+def _reviewed_csv(path, *rows):
+    import csv
+    with open(path, "w", encoding="utf-8-sig", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=REPORT_COLUMNS, restval="")
+        writer.writeheader()
+        for n, row in enumerate(rows, start=1):
+            writer.writerow({"send": "yes", "codex_id": _cx(n), "slug": f"slug-{n}",
+                             "title": f"Title {n}", **row})
+    return path
+
+
+def test_read_reviewed_rejects_bad_type_and_ranges(tmp_path):
+    path = _reviewed_csv(
+        tmp_path / "r.csv",
+        {"type_new": "adventrue"},
+        {"min_new": "7", "max_new": "3"},                                        # inverted
+        {"min_old": "", "min_new": "", "max_old": "", "max_new": "5"},           # no min anywhere
+        {"type_new": "adventure", "min_new": "1", "max_new": "3"},               # fine
+    )
+
+    with pytest.raises(ValueError) as exc:
+        read_reviewed(path)
+
+    message = str(exc.value)
+    assert "slug-1" in message and "slug-2" in message and "slug-3" in message
+    assert "slug-4" not in message
+
+
+def test_read_reviewed_validates_combined_range(tmp_path):
+    path = _reviewed_csv(tmp_path / "r.csv",
+                         {"min_old": "1", "max_old": "5", "min_new": "", "max_new": "3"})
+
+    [item] = read_reviewed(path)
+
+    assert item.fields == {"level_range_max": 3}
+
+
+def test_read_reviewed_sends_the_enum_spelling(tmp_path):
+    path = _reviewed_csv(tmp_path / "r.csv", {"type_new": "Magazine"})
+
+    [item] = read_reviewed(path)
+
+    assert item.fields == {"product_type": "zine"}
+
+
+async def test_live_send_checks_the_run_before_sending(db):
+    requests = []
+
+    with pytest.raises(ValueError):
+        await send_and_stamp(db, "full", [_item(1)], "tok", client=_codex(requests))
+
+    assert requests == []
+
+
+async def test_live_send_stamps_each_chunk(db):
+    run = await _run(db, [("other", None, None, {"product_type_new": "adventure"})] * 150)
+    await db.commit()
+    posts = []
+
+    def handler(request):
+        posts.append(request)
+        if len(posts) == 2:
+            return httpx.Response(500, json={"error": "boom"})
+        body = json.loads(request.content)
+        return httpx.Response(200, json={"results": [
+            {"key": i["id"], "status": "changed", "protected": [], "errors": []}
+            for i in body["items"]]})
+    client = httpx.Client(transport=httpx.MockTransport(handler),
+                          base_url="https://codex.test/api/v1")
+
+    with pytest.raises(httpx.HTTPStatusError):
+        await send_and_stamp(db, "full", [_item(n) for n in range(1, 151)], "tok", client=client)
+
+    from sqlalchemy import select
+    rows = {r.codex_product_id: r for r in (await db.execute(
+        select(ClassificationResult).where(ClassificationResult.run_id == run.id))).scalars()}
+    assert all(rows[_cx(n)].exported_status == "changed" for n in range(1, 101))
+    assert all(rows[_cx(n)].exported_status is None for n in range(101, 151))
