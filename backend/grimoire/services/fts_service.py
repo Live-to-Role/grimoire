@@ -70,6 +70,7 @@ async def fts_candidates(
         WHERE products_fts MATCH :query
         AND +p.is_duplicate = 0
         AND +p.is_missing = 0
+        AND +p.is_superseded = 0
         AND (:game_system IS NULL OR p.game_system = :game_system)
         AND (:product_type IS NULL OR p.product_type = :product_type)
         ORDER BY rank
@@ -148,6 +149,7 @@ async def chunk_candidates(
             WHERE product_chunks_fts MATCH :query
             AND +p.is_duplicate = 0
             AND +p.is_missing = 0
+            AND +p.is_superseded = 0
             AND (:game_system IS NULL OR p.game_system = :game_system)
             AND (:product_type IS NULL OR p.product_type = :product_type)
             ORDER BY rank
@@ -325,6 +327,7 @@ async def search_fts(
         WHERE products_fts MATCH :query
         AND +p.is_duplicate = 0
         AND +p.is_missing = 0
+        AND +p.is_superseded = 0
         AND (:game_system IS NULL OR p.game_system = :game_system)
         AND (:product_type IS NULL OR p.product_type = :product_type)
         ORDER BY rank

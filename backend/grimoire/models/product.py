@@ -212,3 +212,14 @@ class Product(Base):
 
     def __repr__(self) -> str:
         return f"<Product(id={self.id}, title='{self.title}', file_name='{self.file_name}')>"
+
+
+def live_product_conditions() -> tuple:
+    """What "a book the user has" means to every listing: not a duplicate copy,
+    not missing from disk, not a revision superseded by a newer file. Splat
+    into ``.where()`` so the UI, the MCP tools and the FTS paths agree."""
+    return (
+        Product.is_duplicate == False,  # noqa: E712 - SQLAlchemy comparison
+        Product.is_missing == False,  # noqa: E712
+        Product.is_superseded == False,  # noqa: E712
+    )

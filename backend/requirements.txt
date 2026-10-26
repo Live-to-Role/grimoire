@@ -39,3 +39,6 @@ rapidfuzz>=3.0
 numpy>=1.26.0
 
 sentence-transformers>=2.2.0
+
+# MCP server (read-only AI assistant access at /mcp)
+mcp>=2.3,<3
